@@ -7,7 +7,7 @@ To run the tests for the distributed sensor hub project, follow these steps:
    pip install pytest
    ```
 
-2. Navigate to the root directory of the project:
+2. Navigate to the root directory of the project
 
 3. Run the tests using:
    ```
