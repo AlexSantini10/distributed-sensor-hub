@@ -2,6 +2,7 @@
     "conventionalCommits.scopes": [
         "protocol",
         "sensors",
-        "networking"
+        "networking",
+        "membership"
     ]
 }

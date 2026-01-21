@@ -3,3 +3,5 @@
 .env
 /logs
 logs/node.log
+*.log
+/logs

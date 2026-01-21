@@ -1,0 +1,87 @@
+from typing import Callable, Iterable
+from protocol.message import Message
+from protocol.message_types import MessageType
+from membership.peer import Peer
+from membership.peer_table import PeerTable
+from utils.logging import get_logger
+
+
+Sender = Callable[[str, Message], None]
+# Sender(peer_id, message) -> send to that peer
+
+
+def make_membership_handlers(
+    peer_table: PeerTable,
+    send: Sender,
+    self_node_id: str,
+):
+    """
+    Factory returning JOIN_REQUEST and PEER_LIST handlers
+    bound to a specific PeerTable and sender.
+    """
+
+    log = get_logger(__name__, self_node_id)
+
+    def handle_join_request(msg: Message) -> None:
+        payload = msg.payload
+
+        node_id = payload.get("node_id")
+        host = payload.get("host")
+        port = payload.get("port")
+
+        if not node_id or not host or not isinstance(port, int):
+            log.warning("Invalid JOIN_REQUEST payload")
+            return
+
+        peer = Peer.new(node_id=node_id, host=host, port=port)
+        added = peer_table.add_peer(peer)
+
+        if added:
+            log.info(f"New peer joined: {node_id} {host}:{port}")
+        else:
+            log.info(f"JOIN_REQUEST from known peer: {node_id}")
+
+        # Always reply with current peer list
+        peers_payload = [
+            {
+                "node_id": p.node_id,
+                "host": p.host,
+                "port": p.port,
+            }
+            for p in peer_table.list_peers()
+        ]
+
+        reply = Message(
+            msg_type=MessageType.PEER_LIST,
+            sender_id=self_node_id,
+            payload={"peers": peers_payload},
+        )
+
+        send(node_id, reply)
+
+    def handle_peer_list(msg: Message) -> None:
+        payload = msg.payload
+        peers = payload.get("peers")
+
+        if not isinstance(peers, list):
+            log.warning("Invalid PEER_LIST payload")
+            return
+
+        added_count = 0
+
+        for entry in peers:
+            node_id = entry.get("node_id")
+            host = entry.get("host")
+            port = entry.get("port")
+
+            if not node_id or not host or not isinstance(port, int):
+                continue
+
+            peer = Peer.new(node_id=node_id, host=host, port=port)
+            if peer_table.add_peer(peer):
+                added_count += 1
+
+        if added_count > 0:
+            log.info(f"Integrated {added_count} new peers from PEER_LIST")
+
+    return handle_join_request, handle_peer_list
