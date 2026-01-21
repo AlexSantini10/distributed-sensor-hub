@@ -1,5 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
+from protocol.setup import setup_protocol
+dispatcher = setup_protocol()
 
 from utils.config import load_config
 from utils.logging import setup_logging, get_logger
