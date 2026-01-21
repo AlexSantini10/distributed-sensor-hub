@@ -1,6 +1,7 @@
 {
     "conventionalCommits.scopes": [
         "protocol",
-        "sensors"
+        "sensors",
+        "networking"
     ]
 }

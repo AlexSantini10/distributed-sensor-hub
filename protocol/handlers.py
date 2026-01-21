@@ -1,4 +1,5 @@
 from protocol.message import Message
+from utils.logging import get_logger
 
 
 def handle_join_request(msg: Message) -> None:
@@ -10,6 +11,8 @@ def handle_peer_list(msg: Message) -> None:
 
 
 def handle_ping(msg: Message) -> None:
+    log = get_logger(__name__, msg.sender_id)
+    log.info(f"Received PING with payload={msg.payload}")
     raise NotImplementedError("PING not implemented yet")
 
 
