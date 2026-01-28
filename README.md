@@ -23,3 +23,8 @@ To run the tests for the distributed sensor hub project, follow these steps:
    ```
    pytest -m [module_name]
    ```
+
+   Windows PowerShell:
+   ```
+   python -m pytest --maxfail=1
+   ```

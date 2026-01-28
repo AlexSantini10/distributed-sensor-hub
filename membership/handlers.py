@@ -1,4 +1,4 @@
-from typing import Callable, Iterable
+from typing import Callable
 from protocol.message import Message
 from protocol.message_types import MessageType
 from membership.peer import Peer
@@ -33,6 +33,10 @@ def make_membership_handlers(
             log.warning("Invalid JOIN_REQUEST payload")
             return
 
+        # Ignore self-join completely (no side effects)
+        if node_id == self_node_id:
+            return
+
         peer = Peer.new(node_id=node_id, host=host, port=port)
         added = peer_table.add_peer(peer)
 
@@ -41,7 +45,6 @@ def make_membership_handlers(
         else:
             log.info(f"JOIN_REQUEST from known peer: {node_id}")
 
-        # Always reply with current peer list
         peers_payload = [
             {
                 "node_id": p.node_id,
@@ -57,7 +60,8 @@ def make_membership_handlers(
             payload={"peers": peers_payload},
         )
 
-        send(node_id, reply)
+        # Reply to transport-level sender, not logical node_id
+        send(msg.sender_id, reply)
 
     def handle_peer_list(msg: Message) -> None:
         payload = msg.payload
@@ -75,6 +79,9 @@ def make_membership_handlers(
             port = entry.get("port")
 
             if not node_id or not host or not isinstance(port, int):
+                continue
+
+            if node_id == self_node_id:
                 continue
 
             peer = Peer.new(node_id=node_id, host=host, port=port)
