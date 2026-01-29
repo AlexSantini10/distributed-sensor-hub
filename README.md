@@ -28,3 +28,17 @@ To run the tests for the distributed sensor hub project, follow these steps:
    ```
    python -m pytest --maxfail=1
    ```
+
+4. Test docker
+
+   To test the docker setup, use the following command:
+   ```
+   docker compose -f docker/docker-compose-base.yml up --build -d
+   ```
+
+   to print the logs:
+   ```
+   type logs\node-1.log
+   echo "-----------------------------------------------------------------------------------------"
+   type logs\node-2.log
+   ```

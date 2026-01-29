@@ -1,37 +1,46 @@
+# sensors/base_sensor.py
 import threading
 import time
 
+
 class BaseSensor:
-	def __init__(self, sensor_id, period_ms, callback=None):
-		self.sensor_id = sensor_id				# unique sensor identifier
-		self.period_ms = period_ms				# generation interval
-		self.callback = callback				# function to send output
-		self._running = False
+	def __init__(self, sensor_id, period_ms, callback):
+		self.sensor_id = sensor_id
+		self.period_ms = period_ms
+		self.callback = callback
+
+		self._stop_event = threading.Event()
 		self._thread = None
 
 	def generate_value(self):
-		raise NotImplementedError("Subclasses must implement generate_value()")
+		raise NotImplementedError
 
 	def _loop(self):
-		while self._running: 
+		next_deadline = time.monotonic()
+		period_s = self.period_ms / 1000.0
+
+		while not self._stop_event.is_set():
 			value = self.generate_value()
-			ts = int(time.time() * 1000)
+			ts_ms = int(time.time() * 1000)
 
-			if self.callback:
-				self.callback(self.sensor_id, value, ts)
+			self.callback({
+				"sensor_id": self.sensor_id,
+				"value": value,
+				"ts_ms": ts_ms,
+			})
 
-			time.sleep(self.period_ms / 1000.0)
-
-
+			next_deadline += period_s
+			sleep_time = next_deadline - time.monotonic()
+			if sleep_time > 0:
+				self._stop_event.wait(timeout=sleep_time)
 
 	def start(self):
-		if self._running:
+		if self._thread is not None:
 			return
-		self._running = True
 		self._thread = threading.Thread(target=self._loop, daemon=True)
 		self._thread.start()
 
 	def stop(self):
-		self._running = False
+		self._stop_event.set()
 		if self._thread:
-			self._thread.join(timeout=1)
+			self._thread.join(timeout=2)

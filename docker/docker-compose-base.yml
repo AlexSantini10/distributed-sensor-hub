@@ -1,0 +1,95 @@
+services:
+    node1:
+        build:
+            context: ..
+            dockerfile: docker/Dockerfile.base
+        container_name: node-1
+        environment:
+            NODE_ID: node-1
+            HOST: 0.0.0.0
+            PORT: 9000
+            BOOTSTRAP_PEERS: node2:9001
+
+            LOG_LEVEL: INFO
+            LOG_FILE: /app/logs/node-1.log
+            CLEAR_LOG: "true"
+
+            WEB_API_PORT: 10000
+
+            SENSORS: 4
+
+            SENSOR_0_TYPE: numeric
+            SENSOR_0_NAME: temperature
+            SENSOR_0_PERIOD_MS: 10000
+            SENSOR_0_MIN: 15
+            SENSOR_0_MAX: 30
+            SENSOR_0_UNIT: C
+
+            SENSOR_1_TYPE: boolean
+            SENSOR_1_NAME: motion
+            SENSOR_1_PERIOD_MS: 10000
+            SENSOR_1_P_TRUE: 0.3
+
+            SENSOR_2_TYPE: wave
+            SENSOR_2_NAME: vibration
+            SENSOR_2_PERIOD_MS: 10000
+            SENSOR_2_AMPLITUDE: 5
+            SENSOR_2_FREQUENCY: 0.2
+
+            SENSOR_3_TYPE: noise
+            SENSOR_3_NAME: humidity_noise
+            SENSOR_3_PERIOD_MS: 10000
+            SENSOR_3_BASE: 50
+            SENSOR_3_NOISE: 5
+
+        ports:
+            - "9000:9000"
+            - "10000:10000"
+        volumes:
+            - ../logs:/app/logs
+
+    node2:
+        build:
+            context: ..
+            dockerfile: docker/Dockerfile.base
+        container_name: node-2
+        environment:
+            NODE_ID: node-2
+            HOST: 0.0.0.0
+            PORT: 9001
+            BOOTSTRAP_PEERS: node1:9000
+
+            LOG_LEVEL: INFO
+            LOG_FILE: /app/logs/node-2.log
+            CLEAR_LOG: "true"
+
+            WEB_API_PORT: 10001
+
+            SENSORS: 3
+
+            SENSOR_0_TYPE: numeric
+            SENSOR_0_NAME: pressure
+            SENSOR_0_PERIOD_MS: 10000
+            SENSOR_0_MIN: 950
+            SENSOR_0_MAX: 1050
+            SENSOR_0_UNIT: hPa
+
+            SENSOR_1_TYPE: trend
+            SENSOR_1_NAME: air_quality
+            SENSOR_1_PERIOD_MS: 10000
+            SENSOR_1_START: 40
+            SENSOR_1_SLOPE: 0.05
+            SENSOR_1_NOISE: 0.5
+
+            SENSOR_2_TYPE: spike
+            SENSOR_2_NAME: traffic_spike
+            SENSOR_2_PERIOD_MS: 10000
+            SENSOR_2_BASELINE: 10
+            SENSOR_2_SPIKE_HEIGHT: 50
+            SENSOR_2_P_SPIKE: 0.15
+
+        ports:
+            - "9001:9001"
+            - "10001:10001"
+        volumes:
+            - ../logs:/app/logs

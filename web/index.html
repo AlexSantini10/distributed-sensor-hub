@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Distributed Sensor Hub - State Viewer</title>
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			background: #111;
+			color: #eee;
+			margin: 0;
+			padding: 20px;
+		}
+
+		h1 {
+			margin: 0 0 10px 0;
+		}
+
+		.controls {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 10px;
+			align-items: center;
+			margin: 10px 0 15px 0;
+		}
+
+		input, button {
+			background: #1c1c1c;
+			color: #eee;
+			border: 1px solid #333;
+			padding: 8px 10px;
+			border-radius: 6px;
+		}
+
+		button {
+			cursor: pointer;
+		}
+
+		#status {
+			margin: 0 0 10px 0;
+			color: #aaa;
+		}
+
+		table {
+			border-collapse: collapse;
+			width: 100%;
+			max-width: 980px;
+		}
+
+		th, td {
+			border: 1px solid #333;
+			padding: 8px 10px;
+			text-align: left;
+			vertical-align: top;
+		}
+
+		th {
+			background: #222;
+			position: sticky;
+			top: 0;
+		}
+
+		tr.updated {
+			background: #1f3d1f;
+		}
+
+		tr.stale {
+			background: #161616;
+		}
+
+		.small {
+			color: #aaa;
+			font-size: 12px;
+		}
+	</style>
+</head>
+<body>
+
+<h1>Distributed Sensor Hub</h1>
+<div id="status">Disconnected</div>
+
+<div class="controls">
+	<label>
+		<span class="small">API base URL</span><br>
+		<input id="base-url" type="text" value="http://localhost:10000" size="28">
+	</label>
+
+	<label>
+		<span class="small">Refresh (ms)</span><br>
+		<input id="refresh-ms" type="number" value="1000" min="200" step="100">
+	</label>
+
+	<label>
+		<span class="small">Filter (sensor id contains)</span><br>
+		<input id="filter" type="text" placeholder="e.g. temp">
+	</label>
+
+	<button id="apply">Apply</button>
+</div>
+
+<table>
+	<thead>
+	<tr>
+		<th>Sensor ID</th>
+		<th>Value</th>
+		<th>Timestamp</th>
+		<th>Origin</th>
+	</tr>
+	</thead>
+	<tbody id="sensor-table"></tbody>
+</table>
+
+<script>
+	"use strict";
+
+	const statusEl = document.getElementById("status");
+	const tableBody = document.getElementById("sensor-table");
+
+	const baseUrlInput = document.getElementById("base-url");
+	const refreshMsInput = document.getElementById("refresh-ms");
+	const filterInput = document.getElementById("filter");
+	const applyBtn = document.getElementById("apply");
+
+	let timerId = null;
+	let lastState = {};
+	let currentConfig = {
+		baseUrl: baseUrlInput.value.trim(),
+		refreshMs: Number(refreshMsInput.value),
+		filter: ""
+	};
+
+	function setStatus(ok, text) {
+		statusEl.textContent = text;
+		statusEl.style.color = ok ? "#6f6" : "#f66";
+	}
+
+	function apiUrl(path) {
+		const base = currentConfig.baseUrl.replace(/\/+$/, "");
+		return base + path;
+	}
+
+	function formatTs(tsMs) {
+		const d = new Date(tsMs);
+		return d.toLocaleTimeString();
+	}
+
+	function stableStringifyValue(v) {
+		if (typeof v === "string") return v;
+		if (typeof v === "number") return String(v);
+		if (typeof v === "boolean") return v ? "true" : "false";
+		return JSON.stringify(v);
+	}
+
+	function ensureRow(sensorId) {
+		let row = document.getElementById("row-" + cssEscape(sensorId));
+		if (row) return row;
+
+		row = document.createElement("tr");
+		row.id = "row-" + sensorId;
+		row.innerHTML = `
+			<td></td>
+			<td></td>
+			<td></td>
+			<td></td>
+		`;
+		tableBody.appendChild(row);
+		return row;
+	}
+
+	function cssEscape(s) {
+		return s.replace(/[^a-zA-Z0-9_-]/g, "_");
+	}
+
+	function shouldShow(sensorId) {
+		const f = currentConfig.filter.trim().toLowerCase();
+		if (f === "") return true;
+		return sensorId.toLowerCase().includes(f);
+	}
+
+	function render(state) {
+		const entries = Object.entries(state)
+			.filter(([sensorId]) => shouldShow(sensorId))
+			.sort(([a], [b]) => a.localeCompare(b));
+
+		const seen = new Set();
+
+		for (const [sensorId, data] of entries) {
+			seen.add(sensorId);
+
+			const prev = lastState[sensorId];
+			const isNew = !prev || (data.ts_ms > prev.ts_ms);
+
+			const row = ensureRow(sensorId);
+			row.cells[0].textContent = sensorId;
+			row.cells[1].textContent = stableStringifyValue(data.value);
+			row.cells[2].textContent = formatTs(data.ts_ms);
+			row.cells[3].textContent = data.origin;
+
+			row.className = isNew ? "updated" : "stale";
+		}
+
+		const rows = Array.from(tableBody.querySelectorAll("tr"));
+		for (const r of rows) {
+			const idCell = r.cells[0];
+			const sensorId = idCell ? idCell.textContent : "";
+			if (!sensorId) continue;
+
+			if (!seen.has(sensorId)) {
+				r.remove();
+			}
+		}
+
+		lastState = state;
+	}
+
+	async function fetchSensors() {
+		try {
+			const res = await fetch(apiUrl("/api/sensors"), { cache: "no-store" });
+			if (!res.ok) {
+				throw new Error("HTTP " + res.status);
+			}
+
+			const state = await res.json();
+			render(state);
+			setStatus(true, "Connected");
+		} catch (err) {
+			setStatus(false, "Disconnected");
+		}
+	}
+
+	function startPolling() {
+		stopPolling();
+
+		const refreshMs = currentConfig.refreshMs;
+		if (!Number.isFinite(refreshMs) || refreshMs < 200) {
+			currentConfig.refreshMs = 1000;
+		}
+
+		timerId = setInterval(fetchSensors, currentConfig.refreshMs);
+		fetchSensors();
+	}
+
+	function stopPolling() {
+		if (timerId !== null) {
+			clearInterval(timerId);
+			timerId = null;
+		}
+	}
+
+	function applyConfig() {
+		const baseUrl = baseUrlInput.value.trim();
+		const refreshMs = Number(refreshMsInput.value);
+		const filter = filterInput.value;
+
+		currentConfig = {
+			baseUrl: baseUrl,
+			refreshMs: refreshMs,
+			filter: filter
+		};
+
+		lastState = {};
+		tableBody.innerHTML = "";
+		startPolling();
+	}
+
+	applyBtn.addEventListener("click", applyConfig);
+	filterInput.addEventListener("keydown", (e) => {
+		if (e.key === "Enter") applyConfig();
+	});
+
+	startPolling();
+</script>
+
+</body>
+</html>
