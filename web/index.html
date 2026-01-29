@@ -183,8 +183,8 @@ let timer = null;
 let currentBaseUrl = null;
 
 /* DOM caches */
-const nodeCards = new Map();        // nodeId -> card
-const sensorRows = new Map();       // node|sensor -> row
+const nodeCards = new Map();
+const sensorRows = new Map();
 
 /* Log buffers */
 const LOG_MAX = 300;
@@ -202,6 +202,11 @@ function setStatus(ok) {
 
 function fmtTs(ts) {
 	return new Date(ts).toLocaleTimeString();
+}
+
+function formatValue(data) {
+	const unit = data.meta && data.meta.unit ? " " + data.meta.unit : "";
+	return String(data.value) + unit;
 }
 
 /* ---------------- RESET ---------------- */
@@ -223,7 +228,7 @@ function resetUI() {
 	setStatus(false);
 }
 
-/* ---------------- STATE RENDER ---------------- */
+/* ---------------- STATE ---------------- */
 
 function getNodeCard(nodeId) {
 	let card = nodeCards.get(nodeId);
@@ -274,7 +279,7 @@ function renderState(state, updates) {
 				updates[nodeId][sensorId].ts_ms === data.ts_ms;
 
 			row.querySelector(".id").textContent = sensorId;
-			row.querySelector(".val").textContent = String(data.value);
+			row.querySelector(".val").textContent = formatValue(data);
 			row.classList.toggle("updated", isUpdated);
 		}
 	}
@@ -291,7 +296,7 @@ function pushLog(nodeId, sensorId, data) {
 		ts: data.ts_ms,
 		nodeId,
 		sensorId,
-		value: data.value
+		value: formatValue(data)
 	});
 
 	while (logBuffer.length > LOG_MAX) {

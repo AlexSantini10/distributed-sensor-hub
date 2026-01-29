@@ -2,9 +2,23 @@ import math
 import time
 from sensors.base_sensor import BaseSensor
 
+
 class WaveSensor(BaseSensor):
-	def __init__(self, sensor_id, amplitude, frequency, period_ms, callback=None):
-		super().__init__(sensor_id, period_ms, callback)
+	def __init__(
+		self,
+		sensor_id,
+		amplitude,
+		frequency,
+		period_ms,
+		callback=None,
+		unit=None,
+	):
+		super().__init__(
+			sensor_id,
+			period_ms,
+			callback,
+			unit=unit,
+		)
 		self.amplitude = amplitude
 		self.frequency = frequency
 		self.start_time = time.time()

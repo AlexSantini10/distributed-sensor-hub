@@ -4,10 +4,11 @@ import time
 
 
 class BaseSensor:
-	def __init__(self, sensor_id, period_ms, callback):
+	def __init__(self, sensor_id, period_ms, callback, *, unit=None):
 		self.sensor_id = sensor_id
 		self.period_ms = period_ms
 		self.callback = callback
+		self.unit = unit
 
 		self._stop_event = threading.Event()
 		self._thread = None
@@ -27,6 +28,10 @@ class BaseSensor:
 				"sensor_id": self.sensor_id,
 				"value": value,
 				"ts_ms": ts_ms,
+				"meta": {
+					"unit": self.unit,
+					"period_ms": self.period_ms,
+				},
 			})
 
 			next_deadline += period_s

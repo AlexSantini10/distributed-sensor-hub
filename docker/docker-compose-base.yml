@@ -26,13 +26,14 @@ services:
       SENSOR_0_PERIOD_MS: 2000
       SENSOR_0_MIN: 10
       SENSOR_0_MAX: 35
-      SENSOR_0_UNIT: C
+      SENSOR_0_UNIT: "°C"
 
       # MEDIUM boolean - occasional flips
       SENSOR_1_TYPE: boolean
       SENSOR_1_NAME: motion
       SENSOR_1_PERIOD_MS: 5000
       SENSOR_1_P_TRUE: 0.4
+      SENSOR_1_UNIT: "detected"
 
       # VERY FAST wave - constant movement
       SENSOR_2_TYPE: wave
@@ -40,6 +41,7 @@ services:
       SENSOR_2_PERIOD_MS: 1000
       SENSOR_2_AMPLITUDE: 8
       SENSOR_2_FREQUENCY: 0.5
+      SENSOR_2_UNIT: "mm/s"
 
       # SLOW noise - background drift
       SENSOR_3_TYPE: noise
@@ -47,6 +49,7 @@ services:
       SENSOR_3_PERIOD_MS: 15000
       SENSOR_3_BASE: 50
       SENSOR_3_NOISE: 8
+      SENSOR_3_UNIT: "%RH"
 
     ports:
       - "9000:9000"
@@ -79,7 +82,7 @@ services:
       SENSOR_0_PERIOD_MS: 6000
       SENSOR_0_MIN: 900
       SENSOR_0_MAX: 1100
-      SENSOR_0_UNIT: hPa
+      SENSOR_0_UNIT: "hPa"
 
       # SLOW trend - clearly drifting
       SENSOR_1_TYPE: trend
@@ -88,6 +91,7 @@ services:
       SENSOR_1_START: 30
       SENSOR_1_SLOPE: 1.2
       SENSOR_1_NOISE: 0.8
+      SENSOR_1_UNIT: "AQI"
 
       # FAST spike - bursty behaviour
       SENSOR_2_TYPE: spike
@@ -96,6 +100,7 @@ services:
       SENSOR_2_BASELINE: 5
       SENSOR_2_SPIKE_HEIGHT: 60
       SENSOR_2_P_SPIKE: 0.25
+      SENSOR_2_UNIT: "events/min"
 
     ports:
       - "9001:9001"

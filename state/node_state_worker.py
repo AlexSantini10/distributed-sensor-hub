@@ -14,7 +14,7 @@ class NodeStateWorker(threading.Thread):
 		self._stop_event = threading.Event()
 		self._lock = threading.Lock()
 
-		# LWW state: sensor_id -> {value, ts_ms, origin}
+		# LWW state: sensor_id -> {value, ts_ms, origin, meta}
 		self._state = {}
 
 		# Volatile updates since last read
@@ -39,11 +39,16 @@ class NodeStateWorker(threading.Thread):
 		sensor_id = event["sensor_id"]
 		value = event["value"]
 		ts_ms = event["ts_ms"]
+		meta = event.get("meta", {})
 
 		update = {
 			"value": value,
 			"ts_ms": ts_ms,
 			"origin": self.node_id,
+			"meta": {
+				"unit": meta.get("unit"),
+				"period_ms": meta.get("period_ms"),
+			},
 		}
 
 		with self._lock:
@@ -56,7 +61,8 @@ class NodeStateWorker(threading.Thread):
 
 				self.log.info(
 					f"LWW update applied: "
-					f"sensor={sensor_id} value={value} ts={ts_ms}"
+					f"sensor={sensor_id} value={value} "
+					f"unit={update['meta']['unit']} ts={ts_ms}"
 				)
 
 	def get_state_snapshot(self):

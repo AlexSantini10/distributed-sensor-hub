@@ -1,9 +1,24 @@
 import random
 from sensors.base_sensor import BaseSensor
 
+
 class SpikeSensor(BaseSensor):
-	def __init__(self, sensor_id, baseline, spike_height, p_spike, period_ms, callback=None):
-		super().__init__(sensor_id, period_ms, callback)
+	def __init__(
+		self,
+		sensor_id,
+		baseline,
+		spike_height,
+		p_spike,
+		period_ms,
+		callback=None,
+		unit=None,
+	):
+		super().__init__(
+			sensor_id,
+			period_ms,
+			callback,
+			unit=unit,
+		)
 		self.baseline = baseline
 		self.spike_height = spike_height
 		self.p_spike = p_spike
