@@ -210,6 +210,7 @@ def main():
 			host=config.host,
 			port=web_api_port,
 			state_provider=state_worker.get_state_snapshot,
+			updates_provider=state_worker.get_updates_snapshot,
 			log=log,
 		)
 		web_api.start()

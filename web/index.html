@@ -1,275 +1,361 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Distributed Sensor Hub - State Viewer</title>
-	<style>
-		body {
-			font-family: Arial, sans-serif;
-			background: #111;
-			color: #eee;
-			margin: 0;
-			padding: 20px;
-		}
+<meta charset="UTF-8">
+<title>Distributed Sensor Hub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-		h1 {
-			margin: 0 0 10px 0;
-		}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
 
-		.controls {
-			display: flex;
-			flex-wrap: wrap;
-			gap: 10px;
-			align-items: center;
-			margin: 10px 0 15px 0;
-		}
+<style>
+:root {
+	--bg: #0f1115;
+	--panel: #161922;
+	--border: #2a2f45;
+	--text: #e6e6eb;
+	--muted: #9aa0b4;
+	--accent: #5eead4;
+	--danger: #fb7185;
+}
 
-		input, button {
-			background: #1c1c1c;
-			color: #eee;
-			border: 1px solid #333;
-			padding: 8px 10px;
-			border-radius: 6px;
-		}
+* { box-sizing: border-box; }
 
-		button {
-			cursor: pointer;
-		}
+body {
+	margin: 0;
+	padding: 24px;
+	font-family: Inter, system-ui, sans-serif;
+	background: var(--bg);
+	color: var(--text);
+}
 
-		#status {
-			margin: 0 0 10px 0;
-			color: #aaa;
-		}
+header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 20px;
+}
 
-		table {
-			border-collapse: collapse;
-			width: 100%;
-			max-width: 980px;
-		}
+h1 {
+	font-size: 22px;
+	font-weight: 600;
+	margin: 0;
+}
 
-		th, td {
-			border: 1px solid #333;
-			padding: 8px 10px;
-			text-align: left;
-			vertical-align: top;
-		}
+#status {
+	font-size: 14px;
+	color: var(--muted);
+}
 
-		th {
-			background: #222;
-			position: sticky;
-			top: 0;
-		}
+.controls {
+	display: flex;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin-bottom: 24px;
+}
 
-		tr.updated {
-			background: #1f3d1f;
-		}
+input, button {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	color: var(--text);
+	padding: 8px 10px;
+	border-radius: 6px;
+	font-size: 14px;
+}
 
-		tr.stale {
-			background: #161616;
-		}
+button { cursor: pointer; }
 
-		.small {
-			color: #aaa;
-			font-size: 12px;
-		}
-	</style>
+main {
+	display: grid;
+	grid-template-columns: 2fr 1fr;
+	gap: 24px;
+	align-items: start;
+}
+
+/* ---------------- Nodes ---------------- */
+
+#nodes {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+	gap: 16px;
+}
+
+.node-card {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	padding: 14px;
+}
+
+.node-header h2 {
+	font-size: 15px;
+	margin: 0 0 10px 0;
+	font-weight: 600;
+}
+
+.sensor {
+	display: flex;
+	justify-content: space-between;
+	padding: 6px 0;
+	border-bottom: 1px dashed var(--border);
+	font-size: 13px;
+}
+
+.sensor:last-child { border-bottom: none; }
+.sensor .id { color: var(--muted); }
+.sensor.updated { color: var(--accent); }
+
+/* ---------------- Log ---------------- */
+
+#log {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	padding: 14px;
+	display: flex;
+	flex-direction: column;
+	height: 520px;
+	overflow: hidden;
+}
+
+#log h2 {
+	font-size: 15px;
+	margin: 0 0 10px 0;
+	font-weight: 600;
+}
+
+#log-entries {
+	flex: 1;
+	overflow-y: auto;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--muted);
+}
+
+.log-entry {
+	padding: 4px 0;
+	border-bottom: 1px dashed var(--border);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.log-entry:last-child { border-bottom: none; }
+</style>
 </head>
+
 <body>
 
-<h1>Distributed Sensor Hub</h1>
-<div id="status">Disconnected</div>
+<header>
+	<h1>Distributed Sensor Hub</h1>
+	<div id="status">Disconnected</div>
+</header>
 
 <div class="controls">
-	<label>
-		<span class="small">API base URL</span><br>
-		<input id="base-url" type="text" value="http://localhost:10000" size="28">
-	</label>
-
-	<label>
-		<span class="small">Refresh (ms)</span><br>
-		<input id="refresh-ms" type="number" value="1000" min="200" step="100">
-	</label>
-
-	<label>
-		<span class="small">Filter (sensor id contains)</span><br>
-		<input id="filter" type="text" placeholder="e.g. temp">
-	</label>
-
+	<input id="base-url" value="http://localhost:10000" size="28">
+	<input id="refresh-ms" type="number" value="1000" min="200" step="100">
 	<button id="apply">Apply</button>
 </div>
 
-<table>
-	<thead>
-	<tr>
-		<th>Sensor ID</th>
-		<th>Value</th>
-		<th>Timestamp</th>
-		<th>Origin</th>
-	</tr>
-	</thead>
-	<tbody id="sensor-table"></tbody>
-</table>
+<main>
+	<section id="nodes"></section>
+
+	<section id="log">
+		<h2>Updates log</h2>
+		<div id="log-entries"></div>
+	</section>
+</main>
 
 <script>
-	"use strict";
+"use strict";
 
-	const statusEl = document.getElementById("status");
-	const tableBody = document.getElementById("sensor-table");
+lucide.createIcons();
 
-	const baseUrlInput = document.getElementById("base-url");
-	const refreshMsInput = document.getElementById("refresh-ms");
-	const filterInput = document.getElementById("filter");
-	const applyBtn = document.getElementById("apply");
+const statusEl = document.getElementById("status");
+const nodesEl = document.getElementById("nodes");
+const logEl = document.getElementById("log-entries");
 
-	let timerId = null;
-	let lastState = {};
-	let currentConfig = {
-		baseUrl: baseUrlInput.value.trim(),
-		refreshMs: Number(refreshMsInput.value),
-		filter: ""
-	};
+const baseUrlInput = document.getElementById("base-url");
+const refreshMsInput = document.getElementById("refresh-ms");
+const applyBtn = document.getElementById("apply");
 
-	function setStatus(ok, text) {
-		statusEl.textContent = text;
-		statusEl.style.color = ok ? "#6f6" : "#f66";
+let timer = null;
+let currentBaseUrl = null;
+
+/* DOM caches */
+const nodeCards = new Map();        // nodeId -> card
+const sensorRows = new Map();       // node|sensor -> row
+
+/* Log buffers */
+const LOG_MAX = 300;
+const logSeen = new Set();
+const logBuffer = [];
+
+function api(path) {
+	return currentBaseUrl + path;
+}
+
+function setStatus(ok) {
+	statusEl.textContent = ok ? "Connected" : "Disconnected";
+	statusEl.style.color = ok ? "var(--accent)" : "var(--danger)";
+}
+
+function fmtTs(ts) {
+	return new Date(ts).toLocaleTimeString();
+}
+
+/* ---------------- RESET ---------------- */
+
+function resetUI() {
+	if (timer) {
+		clearInterval(timer);
+		timer = null;
 	}
 
-	function apiUrl(path) {
-		const base = currentConfig.baseUrl.replace(/\/+$/, "");
-		return base + path;
-	}
+	nodesEl.innerHTML = "";
+	logEl.innerHTML = "";
 
-	function formatTs(tsMs) {
-		const d = new Date(tsMs);
-		return d.toLocaleTimeString();
-	}
+	nodeCards.clear();
+	sensorRows.clear();
+	logSeen.clear();
+	logBuffer.length = 0;
 
-	function stableStringifyValue(v) {
-		if (typeof v === "string") return v;
-		if (typeof v === "number") return String(v);
-		if (typeof v === "boolean") return v ? "true" : "false";
-		return JSON.stringify(v);
-	}
+	setStatus(false);
+}
 
-	function ensureRow(sensorId) {
-		let row = document.getElementById("row-" + cssEscape(sensorId));
-		if (row) return row;
+/* ---------------- STATE RENDER ---------------- */
 
-		row = document.createElement("tr");
-		row.id = "row-" + sensorId;
-		row.innerHTML = `
-			<td></td>
-			<td></td>
-			<td></td>
-			<td></td>
-		`;
-		tableBody.appendChild(row);
-		return row;
-	}
+function getNodeCard(nodeId) {
+	let card = nodeCards.get(nodeId);
+	if (card) return card;
 
-	function cssEscape(s) {
-		return s.replace(/[^a-zA-Z0-9_-]/g, "_");
-	}
+	card = document.createElement("div");
+	card.className = "node-card";
+	card.innerHTML = `
+		<div class="node-header">
+			<h2>${nodeId}</h2>
+		</div>
+		<div class="sensors"></div>
+	`;
 
-	function shouldShow(sensorId) {
-		const f = currentConfig.filter.trim().toLowerCase();
-		if (f === "") return true;
-		return sensorId.toLowerCase().includes(f);
-	}
+	nodeCards.set(nodeId, card);
+	nodesEl.appendChild(card);
+	return card;
+}
 
-	function render(state) {
-		const entries = Object.entries(state)
-			.filter(([sensorId]) => shouldShow(sensorId))
-			.sort(([a], [b]) => a.localeCompare(b));
+function getSensorRow(nodeId, sensorId) {
+	const key = nodeId + "|" + sensorId;
+	let row = sensorRows.get(key);
+	if (row) return row;
 
-		const seen = new Set();
+	const card = getNodeCard(nodeId);
+	const container = card.querySelector(".sensors");
 
-		for (const [sensorId, data] of entries) {
-			seen.add(sensorId);
+	row = document.createElement("div");
+	row.className = "sensor";
+	row.innerHTML = `
+		<span class="id"></span>
+		<span class="val"></span>
+	`;
 
-			const prev = lastState[sensorId];
-			const isNew = !prev || (data.ts_ms > prev.ts_ms);
+	sensorRows.set(key, row);
+	container.appendChild(row);
+	return row;
+}
 
-			const row = ensureRow(sensorId);
-			row.cells[0].textContent = sensorId;
-			row.cells[1].textContent = stableStringifyValue(data.value);
-			row.cells[2].textContent = formatTs(data.ts_ms);
-			row.cells[3].textContent = data.origin;
+function renderState(state, updates) {
+	for (const [nodeId, sensors] of Object.entries(state)) {
+		for (const [sensorId, data] of Object.entries(sensors)) {
+			const row = getSensorRow(nodeId, sensorId);
 
-			row.className = isNew ? "updated" : "stale";
-		}
+			const isUpdated =
+				updates[nodeId] &&
+				updates[nodeId][sensorId] &&
+				updates[nodeId][sensorId].ts_ms === data.ts_ms;
 
-		const rows = Array.from(tableBody.querySelectorAll("tr"));
-		for (const r of rows) {
-			const idCell = r.cells[0];
-			const sensorId = idCell ? idCell.textContent : "";
-			if (!sensorId) continue;
-
-			if (!seen.has(sensorId)) {
-				r.remove();
-			}
-		}
-
-		lastState = state;
-	}
-
-	async function fetchSensors() {
-		try {
-			const res = await fetch(apiUrl("/api/sensors"), { cache: "no-store" });
-			if (!res.ok) {
-				throw new Error("HTTP " + res.status);
-			}
-
-			const state = await res.json();
-			render(state);
-			setStatus(true, "Connected");
-		} catch (err) {
-			setStatus(false, "Disconnected");
+			row.querySelector(".id").textContent = sensorId;
+			row.querySelector(".val").textContent = String(data.value);
+			row.classList.toggle("updated", isUpdated);
 		}
 	}
+}
 
-	function startPolling() {
-		stopPolling();
+/* ---------------- LOG ---------------- */
 
-		const refreshMs = currentConfig.refreshMs;
-		if (!Number.isFinite(refreshMs) || refreshMs < 200) {
-			currentConfig.refreshMs = 1000;
-		}
+function pushLog(nodeId, sensorId, data) {
+	const key = `${nodeId}|${sensorId}|${data.ts_ms}`;
+	if (logSeen.has(key)) return;
 
-		timerId = setInterval(fetchSensors, currentConfig.refreshMs);
-		fetchSensors();
-	}
-
-	function stopPolling() {
-		if (timerId !== null) {
-			clearInterval(timerId);
-			timerId = null;
-		}
-	}
-
-	function applyConfig() {
-		const baseUrl = baseUrlInput.value.trim();
-		const refreshMs = Number(refreshMsInput.value);
-		const filter = filterInput.value;
-
-		currentConfig = {
-			baseUrl: baseUrl,
-			refreshMs: refreshMs,
-			filter: filter
-		};
-
-		lastState = {};
-		tableBody.innerHTML = "";
-		startPolling();
-	}
-
-	applyBtn.addEventListener("click", applyConfig);
-	filterInput.addEventListener("keydown", (e) => {
-		if (e.key === "Enter") applyConfig();
+	logSeen.add(key);
+	logBuffer.unshift({
+		ts: data.ts_ms,
+		nodeId,
+		sensorId,
+		value: data.value
 	});
 
-	startPolling();
+	while (logBuffer.length > LOG_MAX) {
+		const e = logBuffer.pop();
+		logSeen.delete(`${e.nodeId}|${e.sensorId}|${e.ts}`);
+	}
+}
+
+function flushLog() {
+	logEl.innerHTML = "";
+	for (const e of logBuffer) {
+		const line = document.createElement("div");
+		line.className = "log-entry";
+		line.textContent = `[${fmtTs(e.ts)}] ${e.nodeId} ${e.sensorId} -> ${e.value}`;
+		logEl.appendChild(line);
+	}
+}
+
+/* ---------------- POLLING ---------------- */
+
+async function poll() {
+	try {
+		const [stateRes, updatesRes] = await Promise.all([
+			fetch(api("/api/state"), { cache: "no-store" }),
+			fetch(api("/api/updates"), { cache: "no-store" })
+		]);
+
+		if (!stateRes.ok || !updatesRes.ok) throw new Error();
+
+		const state = await stateRes.json();
+		const updates = await updatesRes.json();
+
+		renderState(state, updates);
+
+		for (const [n, ss] of Object.entries(updates)) {
+			for (const [s, d] of Object.entries(ss)) {
+				pushLog(n, s, d);
+			}
+		}
+
+		flushLog();
+		setStatus(true);
+	} catch {
+		setStatus(false);
+	}
+}
+
+/* ---------------- START ---------------- */
+
+function start() {
+	const newBase = baseUrlInput.value.replace(/\/+$/, "");
+
+	if (newBase !== currentBaseUrl) {
+		currentBaseUrl = newBase;
+		resetUI();
+	}
+
+	const ms = Math.max(200, Number(refreshMsInput.value) || 1000);
+	timer = setInterval(poll, ms);
+	poll();
+}
+
+applyBtn.onclick = start;
+start();
 </script>
 
 </body>

@@ -3,6 +3,7 @@
         "protocol",
         "sensors",
         "networking",
-        "membership"
+        "membership",
+        "web"
     ]
 }

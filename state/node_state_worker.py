@@ -1,10 +1,12 @@
 import threading
 from queue import Empty
+from copy import deepcopy
 
 
 class NodeStateWorker(threading.Thread):
 	def __init__(self, node_id, event_queue, log):
 		super().__init__(daemon=True)
+
 		self.node_id = node_id
 		self.event_queue = event_queue
 		self.log = log
@@ -12,7 +14,11 @@ class NodeStateWorker(threading.Thread):
 		self._stop_event = threading.Event()
 		self._lock = threading.Lock()
 
-		self.state = {}
+		# LWW state: sensor_id -> {value, ts_ms, origin}
+		self._state = {}
+
+		# Volatile updates since last read
+		self._updates = {}
 
 	def run(self):
 		while not self._stop_event.is_set():
@@ -21,7 +27,13 @@ class NodeStateWorker(threading.Thread):
 			except Empty:
 				continue
 
-			self._handle_sensor_event(event)
+			try:
+				self._handle_sensor_event(event)
+			except Exception:
+				self.log.error(
+					"Failed to handle sensor event",
+					exc_info=True,
+				)
 
 	def _handle_sensor_event(self, event):
 		sensor_id = event["sensor_id"]
@@ -35,9 +47,12 @@ class NodeStateWorker(threading.Thread):
 		}
 
 		with self._lock:
-			prev = self.state.get(sensor_id)
+			prev = self._state.get(sensor_id)
+
+			# LWW rule
 			if prev is None or ts_ms > prev["ts_ms"]:
-				self.state[sensor_id] = update
+				self._state[sensor_id] = update
+				self._updates[sensor_id] = update
 
 				self.log.info(
 					f"LWW update applied: "
@@ -45,8 +60,26 @@ class NodeStateWorker(threading.Thread):
 				)
 
 	def get_state_snapshot(self):
+		"""
+		Returns full LWW state.
+		Structured for multi-node future.
+		"""
 		with self._lock:
-			return dict(self.state)
+			return {
+				self.node_id: deepcopy(self._state)
+			}
+
+	def get_updates_snapshot(self):
+		"""
+		Returns updates since last call and clears buffer.
+		Used for UI / gossip / observability.
+		"""
+		with self._lock:
+			snapshot = {
+				self.node_id: deepcopy(self._updates)
+			}
+			self._updates.clear()
+			return snapshot
 
 	def stop(self):
 		self._stop_event.set()

@@ -3,19 +3,8 @@ FROM python:3.14-slim
 WORKDIR /app
 
 COPY requirements.txt .
-
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY node.py .
-
-COPY utils/ ./utils/
-COPY protocol/ ./protocol/
-COPY networking/ ./networking/
-COPY membership/ ./membership/
-COPY sensors/ ./sensors/
-COPY state/ ./state/
-COPY gossip/ ./gossip/
-COPY fd/ ./fd/
-COPY webapi/ ./webapi/
+COPY . .
 
 CMD ["python", "node.py"]
