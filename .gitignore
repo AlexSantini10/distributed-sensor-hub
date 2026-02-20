@@ -5,3 +5,8 @@
 logs/node.log
 *.log
 /logs
+
+
+__pycache__/
+*.py[cod]
+*$py.class
