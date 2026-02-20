@@ -1,24 +1,30 @@
 # protocol/setup.py
-from typing import Tuple
+from typing import Callable, Optional, Tuple
 
 from protocol.dispatcher import MessageDispatcher
 from protocol.message_types import MessageType
 from protocol import handlers
 
+from membership.peer import Peer as MembershipPeer
 from membership.peer_table import PeerTable
 from membership.handlers import make_membership_handlers
+
+
+OnPeerDiscovered = Callable[[MembershipPeer], None]
 
 
 def setup_protocol(
 	self_node_id: str,
 	send_function,
 	state_worker=None,
+	on_peer_discovered: Optional[OnPeerDiscovered] = None,
 ) -> Tuple[MessageDispatcher, PeerTable]:
 	"""
 	Setup protocol dispatcher and register all message handlers.
 
-	- PeerTable is owned by the node and injected into membership handlers.
-	- state_worker is injected into SENSOR_UPDATE handling (if provided).
+	- PeerTable (membership) is owned by the node.
+	- on_peer_discovered is invoked when membership learns a new peer.
+	- state_worker (if provided) is injected into SENSOR_UPDATE handling.
 	"""
 	dispatcher = MessageDispatcher()
 
@@ -28,6 +34,7 @@ def setup_protocol(
 		peer_table=peer_table,
 		send=send_function,
 		self_node_id=self_node_id,
+		on_peer_discovered=on_peer_discovered,
 	)
 
 	dispatcher.register(MessageType.JOIN_REQUEST, join_handler)

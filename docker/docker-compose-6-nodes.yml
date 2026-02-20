@@ -18,32 +18,48 @@ services:
 
       WEB_API_PORT: 10000
 
-      SENSORS: 3
+      # Downtown district
+      SENSORS: 4
 
+      # Outdoor temperature (daily variation simulated with noise)
       SENSOR_0_TYPE: numeric
-      SENSOR_0_NAME: temperature
-      SENSOR_0_PERIOD_MS: 2000
-      SENSOR_0_MIN: 10
-      SENSOR_0_MAX: 35
+      SENSOR_0_NAME: outdoor_temperature
+      SENSOR_0_PERIOD_MS: 5000
+      SENSOR_0_MIN: -2
+      SENSOR_0_MAX: 38
       SENSOR_0_UNIT: "°C"
 
-      SENSOR_1_TYPE: boolean
-      SENSOR_1_NAME: motion
-      SENSOR_1_PERIOD_MS: 5000
-      SENSOR_1_P_TRUE: 0.4
-      SENSOR_1_UNIT: "detected"
+      # Road traffic intensity (bursty during rush hours)
+      SENSOR_1_TYPE: spike
+      SENSOR_1_NAME: vehicle_flow
+      SENSOR_1_PERIOD_MS: 3000
+      SENSOR_1_BASELINE: 40
+      SENSOR_1_SPIKE_HEIGHT: 180
+      SENSOR_1_P_SPIKE: 0.2
+      SENSOR_1_UNIT: "vehicles/min"
 
+      # Pedestrian density (cyclic)
       SENSOR_2_TYPE: wave
-      SENSOR_2_NAME: vibration
-      SENSOR_2_PERIOD_MS: 1000
-      SENSOR_2_AMPLITUDE: 8
-      SENSOR_2_FREQUENCY: 0.5
-      SENSOR_2_UNIT: "mm/s"
+      SENSOR_2_NAME: pedestrian_density
+      SENSOR_2_PERIOD_MS: 2000
+      SENSOR_2_AMPLITUDE: 120
+      SENSOR_2_FREQUENCY: 0.08
+      SENSOR_2_UNIT: "people"
+
+      # Noise pollution
+      SENSOR_3_TYPE: noise
+      SENSOR_3_NAME: ambient_noise
+      SENSOR_3_PERIOD_MS: 4000
+      SENSOR_3_BASE: 65
+      SENSOR_3_NOISE: 12
+      SENSOR_3_UNIT: "dB"
+
     ports:
       - "9000:9000"
       - "10000:10000"
     volumes:
       - ../logs:/app/logs
+
 
   node2:
     build:
@@ -62,35 +78,43 @@ services:
 
       WEB_API_PORT: 10001
 
-      SENSORS: 3
+      # Industrial area
+      SENSORS: 4
 
-      SENSOR_0_TYPE: numeric
-      SENSOR_0_NAME: pressure
-      SENSOR_0_PERIOD_MS: 6000
-      SENSOR_0_MIN: 900
-      SENSOR_0_MAX: 1100
-      SENSOR_0_UNIT: "hPa"
+      SENSOR_0_TYPE: trend
+      SENSOR_0_NAME: co2_concentration
+      SENSOR_0_PERIOD_MS: 7000
+      SENSOR_0_START: 420
+      SENSOR_0_SLOPE: 0.6
+      SENSOR_0_NOISE: 3
+      SENSOR_0_UNIT: "ppm"
 
-      SENSOR_1_TYPE: trend
-      SENSOR_1_NAME: air_quality
-      SENSOR_1_PERIOD_MS: 12000
-      SENSOR_1_START: 30
-      SENSOR_1_SLOPE: 1.2
-      SENSOR_1_NOISE: 0.8
-      SENSOR_1_UNIT: "AQI"
+      SENSOR_1_TYPE: numeric
+      SENSOR_1_NAME: particulate_pm25
+      SENSOR_1_PERIOD_MS: 6000
+      SENSOR_1_MIN: 5
+      SENSOR_1_MAX: 120
+      SENSOR_1_UNIT: "µg/m3"
 
-      SENSOR_2_TYPE: spike
-      SENSOR_2_NAME: traffic
-      SENSOR_2_PERIOD_MS: 2500
-      SENSOR_2_BASELINE: 5
-      SENSOR_2_SPIKE_HEIGHT: 60
-      SENSOR_2_P_SPIKE: 0.25
-      SENSOR_2_UNIT: "events/min"
+      SENSOR_2_TYPE: numeric
+      SENSOR_2_NAME: industrial_temperature
+      SENSOR_2_PERIOD_MS: 8000
+      SENSOR_2_MIN: 15
+      SENSOR_2_MAX: 55
+      SENSOR_2_UNIT: "°C"
+
+      SENSOR_3_TYPE: boolean
+      SENSOR_3_NAME: alarm_state
+      SENSOR_3_PERIOD_MS: 10000
+      SENSOR_3_P_TRUE: 0.05
+      SENSOR_3_UNIT: "triggered"
+
     ports:
       - "9001:9001"
       - "10001:10001"
     volumes:
       - ../logs:/app/logs
+
 
   node3:
     build:
@@ -109,25 +133,35 @@ services:
 
       WEB_API_PORT: 10002
 
-      SENSORS: 2
+      # Residential district
+      SENSORS: 3
 
-      SENSOR_0_TYPE: categorical
-      SENSOR_0_NAME: weather
-      SENSOR_0_PERIOD_MS: 7000
-      SENSOR_0_VALUES: "sunny,cloudy,rainy,windy"
-      SENSOR_0_UNIT: "state"
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: residential_power_consumption
+      SENSOR_0_PERIOD_MS: 4000
+      SENSOR_0_MIN: 200
+      SENSOR_0_MAX: 1200
+      SENSOR_0_UNIT: "kW"
 
-      SENSOR_1_TYPE: noise
-      SENSOR_1_NAME: noise_level
-      SENSOR_1_PERIOD_MS: 4000
-      SENSOR_1_BASE: 55
-      SENSOR_1_NOISE: 10
-      SENSOR_1_UNIT: "dB"
+      SENSOR_1_TYPE: categorical
+      SENSOR_1_NAME: waste_container_status
+      SENSOR_1_PERIOD_MS: 9000
+      SENSOR_1_VALUES: "empty,half_full,full"
+      SENSOR_1_UNIT: "status"
+
+      SENSOR_2_TYPE: noise
+      SENSOR_2_NAME: night_noise_level
+      SENSOR_2_PERIOD_MS: 5000
+      SENSOR_2_BASE: 45
+      SENSOR_2_NOISE: 8
+      SENSOR_2_UNIT: "dB"
+
     ports:
       - "9002:9002"
       - "10002:10002"
     volumes:
       - ../logs:/app/logs
+
 
   node4:
     build:
@@ -146,25 +180,37 @@ services:
 
       WEB_API_PORT: 10003
 
-      SENSORS: 2
+      # Public transport hub
+      SENSORS: 3
 
-      SENSOR_0_TYPE: incremental
-      SENSOR_0_NAME: energy
-      SENSOR_0_PERIOD_MS: 3000
-      SENSOR_0_START: 100
-      SENSOR_0_STEP_PCT: 2
-      SENSOR_0_UNIT: "kWh"
+      SENSOR_0_TYPE: wave
+      SENSOR_0_NAME: train_station_occupancy
+      SENSOR_0_PERIOD_MS: 2500
+      SENSOR_0_AMPLITUDE: 800
+      SENSOR_0_FREQUENCY: 0.05
+      SENSOR_0_UNIT: "people"
 
-      SENSOR_1_TYPE: boolean
-      SENSOR_1_NAME: street_light
-      SENSOR_1_PERIOD_MS: 8000
-      SENSOR_1_P_TRUE: 0.6
-      SENSOR_1_UNIT: "on"
+      SENSOR_1_TYPE: spike
+      SENSOR_1_NAME: ticket_validations
+      SENSOR_1_PERIOD_MS: 3000
+      SENSOR_1_BASELINE: 100
+      SENSOR_1_SPIKE_HEIGHT: 500
+      SENSOR_1_P_SPIKE: 0.25
+      SENSOR_1_UNIT: "validations/min"
+
+      SENSOR_2_TYPE: numeric
+      SENSOR_2_NAME: platform_temperature
+      SENSOR_2_PERIOD_MS: 7000
+      SENSOR_2_MIN: 5
+      SENSOR_2_MAX: 30
+      SENSOR_2_UNIT: "°C"
+
     ports:
       - "9003:9003"
       - "10003:10003"
     volumes:
       - ../logs:/app/logs
+
 
   node5:
     build:
@@ -183,27 +229,37 @@ services:
 
       WEB_API_PORT: 10004
 
-      SENSORS: 2
+      # River monitoring area
+      SENSORS: 3
 
       SENSOR_0_TYPE: numeric
-      SENSOR_0_NAME: water_level
-      SENSOR_0_PERIOD_MS: 5500
-      SENSOR_0_MIN: 0
-      SENSOR_0_MAX: 3.2
+      SENSOR_0_NAME: river_water_level
+      SENSOR_0_PERIOD_MS: 6000
+      SENSOR_0_MIN: 0.5
+      SENSOR_0_MAX: 4.5
       SENSOR_0_UNIT: "m"
 
-      SENSOR_1_TYPE: spike
-      SENSOR_1_NAME: emergency_calls
-      SENSOR_1_PERIOD_MS: 6000
-      SENSOR_1_BASELINE: 0
-      SENSOR_1_SPIKE_HEIGHT: 10
-      SENSOR_1_P_SPIKE: 0.15
-      SENSOR_1_UNIT: "calls/min"
+      SENSOR_1_TYPE: trend
+      SENSOR_1_NAME: water_temperature
+      SENSOR_1_PERIOD_MS: 8000
+      SENSOR_1_START: 12
+      SENSOR_1_SLOPE: 0.1
+      SENSOR_1_NOISE: 0.5
+      SENSOR_1_UNIT: "°C"
+
+      SENSOR_2_TYPE: numeric
+      SENSOR_2_NAME: water_ph
+      SENSOR_2_PERIOD_MS: 10000
+      SENSOR_2_MIN: 6.5
+      SENSOR_2_MAX: 8.5
+      SENSOR_2_UNIT: "pH"
+
     ports:
       - "9004:9004"
       - "10004:10004"
     volumes:
       - ../logs:/app/logs
+
 
   node6:
     build:
@@ -222,22 +278,29 @@ services:
 
       WEB_API_PORT: 10005
 
-      SENSORS: 2
+      # University / innovation district
+      SENSORS: 3
 
-      SENSOR_0_TYPE: trend
-      SENSOR_0_NAME: co2
-      SENSOR_0_PERIOD_MS: 6500
-      SENSOR_0_START: 420
-      SENSOR_0_SLOPE: 0.8
-      SENSOR_0_NOISE: 2.0
-      SENSOR_0_UNIT: "ppm"
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: building_energy_usage
+      SENSOR_0_PERIOD_MS: 4000
+      SENSOR_0_MIN: 500
+      SENSOR_0_MAX: 3000
+      SENSOR_0_UNIT: "kW"
 
       SENSOR_1_TYPE: wave
-      SENSOR_1_NAME: pedestrian_flow
+      SENSOR_1_NAME: campus_wifi_load
       SENSOR_1_PERIOD_MS: 2000
-      SENSOR_1_AMPLITUDE: 40
-      SENSOR_1_FREQUENCY: 0.12
-      SENSOR_1_UNIT: "people/min"
+      SENSOR_1_AMPLITUDE: 1000
+      SENSOR_1_FREQUENCY: 0.04
+      SENSOR_1_UNIT: "devices"
+
+      SENSOR_2_TYPE: boolean
+      SENSOR_2_NAME: parking_availability
+      SENSOR_2_PERIOD_MS: 7000
+      SENSOR_2_P_TRUE: 0.5
+      SENSOR_2_UNIT: "available"
+
     ports:
       - "9005:9005"
       - "10005:10005"
