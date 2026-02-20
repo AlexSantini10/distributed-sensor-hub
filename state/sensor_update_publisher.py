@@ -1,5 +1,5 @@
+# state/sensor_update_publisher.py
 import threading
-from typing import Any, Dict
 
 from protocol.message import Message
 from protocol.message_types import MessageType
@@ -7,12 +7,11 @@ from protocol.message_types import MessageType
 
 class SensorUpdatePublisher(threading.Thread):
 	"""
-	Continuously publishes local (origin == self_node_id) LWW updates to all peers.
+	Publishes local-origin updates to all peers in peer_table.
 
-	Design:
-	- Reads NodeStateWorker.get_updates_snapshot() periodically.
-	- Filters out non-local updates to avoid rebroadcast loops.
-	- Best-effort: if a peer is unknown to TcpClient, it is added on the fly.
+	- Uses NodeStateWorker.pop_replication_updates() so it does not steal UI updates.
+	- Filters out non-local origin to avoid re-broadcast loops for now.
+	- Best-effort: if TcpClient does not know a peer_id, it adds it on the fly.
 	"""
 
 	def __init__(
@@ -48,18 +47,23 @@ class SensorUpdatePublisher(threading.Thread):
 			self._stop_event.wait(timeout=self._interval_s)
 
 	def _publish_once(self) -> None:
-		snapshot = self._state_worker.get_updates_snapshot() or {}
-		updates: Dict[str, Dict[str, Any]] = snapshot.get(self._self_node_id, {}) or {}
-
+		snapshot = self._state_worker.pop_replication_updates() or {}
+		updates = snapshot.get(self._self_node_id, {}) or {}
 		if not updates:
 			return
 
 		peers = self._peer_table.list_peers()
+		if not peers:
+			return
 
-		for sensor_id, update in updates.items():
+		for global_sensor_id, update in updates.items():
 			origin = update.get("origin")
 			if origin != self._self_node_id:
 				continue
+
+			sensor_id = global_sensor_id
+			if isinstance(global_sensor_id, str) and ":" in global_sensor_id:
+				sensor_id = global_sensor_id.split(":", 1)[1]
 
 			msg = Message(
 				msg_type=MessageType.SENSOR_UPDATE,

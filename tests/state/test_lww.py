@@ -1,4 +1,4 @@
-import logging
+# tests/state/test_lww.py
 from queue import Queue
 from state.node_state_worker import NodeStateWorker
 
@@ -23,9 +23,9 @@ def test_new_insert():
 	assert applied is True
 
 	state = w.get_state_snapshot()["A"]
-	assert state["s1"]["value"] == 10
-	assert state["s1"]["ts_ms"] == 1000
-	assert state["s1"]["origin"] == "A"
+	assert state["A:s1"]["value"] == 10
+	assert state["A:s1"]["ts_ms"] == 1000
+	assert state["A:s1"]["origin"] == "A"
 
 
 def test_newer_timestamp_wins():
@@ -36,7 +36,7 @@ def test_newer_timestamp_wins():
 
 	assert applied is True
 	state = w.get_state_snapshot()["A"]
-	assert state["s1"]["value"] == 20
+	assert state["A:s1"]["value"] == 20
 
 
 def test_stale_timestamp_ignored():
@@ -47,7 +47,7 @@ def test_stale_timestamp_ignored():
 
 	assert applied is False
 	state = w.get_state_snapshot()["A"]
-	assert state["s1"]["value"] == 10
+	assert state["A:s1"]["value"] == 10
 
 
 def test_tie_break_origin():
@@ -58,8 +58,8 @@ def test_tie_break_origin():
 
 	assert applied is True
 	state = w.get_state_snapshot()["A"]
-	assert state["s1"]["value"] == 20
-	assert state["s1"]["origin"] == "B"
+	assert state["B:s1"]["value"] == 20
+	assert state["B:s1"]["origin"] == "B"
 
 
 def test_tie_break_origin_lower_loses():
@@ -70,5 +70,5 @@ def test_tie_break_origin_lower_loses():
 
 	assert applied is False
 	state = w.get_state_snapshot()["A"]
-	assert state["s1"]["value"] == 10
-	assert state["s1"]["origin"] == "B"
+	assert state["B:s1"]["value"] == 10
+	assert state["B:s1"]["origin"] == "B"

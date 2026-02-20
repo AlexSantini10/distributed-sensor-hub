@@ -35,6 +35,10 @@ To run the tests for the distributed sensor hub project, follow these steps:
    ```
    docker compose -f docker/docker-compose-base.yml up --build -d
    ```
+   or
+   ```
+   clear; docker compose -f docker/docker-compose-base.yml up --build -d
+   ```
 
    to print the logs:
    ```
