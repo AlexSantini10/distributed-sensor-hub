@@ -1,6 +1,6 @@
 # Distributed Sensor Hub
 
-> **Course:** Distributed Systems — MSc in Engineering and Computer Science  
+> **Course:** Distributed Systems — MSc in Computer Science and Engineering  
 > **Institution:** University of Bologna (UNIBO)  
 > **Academic Year:** 2025/2026
 
