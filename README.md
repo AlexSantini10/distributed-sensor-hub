@@ -2,7 +2,7 @@
 
 > **Course:** Distributed Systems — MSc in Engineering and Computer Science  
 > **Institution:** University of Bologna (UNIBO)  
-> **Academic Year:** 2024/2025
+> **Academic Year:** 2025/2026
 
 ---
 
@@ -35,8 +35,6 @@ This project was developed as a deliverable for the **Distributed Systems** cour
 | Name | GitHub |
 |------|--------|
 | Alex Santini | [@AlexSantini10](https://github.com/AlexSantini10) |
-
-> If additional contributors are present, add them here.
 
 ---
 
