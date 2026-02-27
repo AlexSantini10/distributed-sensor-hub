@@ -205,7 +205,7 @@ function fmtTs(ts) {
 }
 
 function formatValue(data) {
-	const unit = data.meta && data.meta.unit ? " " + data.meta.unit : "";
+	const unit = data && data.meta && data.meta.unit ? " " + data.meta.unit : "";
 	return String(data.value) + unit;
 }
 
@@ -228,7 +228,7 @@ function resetUI() {
 	setStatus(false);
 }
 
-/* ---------------- STATE ---------------- */
+/* ---------------- DOM HELPERS ---------------- */
 
 function getNodeCard(nodeId) {
 	let card = nodeCards.get(nodeId);
@@ -268,7 +268,64 @@ function getSensorRow(nodeId, sensorId) {
 	return row;
 }
 
-function renderState(state, updates) {
+/* ---------------- BACKEND SHAPE NORMALIZATION ---------------- */
+
+/*
+Backend (current) returns:
+	state: { "<local_node_id>": { "<origin>:<sensor_id>": record, ... } }
+	updates: same shape, but only deltas since last read
+
+This UI wants:
+	{ "<origin>": { "<sensor_id>": record, ... } }
+
+We normalize both /api/state and /api/updates to the grouped-by-origin shape.
+*/
+
+function splitGlobalSensorId(globalId) {
+	if (typeof globalId !== "string") return null;
+	const idx = globalId.indexOf(":");
+	if (idx <= 0) return null;
+	return {
+		origin: globalId.slice(0, idx),
+		sensorId: globalId.slice(idx + 1),
+	};
+}
+
+function normalizeGroupedByOrigin(payload) {
+	if (!payload || typeof payload !== "object") return {};
+
+	const topValues = Object.values(payload);
+	let flatMap = null;
+
+	if (topValues.length === 1 && topValues[0] && typeof topValues[0] === "object") {
+		flatMap = topValues[0];
+	} else {
+		flatMap = {};
+		for (const v of topValues) {
+			if (v && typeof v === "object") {
+				Object.assign(flatMap, v);
+			}
+		}
+	}
+
+	const grouped = {};
+	for (const [globalId, rec] of Object.entries(flatMap)) {
+		const parts = splitGlobalSensorId(globalId);
+		if (!parts) continue;
+
+		if (!grouped[parts.origin]) grouped[parts.origin] = {};
+		grouped[parts.origin][parts.sensorId] = rec;
+	}
+
+	return grouped;
+}
+
+/* ---------------- STATE RENDER ---------------- */
+
+function renderState(rawState, rawUpdates) {
+	const state = normalizeGroupedByOrigin(rawState);
+	const updates = normalizeGroupedByOrigin(rawUpdates);
+
 	for (const [nodeId, sensors] of Object.entries(state)) {
 		for (const [sensorId, data] of Object.entries(sensors)) {
 			const row = getSensorRow(nodeId, sensorId);
@@ -326,11 +383,12 @@ async function poll() {
 
 		if (!stateRes.ok || !updatesRes.ok) throw new Error();
 
-		const state = await stateRes.json();
-		const updates = await updatesRes.json();
+		const rawState = await stateRes.json();
+		const rawUpdates = await updatesRes.json();
 
-		renderState(state, updates);
+		renderState(rawState, rawUpdates);
 
+		const updates = normalizeGroupedByOrigin(rawUpdates);
 		for (const [n, ss] of Object.entries(updates)) {
 			for (const [s, d] of Object.entries(ss)) {
 				pushLog(n, s, d);
