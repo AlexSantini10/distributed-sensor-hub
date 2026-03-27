@@ -2,12 +2,12 @@
 
 import os
 import time
-from queue import Queue
 
 from networking.tcp_server import TcpServer
 
 from sensors.sensor_manager import SensorManager
 
+from state.events import SensorEventQueue
 from state.node_state_worker import NodeStateWorker
 from state.sensor_update_publisher import SensorUpdatePublisher
 
@@ -28,7 +28,7 @@ class NodeApplication:
 		self.config = config
 		self.log = log
 
-		self.sensor_event_queue = Queue()
+		self.sensor_event_queue = SensorEventQueue()
 
 		self.state_worker = None
 		self.client = None
