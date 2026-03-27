@@ -11,6 +11,17 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 
+RETRYABLE_CLUSTER_ERRORS = (
+	AssertionError,
+	HTTPError,
+	URLError,
+	TimeoutError,
+	json.JSONDecodeError,
+	ConnectionError,
+	OSError,
+)
+
+
 def fetch_json(url: str, timeout: float) -> dict:
 	with urlopen(url, timeout=timeout) as response:
 		payload = response.read().decode("utf-8")
@@ -53,7 +64,7 @@ def wait_for_cluster(endpoints: list[str], required_prefixes: list[str], timeout
 				state = fetch_json(endpoint, timeout=interval)
 				sensors = flatten_state(state)
 				assert_prefixes_present(sensors, required_prefixes, endpoint)
-			except (AssertionError, HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+			except RETRYABLE_CLUSTER_ERRORS as exc:
 				all_ready = False
 				last_error = f"{type(exc).__name__}: {exc}"
 				break
