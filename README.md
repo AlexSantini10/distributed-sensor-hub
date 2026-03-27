@@ -267,6 +267,53 @@ pytest -m protocol
 python -m pytest --maxfail=1
 ```
 
+#### Docker-based integration tests
+
+Start the 2-node topology:
+
+    docker compose -f docker/docker-compose-base.yml up --build -d
+
+Optional (Unix-like systems):
+
+    clear; docker compose -f docker/docker-compose-base.yml up --build -d
+
+Inspect logs:
+
+    # Linux / macOS
+    cat logs/node-1.log
+    echo "-----------------------------------------------------------------------------------------"
+    cat logs/node-2.log
+
+    # Windows PowerShell
+    type logs\node-1.log
+    echo "-----------------------------------------------------------------------------------------"
+    type logs\node-2.log
+
+Stop the cluster:
+
+    docker compose -f docker/docker-compose-base.yml down
+
+Start the 6-node topology:
+
+    docker compose -f docker/docker-compose-6-nodes.yml up --build -d
+
+Stop the 6-node cluster:
+
+    docker compose -f docker/docker-compose-6-nodes.yml down
+
+Simulate crash:
+
+    docker stop node-2
+
+Restart node:
+
+    docker start node-2
+
+Follow container logs (alternative to file logs):
+
+    docker logs -f node-1
+    docker logs -f node-2
+
 ### Environment Configuration
 
 Copy `.env.example` to `.env` and adjust as required:
