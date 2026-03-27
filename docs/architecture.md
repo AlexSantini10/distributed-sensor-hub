@@ -10,9 +10,23 @@ The system consists of independent nodes running the same software stack. Nodes 
 
 Sensors are periodic daemon threads that emit readings into a shared event queue. The project currently includes numeric, boolean, noise, wave, trend, spike, categorical, and incremental sensors.
 
+Events are normalized through `state/events.py`:
+
+- `SensorEvent`: typed event payload (`sensor_id`, `value`, `ts_ms`, `meta`)
+- `SensorEventQueue`: queue wrapper that accepts raw dict events and stores normalized `SensorEvent` objects
+
 ### State replication (`state/`)
 
-`NodeStateWorker` maintains the merged in-memory state using Last-Write-Wins semantics. It also exposes separate update streams for the HTTP API and for outbound replication.
+State logic is split into dedicated components:
+
+- `NodeStateWorker`: background orchestrator thread; consumes sensor events, validates/normalizes inputs, logs decisions, and delegates state mutations
+- `NodeStateStore`: thread-safe state container with standard operations (`merge_lww`, `upsert`, `remove`, `clear`) and snapshot APIs
+- `SensorMeta` / `SensorRecord`: typed dataclasses for internal state records
+
+`NodeStateStore` maintains Last-Write-Wins semantics using `(ts_ms, origin)` and keeps two independent incremental update buffers:
+
+- UI/Web API updates
+- outbound replication updates
 
 `SensorUpdatePublisher` polls replication updates and broadcasts `SENSOR_UPDATE` messages to known peers.
 
@@ -74,7 +88,11 @@ Node identity, network endpoints, bootstrap peers, and sensors are configured th
 
 ### Two independent update streams
 
-The state worker separates updates intended for the Web API from updates intended for replication, preventing one consumer from starving the other.
+`NodeStateStore` separates updates intended for the Web API from updates intended for replication, preventing one consumer from starving the other.
+
+### Decoupled state and event models
+
+State mutation rules are isolated inside `NodeStateStore`, while input normalization is isolated in `SensorEvent`/`SensorEventQueue`. This keeps `NodeStateWorker` focused on orchestration and reduces coupling between sensors, state storage, and replication.
 
 ### TCP with length-prefix framing
 
@@ -85,10 +103,18 @@ Messages are framed with a 4-byte big-endian length header, which provides relia
 | Concept | Current usage |
 |---------|---------------|
 | Gossip / Epidemic dissemination | Membership propagation through `JOIN_REQUEST` and `PEER_LIST` |
-| CRDT (LWW register) | Conflict-free state merge in the state worker |
+| CRDT (LWW register) | Conflict-free state merge in `NodeStateStore` |
 | Eventual consistency | Sensor state converges asynchronously across nodes |
 | Peer-to-peer communication | Symmetric TCP communication without hierarchy |
 | Decentralized membership | Peer discovery without a directory server |
 | Fault-tolerant networking | Reconnection and keepalive support in the TCP client |
 | State partitioning | Sensor updates carry origin information to avoid ambiguity |
 | Multi-threaded concurrency | Explicit locking and queue-based worker coordination |
+
+## Data flow (current)
+
+1. Sensor threads emit readings via `SensorManager` callback into `SensorEventQueue`.
+2. `NodeStateWorker` consumes events and applies merges through `NodeStateStore.merge_lww(...)`.
+3. Web API reads state and incremental updates through worker passthrough methods.
+4. `SensorUpdatePublisher` consumes replication updates and sends `SENSOR_UPDATE` to peers.
+5. Incoming remote `SENSOR_UPDATE` messages are validated by protocol handlers and merged through `NodeStateWorker.merge_update(...)`.
