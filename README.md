@@ -293,6 +293,10 @@ Stop the cluster:
 
     docker compose -f docker/docker-compose-base.yml down
 
+Verify startup and node connectivity automatically:
+
+    python tests/integration/verify_cluster.py --timeout 60 --interval 2
+
 Start the 6-node topology:
 
     docker compose -f docker/docker-compose-6-nodes.yml up --build -d
