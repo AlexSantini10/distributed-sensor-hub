@@ -1,3 +1,16 @@
+"""Persistent outbound TCP transport for peer-to-peer cluster messaging.
+
+Responsibilities:
+    - Maintain one outgoing connection per known peer.
+    - Serialize application messages into framed payloads.
+    - Preserve per-peer enqueue order on successful sends.
+    - Retry failed connections with bounded backoff.
+
+The module provides best-effort delivery for higher-level distributed-system
+messages such as gossip exchanges and state updates. It does not guarantee
+delivery, deduplication, or merge semantics such as LWW conflict resolution.
+"""
+
 import json
 import queue
 import selectors
@@ -11,25 +24,34 @@ from typing import Any, Optional
 
 @dataclass(frozen=True)
 class Peer:
+    """Describe a remote node addressable by the outbound transport.
+
+    Attributes:
+        node_id: Stable identifier used to route messages to the peer worker.
+        host: IPv4 or hostname value used for the TCP connection target.
+        port: TCP port exposed by the peer server.
+    """
+
     node_id: str
     host: str
     port: int
 
 
 class TcpClient:
-    """
-    TCP client maintaining outgoing connections to known peers.
+    """Maintain persistent outbound TCP sessions to known peers.
 
-    Per-peer responsibilities (one thread per peer):
-    - Keep a TCP connection alive.
-    - Reconnect on failure with backoff.
-    - Send queued messages in FIFO order (best-effort ordering).
-    - Detect server-side closure even when idle.
-
-    Public API:
-    - add_peer(peer), remove_peer(peer_id)
-    - send_json(peer_id, obj)
-    - stop()
+    Attributes:
+        _connect_timeout_s: Connection-establishment timeout in seconds.
+        _send_timeout_s: Send operation timeout in seconds.
+        _max_frame_size: Maximum allowed payload size before framing.
+        _backoff_initial_s: Initial reconnect delay in seconds.
+        _backoff_max_s: Upper bound for reconnect delay in seconds.
+        _backoff_mode: Backoff strategy name, either linear or exponential.
+        _idle_check_interval_s: Interval for idle connection liveness checks.
+        _tcp_keepalive: Whether OS-level TCP keepalive is enabled.
+        _stop_event: Shared shutdown signal for all peer workers.
+        _lock: Synchronizes access to the worker registry.
+        _workers: Active outbound workers keyed by peer node ID.
     """
 
     def __init__(
@@ -43,6 +65,18 @@ class TcpClient:
         idle_check_interval_s: float = 1.0,
         tcp_keepalive: bool = True,
     ):
+        """Initialize the outbound transport manager.
+
+        Args:
+            connect_timeout_s: Maximum time allowed for a TCP connect attempt.
+            send_timeout_s: Maximum time allowed for a framed send operation.
+            max_frame_size: Maximum payload size, in bytes, before rejection.
+            backoff_initial_s: Initial reconnect delay after a failure.
+            backoff_max_s: Maximum reconnect delay.
+            backoff_mode: Reconnect growth policy, typically exponential.
+            idle_check_interval_s: Delay between idle-side liveness probes.
+            tcp_keepalive: Enables socket keepalive when supported.
+        """
         self._connect_timeout_s = connect_timeout_s
         self._send_timeout_s = send_timeout_s
         self._max_frame_size = max_frame_size
@@ -60,10 +94,16 @@ class TcpClient:
         self._workers: dict[str, _PeerWorker] = {}
 
     def add_peer(self, peer: Peer) -> None:
-        """
-        Start maintaining a persistent outgoing connection to a peer.
+        """Register a peer and start maintaining its outbound connection.
 
-        If a worker already exists for the same peer_id, this raises.
+        Args:
+            peer: Peer descriptor identifying the remote node and endpoint.
+
+        Returns:
+            None
+
+        Raises:
+            RuntimeError: If a worker already exists for ``peer.node_id``.
         """
         with self._lock:
             if peer.node_id in self._workers:
@@ -85,8 +125,13 @@ class TcpClient:
             worker.start()
 
     def remove_peer(self, peer_id: str) -> None:
-        """
-        Stop maintaining the connection to a peer and drop any queued messages.
+        """Remove a peer worker and discard unsent queued messages.
+
+        Args:
+            peer_id: Node identifier of the peer to remove.
+
+        Returns:
+            None
         """
         with self._lock:
             worker = self._workers.pop(peer_id, None)
@@ -95,17 +140,25 @@ class TcpClient:
             worker.stop()
 
     def send_json(self, peer_id: str, obj: Any) -> None:
-        """
-        Thread-safe, non-blocking enqueue of a JSON-serializable object.
+        """Enqueue a message for best-effort delivery to a peer.
 
-        Ordering guarantee:
-        - FIFO ordering is preserved per peer across enqueues.
-        - Best-effort: messages may be lost on disconnect/reconnect, but
-          the client will not reorder messages that it successfully sends.
+        Messages are serialized immediately and delivered in FIFO order per
+        peer if the underlying connection remains healthy. The transport may
+        drop queued or in-flight messages across disconnects, so callers must
+        rely on protocol-level idempotency for gossip or replicated-state
+        exchanges.
+
+        Args:
+            peer_id: Node identifier of the destination peer.
+            obj: JSON-serializable object or value exposing ``to_bytes()``.
+
+        Returns:
+            None
 
         Raises:
-        - KeyError if peer is unknown.
-        - TypeError if obj is not JSON serializable (or message-like).
+            KeyError: If ``peer_id`` is not registered.
+            TypeError: If ``obj`` cannot be serialized into bytes.
+            ValueError: If the serialized payload exceeds ``_max_frame_size``.
         """
         worker = self._get_worker(peer_id)
         payload = _serialize_to_json_bytes(obj)
@@ -114,8 +167,10 @@ class TcpClient:
         worker.enqueue(payload)
 
     def stop(self) -> None:
-        """
-        Stop all reconnect loops and close all sockets.
+        """Stop all peer workers and close their sockets.
+
+        Returns:
+            None
         """
         self._stop_event.set()
 
@@ -127,6 +182,17 @@ class TcpClient:
             w.stop()
 
     def _get_worker(self, peer_id: str) -> "_PeerWorker":
+        """Resolve the worker responsible for a peer.
+
+        Args:
+            peer_id: Node identifier of the destination peer.
+
+        Returns:
+            _PeerWorker: Worker assigned to the peer.
+
+        Raises:
+            KeyError: If the peer is unknown.
+        """
         with self._lock:
             worker = self._workers.get(peer_id)
         if worker is None:
@@ -135,12 +201,21 @@ class TcpClient:
 
 
 def _serialize_to_json_bytes(obj: Any) -> bytes:
-    """
-    Serialize to JSON UTF-8 bytes.
+    """Serialize a message object into transport payload bytes.
 
-    Supports:
-    - Objects exposing to_bytes() -> bytes (e.g. your Message class)
-    - dict / list / primitives JSON-serializable
+    The serializer accepts protocol message objects that already define their
+    wire encoding through ``to_bytes()`` as well as plain JSON-compatible
+    values. This keeps message-format ownership in the protocol layer.
+
+    Args:
+        obj: Value to serialize for transport.
+
+    Returns:
+        bytes: UTF-8 JSON bytes or protocol-defined binary bytes.
+
+    Raises:
+        TypeError: If ``to_bytes()`` returns a non-bytes value or if ``obj``
+            is not JSON serializable.
     """
     to_bytes = getattr(obj, "to_bytes", None)
     if callable(to_bytes):
@@ -156,8 +231,24 @@ def _serialize_to_json_bytes(obj: Any) -> bytes:
 
 
 class _PeerWorker:
-    """
-    Background thread maintaining a single peer connection and a send queue.
+    """Own a single outbound peer connection and its send queue.
+
+    Attributes:
+        _peer: Remote peer served by this worker.
+        _stop_event: Global stop signal shared by the client.
+        _connect_timeout_s: Timeout applied to connection attempts.
+        _send_timeout_s: Timeout applied to send operations.
+        _max_frame_size: Maximum permitted payload size.
+        _backoff_initial_s: Initial reconnect delay.
+        _backoff_max_s: Maximum reconnect delay.
+        _backoff_mode: Backoff policy name.
+        _idle_check_interval_s: Delay between idle liveness checks.
+        _tcp_keepalive: Whether keepalive is enabled on created sockets.
+        _queue: FIFO queue of serialized payloads awaiting transmission.
+        _sock_lock: Synchronizes socket replacement and shutdown.
+        _sock: Active socket or ``None`` when disconnected.
+        _thread: Background thread running the worker loop.
+        _local_stop: Per-worker shutdown signal.
     """
 
     def __init__(
@@ -173,6 +264,20 @@ class _PeerWorker:
         idle_check_interval_s: float,
         tcp_keepalive: bool,
     ):
+        """Initialize a worker for a single remote peer.
+
+        Args:
+            peer: Remote peer descriptor.
+            stop_event: Shared client-wide stop signal.
+            connect_timeout_s: Timeout for connection attempts.
+            send_timeout_s: Timeout for socket send operations.
+            max_frame_size: Maximum permitted payload size.
+            backoff_initial_s: Initial reconnect delay.
+            backoff_max_s: Maximum reconnect delay.
+            backoff_mode: Backoff policy name.
+            idle_check_interval_s: Delay between idle liveness checks.
+            tcp_keepalive: Enables keepalive on created sockets.
+        """
         self._peer = peer
         self._stop_event = stop_event
 
@@ -199,11 +304,18 @@ class _PeerWorker:
         self._local_stop = threading.Event()
 
     def start(self) -> None:
+        """Start the worker thread.
+
+        Returns:
+            None
+        """
         self._thread.start()
 
     def stop(self) -> None:
-        """
-        Stop this worker and close its socket. Drops any queued messages.
+        """Stop the worker, close its socket, and drop queued payloads.
+
+        Returns:
+            None
         """
         self._local_stop.set()
         self._close_socket()
@@ -216,12 +328,22 @@ class _PeerWorker:
                 break
 
     def enqueue(self, payload: bytes) -> None:
-        """
-        Enqueue a raw JSON payload (already UTF-8 bytes).
+        """Append a serialized payload to the peer FIFO queue.
+
+        Args:
+            payload: Serialized message bytes without the length prefix.
+
+        Returns:
+            None
         """
         self._queue.put(payload)
 
     def _run(self) -> None:
+        """Maintain the connection lifecycle and drain queued payloads.
+
+        Returns:
+            None
+        """
         backoff_s = self._backoff_initial_s
 
         while not self._should_stop():
@@ -244,11 +366,18 @@ class _PeerWorker:
                 self._sleep_interruptible(self._idle_check_interval_s)
 
     def _should_stop(self) -> bool:
+        """Report whether the worker should terminate.
+
+        Returns:
+            bool: ``True`` when either the global or local stop signal is set.
+        """
         return self._stop_event.is_set() or self._local_stop.is_set()
 
     def _connect(self) -> bool:
-        """
-        Establish a TCP connection to the peer. Returns True on success.
+        """Establish a TCP connection to the assigned peer.
+
+        Returns:
+            bool: ``True`` if the socket is connected and installed.
         """
         if self._should_stop():
             return False
@@ -285,11 +414,11 @@ class _PeerWorker:
         return True
 
     def _drain_send_queue_once(self) -> bool:
-        """
-        Attempt to send queued messages until the queue is empty or a send fails.
+        """Send queued payloads until the queue empties or the socket fails.
 
-        Returns True if still connected and no send failure occurred.
-        Returns False if the connection appears broken.
+        Returns:
+            bool: ``True`` if the connection remains usable after draining,
+            otherwise ``False``.
         """
         while not self._should_stop():
             try:
@@ -304,8 +433,14 @@ class _PeerWorker:
         return True
 
     def _send_frame(self, payload: bytes) -> bool:
-        """
-        Send one length-prefixed frame. Returns False on broken connection.
+        """Send one length-prefixed payload to the peer.
+
+        Args:
+            payload: Serialized message bytes without the frame header.
+
+        Returns:
+            bool: ``True`` if the frame is sent or intentionally skipped,
+            otherwise ``False`` when the connection appears broken.
         """
         if len(payload) > self._max_frame_size:
             return True
@@ -323,13 +458,10 @@ class _PeerWorker:
             return False
 
     def _detect_server_closed(self) -> bool:
-        """
-        Best-effort detection of server-side closure while idle.
+        """Probe whether the remote server has closed an idle connection.
 
-        Uses a selector to check readability; if readable, we peek 1 byte.
-        If peek returns b"", the peer closed the connection.
-
-        Returns True if the server side is considered closed.
+        Returns:
+            bool: ``True`` if the peer appears closed or unusable.
         """
         sock = self._get_socket()
         if sock is None:
@@ -354,10 +486,20 @@ class _PeerWorker:
             return True
 
     def _get_socket(self) -> Optional[socket.socket]:
+        """Return the current socket snapshot for this worker.
+
+        Returns:
+            Optional[socket.socket]: Active socket or ``None`` if disconnected.
+        """
         with self._sock_lock:
             return self._sock
 
     def _close_socket(self) -> None:
+        """Close and clear the active socket reference.
+
+        Returns:
+            None
+        """
         with self._sock_lock:
             sock = self._sock
             self._sock = None
@@ -373,14 +515,38 @@ class _PeerWorker:
                 pass
 
     def _sleep_backoff(self, backoff_s: float) -> None:
+        """Sleep for a reconnect backoff interval unless interrupted.
+
+        Args:
+            backoff_s: Delay in seconds.
+
+        Returns:
+            None
+        """
         self._sleep_interruptible(backoff_s)
 
     def _sleep_interruptible(self, seconds: float) -> None:
+        """Sleep in short increments so shutdown can preempt the delay.
+
+        Args:
+            seconds: Maximum time to sleep.
+
+        Returns:
+            None
+        """
         end = time.time() + seconds
         while time.time() < end and not self._should_stop():
             time.sleep(0.05)
 
     def _next_backoff(self, current: float) -> float:
+        """Compute the next reconnect delay.
+
+        Args:
+            current: Current backoff delay in seconds.
+
+        Returns:
+            float: Next bounded backoff delay.
+        """
         if self._backoff_mode == "linear":
             nxt = current + self._backoff_initial_s
         else:

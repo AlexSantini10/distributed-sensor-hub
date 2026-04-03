@@ -1,3 +1,16 @@
+"""Inbound TCP server for framed protocol messages exchanged between nodes.
+
+Responsibilities:
+    - Accept incoming peer connections on a bound endpoint.
+    - Read length-prefixed message frames from each connection.
+    - Decode frames into protocol messages and dispatch them upstream.
+    - Provide transport-level shutdown and connection lifecycle management.
+
+The server is transport-only. It forwards decoded messages used by gossip,
+membership, and replicated-state flows, but it does not apply merge semantics
+such as LWW or validate higher-level message intent beyond frame integrity.
+"""
+
 import socket
 import struct
 import threading
@@ -5,25 +18,37 @@ from typing import Optional, Protocol
 
 
 class Dispatcher(Protocol):
-    """
-    Protocol interface for a message dispatcher.
-    """
+    """Define the dispatch contract for decoded inbound messages."""
+
     def dispatch(self, msg) -> None:
+        """Handle a decoded protocol message.
+
+        Args:
+            msg: Decoded message object produced by the protocol layer.
+
+        Returns:
+            None
+        """
         ...
 
 
 class TcpServer:
-    """
-    Multi-threaded TCP server using a length-prefixed framing protocol.
+    """Accept framed TCP messages and forward them to a dispatcher.
 
-    Responsibilities:
-    - Accept incoming TCP connections.
-    - Spawn one thread per connection.
-    - Read framed messages from each connection.
-    - Decode messages and hand them off to the dispatcher.
-    - Track active connections for graceful shutdown.
-
-    The server does NOT interpret message semantics.
+    Attributes:
+        _host: Local interface address bound by the listening socket.
+        _port: Local TCP port bound by the listening socket.
+        _dispatcher: Consumer of decoded protocol messages.
+        _recv_timeout_s: Timeout for per-connection reads.
+        _accept_timeout_s: Timeout for accept-loop wakeups.
+        _max_frame_size: Upper bound for inbound frame payload size.
+        _backlog: Kernel listen backlog for pending connections.
+        _stop_event: Shared shutdown signal for server threads.
+        _server_sock: Listening socket, if started.
+        _accept_thread: Thread running the accept loop, if started.
+        _lock: Synchronizes connection and thread tracking.
+        _connections: Active accepted sockets.
+        _conn_threads: Active per-connection worker threads.
     """
 
     def __init__(
@@ -36,6 +61,17 @@ class TcpServer:
         max_frame_size: int = 1024 * 1024,
         backlog: int = 128,
     ):
+        """Initialize the inbound transport server.
+
+        Args:
+            host: Interface address to bind.
+            port: TCP port to bind.
+            dispatcher: Receiver for decoded inbound messages.
+            recv_timeout_s: Timeout for socket reads.
+            accept_timeout_s: Timeout for socket accepts.
+            max_frame_size: Maximum permitted inbound payload size in bytes.
+            backlog: Maximum number of pending connections.
+        """
         # Network binding parameters
         self._host = host
         self._port = port
@@ -62,11 +98,14 @@ class TcpServer:
         self._conn_threads: set[threading.Thread] = set()
 
     def start(self) -> None:
-        """
-        Start the TCP server.
+        """Bind the listening socket and start the accept loop.
 
-        Creates the listening socket and launches the accept loop
-        in a dedicated daemon thread.
+        Returns:
+            None
+
+        Raises:
+            RuntimeError: If the server has already been started.
+            OSError: If socket creation, binding, or listening fails.
         """
         if self._accept_thread is not None:
             raise RuntimeError("Server already started")
@@ -92,11 +131,10 @@ class TcpServer:
         t.start()
 
     def stop(self) -> None:
-        """
-        Gracefully stop the server.
+        """Stop the server and close all tracked sockets.
 
-        Signals all threads to stop, closes the listening socket,
-        shuts down all active connections, and joins all threads.
+        Returns:
+            None
         """
         self._stop_event.set()
 
@@ -141,21 +179,37 @@ class TcpServer:
         self._server_sock = None
 
     def __enter__(self):
-        """Context manager entry: start server."""
+        """Start the server when entering a context manager.
+
+        Returns:
+            TcpServer: The started server instance.
+
+        Raises:
+            RuntimeError: If the server has already been started.
+            OSError: If socket setup fails.
+        """
         self.start()
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        """Context manager exit: stop server."""
+        """Stop the server when leaving a context manager.
+
+        Args:
+            exc_type: Exception type raised inside the context, if any.
+            exc: Exception instance raised inside the context, if any.
+            tb: Traceback associated with ``exc``, if any.
+
+        Returns:
+            bool: ``False`` so exceptions propagate to the caller.
+        """
         self.stop()
         return False
 
     def _accept_loop(self) -> None:
-        """
-        Accept loop running in a dedicated thread.
+        """Accept inbound connections and spawn per-connection readers.
 
-        Accepts incoming connections and spawns one thread per
-        connection to handle message reception.
+        Returns:
+            None
         """
         assert self._server_sock is not None
 
@@ -186,11 +240,13 @@ class TcpServer:
             t.start()
 
     def _connection_loop(self, conn: socket.socket) -> None:
-        """
-        Per-connection receive loop.
+        """Receive, decode, and dispatch messages from one connection.
 
-        Reads framed messages from the socket, decodes them,
-        and forwards them to the dispatcher.
+        Args:
+            conn: Accepted socket connected to a remote peer.
+
+        Returns:
+            None
         """
         try:
             while not self._stop_event.is_set():
@@ -225,15 +281,18 @@ class TcpServer:
                 self._conn_threads.discard(current)
 
     def _read_frame(self, conn: socket.socket) -> Optional[bytes]:
-        """
-        Read a single length-prefixed frame from the socket.
+        """Read one length-prefixed payload from a socket.
 
-        Frame format:
-        - 4-byte unsigned integer (big-endian) indicating payload length
-        - payload bytes
+        The framing contract is a 4-byte big-endian unsigned length followed by
+        that many payload bytes. Frames larger than ``_max_frame_size`` are
+        treated as protocol violations and terminate the connection.
+
+        Args:
+            conn: Accepted socket connected to a remote peer.
 
         Returns:
-            The payload bytes, or None if the connection is closed or invalid.
+            Optional[bytes]: Payload bytes, ``b""`` for an empty frame, or
+            ``None`` if the connection closes or violates framing rules.
         """
         header = self._recv_exact(conn, 4)
         if header is None:
@@ -251,11 +310,15 @@ class TcpServer:
         return payload
 
     def _recv_exact(self, conn: socket.socket, n: int) -> Optional[bytes]:
-        """
-        Receive exactly n bytes from the socket.
+        """Receive exactly ``n`` bytes from a connection.
 
-        Handles partial reads and timeouts.
-        Returns None if the connection is closed or interrupted.
+        Args:
+            conn: Accepted socket connected to a remote peer.
+            n: Number of bytes required.
+
+        Returns:
+            Optional[bytes]: Exactly ``n`` bytes, or ``None`` if the stream
+            closes, resets, or shutdown interrupts the read.
         """
         chunks: list[bytes] = []
         received = 0
@@ -281,10 +344,16 @@ class TcpServer:
         return b"".join(chunks)
 
     def _decode_message(self, frame: bytes):
-        """
-        Decode a raw frame into a Message instance.
+        """Decode a frame into the protocol-layer message representation.
 
-        This method isolates protocol decoding from the networking logic.
+        Args:
+            frame: Raw payload bytes extracted from a transport frame.
+
+        Returns:
+            Message: Decoded protocol message instance.
+
+        Raises:
+            Exception: Propagates decoder errors for malformed payloads.
         """
         from protocol.message import Message
         return Message.decode(frame)
