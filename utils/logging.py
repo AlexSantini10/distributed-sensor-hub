@@ -1,8 +1,27 @@
+"""Configure process logging with node-aware context enrichment.
+
+Responsibilities:
+    - Install the project's root file handler and formatter.
+    - Inject the local node identifier into every emitted log record.
+    - Provide logger adapters for components that need structured node context.
+"""
+
 import logging
 import os
+from typing import Any
 
 
 def setup_logging(node_id: str, level: str, log_file: str) -> None:
+    """Configure root logging for one node process.
+
+    Args:
+        node_id (str): Local node identifier recorded in every log entry.
+        level (str): Root logging level accepted by ``logging.Logger.setLevel``.
+        log_file (str): File path used for append-only logging output.
+
+    Returns:
+        None: This method mutates the root logger configuration.
+    """
     log_dir = os.path.dirname(log_file)
     if log_dir:
         os.makedirs(log_dir, exist_ok=True)
@@ -22,7 +41,23 @@ def setup_logging(node_id: str, level: str, log_file: str) -> None:
 
 
 class NodeLogger(logging.LoggerAdapter):
-    def process(self, msg, kwargs):
+    """Attach the current node identifier to delegated log records.
+
+    Attributes:
+        logger (logging.Logger): Wrapped logger used for actual record emission.
+        extra (dict): Adapter context containing the required ``node_id`` field.
+    """
+
+    def process(self, msg: Any, kwargs: dict) -> tuple[Any, dict]:
+        """Inject ``node_id`` into the record extras for downstream formatting.
+
+        Args:
+            msg (Any): Log message passed through the adapter.
+            kwargs (dict): Logging keyword arguments supplied by the caller.
+
+        Returns:
+            tuple[Any, dict]: Message and keyword arguments with ``node_id`` attached.
+        """
         extra = kwargs.get("extra", {})
         extra["node_id"] = self.extra["node_id"]
         kwargs["extra"] = extra
@@ -30,5 +65,14 @@ class NodeLogger(logging.LoggerAdapter):
 
 
 def get_logger(name: str, node_id: str) -> NodeLogger:
+    """Create a node-aware logger adapter for one component.
+
+    Args:
+        name (str): Logger name used to retrieve the underlying logger.
+        node_id (str): Local node identifier injected into every record.
+
+    Returns:
+        NodeLogger: Adapter that enriches records with node context.
+    """
     logger = logging.getLogger(name)
     return NodeLogger(logger, {"node_id": node_id})

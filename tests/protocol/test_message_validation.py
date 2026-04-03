@@ -1,31 +1,62 @@
-from protocol.message import Message
-from protocol.message_types import MessageType
+"""Validate protocol-message construction invariants.
+
+Responsibilities:
+    - Assert that valid messages are accepted and invalid fields are rejected.
+"""
+
 import pytest
 
-@pytest.mark.protocol
-def test_valid_message_creation():
-	msg = Message(
-		msg_type=MessageType.PING,
-		sender_id="node1",
-		payload={"key": "value"}
-	)
+from protocol.message import Message
+from protocol.message_types import MessageType
 
-	assert msg.msg_type == MessageType.PING
-	assert msg.sender_id == "node1"
-	assert msg.payload == {"key": "value"}
-	assert isinstance(msg.timestamp, int)
 
 @pytest.mark.protocol
-def test_invalid_msg_type():
-	with pytest.raises(ValueError):
-		Message(msg_type="PING", sender_id="n1", payload={})
+def test_valid_message_creation() -> None:
+    """Assert that a valid message populates all protocol fields.
+
+    Returns:
+        None: This test asserts successful message construction.
+    """
+    msg = Message(
+        msg_type=MessageType.PING,
+        sender_id="node1",
+        payload={"key": "value"},
+    )
+
+    assert msg.msg_type == MessageType.PING
+    assert msg.sender_id == "node1"
+    assert msg.payload == {"key": "value"}
+    assert isinstance(msg.timestamp, int)
+
 
 @pytest.mark.protocol
-def test_invalid_payload_type():
-	with pytest.raises(ValueError):
-		Message(MessageType.PING, "n1", payload="not a dict")
+def test_invalid_msg_type() -> None:
+    """Assert that non-enum message types are rejected.
+
+    Returns:
+        None: This test asserts message-type validation.
+    """
+    with pytest.raises(ValueError):
+        Message(msg_type="PING", sender_id="n1", payload={})
+
 
 @pytest.mark.protocol
-def test_invalid_timestamp():
-	with pytest.raises(ValueError):
-		Message(MessageType.PING, "n1", {}, timestamp="bad")
+def test_invalid_payload_type() -> None:
+    """Assert that payloads must be mapping objects.
+
+    Returns:
+        None: This test asserts payload-type validation.
+    """
+    with pytest.raises(ValueError):
+        Message(MessageType.PING, "n1", payload="not a dict")
+
+
+@pytest.mark.protocol
+def test_invalid_timestamp() -> None:
+    """Assert that timestamps must be integers.
+
+    Returns:
+        None: This test asserts timestamp-type validation.
+    """
+    with pytest.raises(ValueError):
+        Message(MessageType.PING, "n1", {}, timestamp="bad")

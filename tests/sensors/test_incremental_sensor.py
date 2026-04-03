@@ -1,9 +1,21 @@
+"""Validate incremental sensor progression.
+
+Responsibilities:
+    - Assert that successive samples evolve over time from the configured start value.
+"""
+
 import pytest
+
 from sensors.incremental_sensor import IncrementalSensor
 
 
 @pytest.mark.sensors
-def test_incremental_sensor_updates_correctly():
+def test_incremental_sensor_updates_correctly() -> None:
+    """Assert that incremental samples change across successive generations.
+
+    Returns:
+        None: This test asserts monotonic state evolution behavior.
+    """
     s = IncrementalSensor("inc", start=100, step_pct=10, period_ms=100, callback=None)
 
     v1 = s.generate_value()

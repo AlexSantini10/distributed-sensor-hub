@@ -1,34 +1,68 @@
-import threading
+"""Validate end-to-end TCP client and server interoperability.
 
+Responsibilities:
+    - Start a real TCP server and connect with the project TCP client.
+    - Assert framed protocol messages are dispatched without corruption.
+"""
+
+import threading
+from typing import Any
+
+from networking.tcp_client import Peer, TcpClient
 from networking.tcp_server import TcpServer
-from networking.tcp_client import TcpClient, Peer
 from protocol.message import Message
 from protocol.message_types import MessageType
 
 
 class DummyDispatcher:
-    """
-    Dispatcher used for integration testing.
+    """Capture dispatched protocol messages for integration assertions.
 
-    Records received messages and allows the test
-    to wait until a message arrives.
+    Attributes:
+        messages (list): Ordered list of dispatched protocol messages.
+        _event (threading.Event): Signal set when at least one message arrives.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize an empty dispatch capture buffer.
+
+        Returns:
+            None: This constructor does not return a value.
+        """
         self.messages = []
         self._event = threading.Event()
 
-    def dispatch(self, msg) -> None:
+    def dispatch(self, msg: Any) -> None:
+        """Record one dispatched message and release waiters.
+
+        Args:
+            msg (Any): Decoded protocol message delivered by the server.
+
+        Returns:
+            None: This method appends to the capture buffer.
+        """
         self.messages.append(msg)
         self._event.set()
 
     def wait(self, timeout_s: float) -> bool:
+        """Wait for at least one message to be dispatched.
+
+        Args:
+            timeout_s (float): Maximum wait time in seconds.
+
+        Returns:
+            bool: ``True`` if a message arrived before the timeout.
+        """
         return self._event.wait(timeout_s)
 
 
-def test_server_receives_message_from_tcp_client():
+def test_server_receives_message_from_tcp_client() -> None:
+    """Assert that a TCP client can send a framed protocol message to the server.
+
+    Returns:
+        None: This test asserts client-server interoperability.
+    """
     host = "127.0.0.1"
-    port = 0  # let OS choose a free port
+    port = 0
 
     dispatcher = DummyDispatcher()
 
@@ -68,7 +102,6 @@ def test_server_receives_message_from_tcp_client():
 
         client.send_json(peer.node_id, msg)
 
-        # Wait for the dispatcher to receive the message
         assert dispatcher.wait(2.0) is True
         assert len(dispatcher.messages) == 1
 

@@ -1,3 +1,12 @@
+"""Store node-local replicated sensor state under LWW semantics.
+
+Responsibilities:
+    - Hold the winning record for each logical sensor identifier.
+    - Apply deterministic LWW conflict resolution using ``(ts_ms, origin)`` ordering.
+    - Maintain separate incremental buffers for UI snapshots and replication gossip.
+    - Expose stable snapshot shapes expected by the UI, Web API, and tests.
+"""
+
 from copy import deepcopy
 from dataclasses import dataclass
 import threading
@@ -6,13 +15,26 @@ from typing import Any
 
 @dataclass
 class SensorMeta:
-    """Normalized sensor metadata kept alongside each state record."""
+    """Store normalized metadata associated with one sensor record.
+
+    Attributes:
+        unit (Any): Measurement unit propagated with the sensor sample.
+        period_ms (Any): Sensor sampling period metadata propagated with the sample.
+    """
 
     unit: Any = None
     period_ms: Any = None
 
     @staticmethod
-    def from_dict(meta) -> "SensorMeta":
+    def from_dict(meta: Any) -> "SensorMeta":
+        """Normalize arbitrary metadata into the supported metadata schema.
+
+        Args:
+            meta (Any): Input metadata object received from a sensor or network message.
+
+        Returns:
+            SensorMeta: Metadata instance with unsupported input coerced to empty defaults.
+        """
         if not isinstance(meta, dict):
             meta = {}
         return SensorMeta(
@@ -20,7 +42,12 @@ class SensorMeta:
             period_ms=meta.get("period_ms"),
         )
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
+        """Serialize metadata into the wire and snapshot representation.
+
+        Returns:
+            dict: Mapping containing the normalized ``unit`` and ``period_ms`` fields.
+        """
         return {
             "unit": self.unit,
             "period_ms": self.period_ms,
@@ -29,14 +56,26 @@ class SensorMeta:
 
 @dataclass
 class SensorRecord:
-    """Single LWW record for a logical sensor."""
+    """Represent the current LWW winner for one logical sensor.
+
+    Attributes:
+        value (Any): Winning sensor value.
+        ts_ms (int): Primary LWW ordering key in milliseconds.
+        origin (str): Secondary LWW tie-break key identifying the winning node.
+        meta (SensorMeta): Metadata associated with the winning value.
+    """
 
     value: Any
     ts_ms: int
     origin: str
     meta: SensorMeta
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
+        """Serialize the record into a snapshot-safe mapping.
+
+        Returns:
+            dict: Mapping that preserves the record fields expected by replication and UI code.
+        """
         return {
             "value": self.value,
             "ts_ms": self.ts_ms,
@@ -46,27 +85,36 @@ class SensorRecord:
 
 
 class NodeStateStore:
-    """Thread-safe state store with LWW merge and snapshot buffers."""
+    """Maintain thread-safe replicated sensor state and incremental buffers.
 
-    def __init__(self):
-        self._lock = threading.Lock()
+    Attributes:
+        _lock (threading.Lock): Mutex protecting state and update-buffer mutations.
+        _state (dict): Current LWW winner for each logical ``sensor_id``.
+        _updates_ui (dict): Pending records not yet drained by the UI/Web API consumer.
+        _updates_replication (dict): Pending records not yet drained by the gossip publisher.
+    """
 
-        # sensor_id -> SensorRecord
-        self._state = {}
-
-        # sensor_id -> SensorRecord
-        self._updates_ui = {}
-
-        # sensor_id -> SensorRecord
-        self._updates_replication = {}
-
-    def merge_lww(self, sensor_id: str, update: SensorRecord):
-        """
-        Apply LWW merge.
+    def __init__(self) -> None:
+        """Initialize empty state and update buffers.
 
         Returns:
-        - (True, "insert" | "newer_ts" | "tie_break", previous_record_or_none)
-        - (False, "stale", previous_record)
+            None: This constructor does not return a value.
+        """
+        self._lock = threading.Lock()
+        self._state = {}
+        self._updates_ui = {}
+        self._updates_replication = {}
+
+    def merge_lww(self, sensor_id: str, update: SensorRecord) -> tuple[bool, str, SensorRecord | None]:
+        """Merge one candidate update into the LWW register set.
+
+        Args:
+            sensor_id (str): Logical sensor key shared across competing origins.
+            update (SensorRecord): Candidate record to compare against the current winner.
+
+        Returns:
+            tuple[bool, str, SensorRecord | None]: Merge outcome containing an applied flag,
+                a reason code, and the previous winning record when one existed.
         """
         with self._lock:
             prev = self._state.get(sensor_id)
@@ -91,14 +139,29 @@ class NodeStateStore:
             return False, "stale", prev
 
     def upsert(self, sensor_id: str, record: SensorRecord) -> None:
-        """Force insert/update and mark record as updated for both consumers."""
+        """Force one record into state and both incremental buffers.
+
+        Args:
+            sensor_id (str): Logical sensor identifier to overwrite.
+            record (SensorRecord): Record to expose to state, UI, and replication consumers.
+
+        Returns:
+            None: This method mutates the store in place.
+        """
         with self._lock:
             self._state[sensor_id] = record
             self._updates_ui[sensor_id] = record
             self._updates_replication[sensor_id] = record
 
     def remove(self, sensor_id: str) -> bool:
-        """Remove a sensor from state and pending update buffers."""
+        """Delete one logical sensor from state and pending buffers.
+
+        Args:
+            sensor_id (str): Logical sensor identifier to remove.
+
+        Returns:
+            bool: ``True`` if the sensor existed in state before removal.
+        """
         with self._lock:
             existed = sensor_id in self._state
             self._state.pop(sensor_id, None)
@@ -107,13 +170,26 @@ class NodeStateStore:
             return existed
 
     def clear(self) -> None:
-        """Remove every sensor and pending update."""
+        """Remove all state and buffered incremental updates.
+
+        Returns:
+            None: This method mutates the store in place.
+        """
         with self._lock:
             self._state.clear()
             self._updates_ui.clear()
             self._updates_replication.clear()
 
-    def _snapshot_grouped_for_ui(self, state_map, node_id: str):
+    def _snapshot_grouped_for_ui(self, state_map: dict, node_id: str) -> dict:
+        """Project records into the UI/Web API snapshot schema.
+
+        Args:
+            state_map (dict): Mapping of logical sensor identifiers to winning records.
+            node_id (str): Local node identifier used as the outer grouping key.
+
+        Returns:
+            dict: Snapshot grouped by local node id with keys of the form ``origin:sensor_id``.
+        """
         per_node = {}
         for sensor_id, record in state_map.items():
             origin = record.origin
@@ -123,17 +199,41 @@ class NodeStateStore:
             per_node[global_sensor_id] = record.to_dict()
         return {node_id: per_node}
 
-    def get_state_snapshot(self, node_id: str):
+    def get_state_snapshot(self, node_id: str) -> dict:
+        """Return a full snapshot of current LWW winners.
+
+        Args:
+            node_id (str): Local node identifier used as the outer grouping key.
+
+        Returns:
+            dict: Full state snapshot for UI and HTTP consumers.
+        """
         with self._lock:
             return self._snapshot_grouped_for_ui(dict(self._state), node_id)
 
-    def get_updates_snapshot(self, node_id: str):
+    def get_updates_snapshot(self, node_id: str) -> dict:
+        """Drain the UI update buffer into one incremental snapshot.
+
+        Args:
+            node_id (str): Local node identifier used as the outer grouping key.
+
+        Returns:
+            dict: Incremental snapshot containing only records not yet consumed by the UI.
+        """
         with self._lock:
             snapshot = self._snapshot_grouped_for_ui(dict(self._updates_ui), node_id)
             self._updates_ui.clear()
             return snapshot
 
-    def pop_replication_updates(self, node_id: str):
+    def pop_replication_updates(self, node_id: str) -> dict:
+        """Drain the replication buffer into one gossip payload snapshot.
+
+        Args:
+            node_id (str): Local node identifier used as the outer grouping key.
+
+        Returns:
+            dict: Incremental replication snapshot keyed by global sensor identifier.
+        """
         with self._lock:
             per_node = {}
             for sensor_id, record in self._updates_replication.items():
@@ -146,8 +246,15 @@ class NodeStateStore:
             self._updates_replication.clear()
             return {node_id: per_node}
 
-    def dump_full_state(self):
-        """Return deterministic state grouped by winner origin."""
+    def dump_full_state(self) -> dict:
+        """Return a deterministic inspection view grouped by winning origin.
+
+        Args:
+            None
+
+        Returns:
+            dict: Summary grouped by origin with sorted sensor lists for stable assertions.
+        """
         with self._lock:
             state_copy = dict(self._state)
 
@@ -181,7 +288,12 @@ class NodeStateStore:
             "total": len(state_copy),
         }
 
-    def get_items_for_logging(self):
+    def get_items_for_logging(self) -> list[tuple[str, SensorRecord]]:
+        """Copy state records into a stable order for structured logging.
+
+        Returns:
+            list[tuple[str, SensorRecord]]: Deep-copied records sorted by origin and sensor id.
+        """
         with self._lock:
             items = [(sensor_id, deepcopy(rec)) for sensor_id, rec in self._state.items()]
         items.sort(key=lambda kv: (str(kv[1].origin), kv[0]))

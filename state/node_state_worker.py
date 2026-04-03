@@ -1,38 +1,52 @@
-# state/node_state_worker.py
-"""
-Node state worker with LWW (last-writer-wins) semantics.
+"""Run the node-local worker that materializes replicated sensor state.
 
-Internal state is keyed by sensor_id to ensure updates from different origins
-compete for the same logical sensor. Conflict resolution uses (ts_ms, origin)
-with origin as tie-breaker (lexicographically larger origin wins).
-
-Snapshots are grouped by local node_id for UI/API compatibility with tests.
-Each sensor entry is exposed with a global key "origin:sensor_id".
+Responsibilities:
+    - Consume normalized sensor events from the local producer queue.
+    - Apply deterministic LWW merges for local samples and remote updates.
+    - Expose full and incremental snapshots for UI polling and gossip publication.
+    - Emit stable log output describing winning records and convergence decisions.
 """
 
 import threading
 import time
 from queue import Empty
+from typing import Any
 
 from state.events import SensorEvent
 from state.node_state_store import NodeStateStore, SensorMeta, SensorRecord
 
 
 class NodeStateWorker(threading.Thread):
-    """
-    Background worker responsible for ingesting local sensor events and
-    maintaining a replicated LWW state.
+    """Maintain the node's replicated sensor register set in the background.
 
-    Public API:
-    - merge_update(): apply a local or remote update with LWW merge
-    - get_state_snapshot(): full state for UI/API
-    - get_updates_snapshot(): incremental updates for UI/API
-    - pop_replication_updates(): incremental updates for replication
-    - dump_full_state(): inspection-friendly full state view
-    - log_full_state(): log a full state dump for debugging
+    Attributes:
+        node_id (str): Local node identifier used as the origin for locally generated updates.
+        event_queue (Any): Source queue supplying sensor events for local ingestion.
+        log (Any): Logger-like object used for state and failure reporting.
+        _stop_event (threading.Event): Shutdown signal checked by the worker loop.
+        _store (NodeStateStore): Thread-safe LWW store and incremental snapshot buffers.
+        _debug_dump_every_s (Any): Optional periodic dump cadence in seconds.
+        _next_dump_ts (float | None): Monotonic deadline for the next periodic state dump.
     """
 
-    def __init__(self, node_id, event_queue, log, debug_dump_every_s=None):
+    def __init__(
+        self,
+        node_id: str,
+        event_queue: Any,
+        log: Any,
+        debug_dump_every_s: Any = None,
+    ) -> None:
+        """Initialize the background worker and its LWW store.
+
+        Args:
+            node_id (str): Local node identifier for self-originated updates.
+            event_queue (Any): Queue-like object supporting ``get(timeout=...)``.
+            log (Any): Logger-like object supporting standard logging methods.
+            debug_dump_every_s (Any): Optional positive interval for periodic full-state dumps.
+
+        Returns:
+            None: This constructor does not return a value.
+        """
         super().__init__(daemon=True)
 
         self.node_id = node_id
@@ -49,7 +63,12 @@ class NodeStateWorker(threading.Thread):
             else None
         )
 
-    def run(self):
+    def run(self) -> None:
+        """Process queued sensor events until the worker is stopped.
+
+        Returns:
+            None: This method services the queue until shutdown.
+        """
         while not self._stop_event.is_set():
             self._maybe_log_periodic_dump()
 
@@ -63,7 +82,12 @@ class NodeStateWorker(threading.Thread):
             except Exception:
                 self.log.error("Failed to handle sensor event", exc_info=True)
 
-    def _maybe_log_periodic_dump(self):
+    def _maybe_log_periodic_dump(self) -> None:
+        """Emit a periodic state dump when the configured deadline elapses.
+
+        Returns:
+            None: This method only updates logging state.
+        """
         if self._next_dump_ts is None:
             return
 
@@ -74,11 +98,15 @@ class NodeStateWorker(threading.Thread):
         self.log_full_state(level="INFO")
         self._next_dump_ts = now + float(self._debug_dump_every_s)
 
-    def _log_msg(self, level, msg):
-        """
-        Safe logger wrapper.
+    def _log_msg(self, level: str, msg: str) -> None:
+        """Write one log message using the best available logger method.
 
-        Some tests inject a DummyLog without debug(); fall back to info().
+        Args:
+            level (str): Requested log level name.
+            msg (str): Message body to emit.
+
+        Returns:
+            None: This method delegates emission to the logger-like object.
         """
         if self.log is None:
             return
@@ -93,7 +121,16 @@ class NodeStateWorker(threading.Thread):
             if callable(method):
                 method(msg)
 
-    def _format_record_line(self, sensor_id, rec: SensorRecord):
+    def _format_record_line(self, sensor_id: str, rec: SensorRecord) -> str:
+        """Format one winning record for deterministic state-dump logging.
+
+        Args:
+            sensor_id (str): Logical sensor identifier.
+            rec (SensorRecord): Winning record to describe.
+
+        Returns:
+            str: Structured log line capturing the record winner and metadata.
+        """
         return (
             f"sensor_id={sensor_id} "
             f"winner_origin={rec.origin} "
@@ -103,15 +140,22 @@ class NodeStateWorker(threading.Thread):
             f"period_ms={rec.meta.period_ms}"
         )
 
-    def dump_full_state(self):
+    def dump_full_state(self) -> dict:
+        """Expose a deterministic inspection view of the full register set.
+
+        Returns:
+            dict: Full state summary grouped by winning origin.
+        """
         return self._store.dump_full_state()
 
-    def log_full_state(self, level="INFO"):
-        """
-        Log a full-state dump to help verify association (sensor -> origin).
+    def log_full_state(self, level: str = "INFO") -> None:
+        """Log the current register winners for debugging and convergence checks.
 
-        level:
-        - "DEBUG", "INFO", "WARNING", "ERROR"
+        Args:
+            level (str): Requested logging level for the dump output.
+
+        Returns:
+            None: This method emits structured log lines only.
         """
         items = self._store.get_items_for_logging()
 
@@ -136,17 +180,25 @@ class NodeStateWorker(threading.Thread):
         for sensor_id, rec in items:
             self._log_msg(level_lc, self._format_record_line(sensor_id, rec))
 
-    def merge_update(self, sensor_id, value, ts_ms, origin, meta=None):
-        """
-        LWW merge for both local sensor ticks and remote network updates.
+    def merge_update(
+        self,
+        sensor_id: str,
+        value: Any,
+        ts_ms: int,
+        origin: str,
+        meta: Any = None,
+    ) -> bool:
+        """Apply one local or remote sensor update under LWW ordering.
 
-        Resolution:
-        - newer ts_ms wins
-        - on ts_ms tie, lexicographically larger origin wins
+        Args:
+            sensor_id (str): Logical sensor identifier shared across all origins.
+            value (Any): Candidate sensor value.
+            ts_ms (int): Candidate timestamp used as the primary LWW key.
+            origin (str): Candidate origin used as the secondary LWW tie-break key.
+            meta (Any): Optional metadata payload normalized into ``SensorMeta``.
 
         Returns:
-        - True if applied
-        - False if stale/invalid
+            bool: ``True`` if the candidate becomes the new winner, else ``False``.
         """
         if meta is None:
             meta = {}
@@ -204,10 +256,28 @@ class NodeStateWorker(threading.Thread):
         return False
 
     def remove_sensor(self, sensor_id: str) -> bool:
-        """Remove sensor record from the underlying store."""
+        """Delete one logical sensor from the underlying register set.
+
+        Args:
+            sensor_id (str): Logical sensor identifier to remove.
+
+        Returns:
+            bool: ``True`` if the sensor existed before removal.
+        """
         return self._store.remove(sensor_id)
 
-    def _handle_sensor_event(self, event):
+    def _handle_sensor_event(self, event: Any) -> None:
+        """Normalize one local event and merge it as a self-originated update.
+
+        Args:
+            event (Any): Raw event accepted by ``SensorEvent.from_any``.
+
+        Returns:
+            None: This method updates replicated state in place.
+
+        Raises:
+            ValueError: If the supplied event cannot be normalized.
+        """
         normalized_event = SensorEvent.from_any(event)
 
         self.merge_update(
@@ -218,15 +288,34 @@ class NodeStateWorker(threading.Thread):
             meta=normalized_event.meta,
         )
 
-    def get_state_snapshot(self):
+    def get_state_snapshot(self) -> dict:
+        """Return a full state snapshot shaped for the Web API and UI.
+
+        Returns:
+            dict: Full snapshot grouped by local node id and global sensor id.
+        """
         return self._store.get_state_snapshot(node_id=self.node_id)
 
-    def get_updates_snapshot(self):
+    def get_updates_snapshot(self) -> dict:
+        """Drain updates intended for the Web API and UI consumer.
+
+        Returns:
+            dict: Incremental snapshot of records not yet read by the UI consumer.
+        """
         return self._store.get_updates_snapshot(node_id=self.node_id)
 
-    def pop_replication_updates(self):
+    def pop_replication_updates(self) -> dict:
+        """Drain updates intended for best-effort replication gossip.
+
+        Returns:
+            dict: Incremental snapshot of records not yet read by the publisher thread.
+        """
         return self._store.pop_replication_updates(node_id=self.node_id)
 
-    def stop(self):
-        """Request thread termination."""
+    def stop(self) -> None:
+        """Request graceful worker termination.
+
+        Returns:
+            None: This method only signals shutdown.
+        """
         self._stop_event.set()

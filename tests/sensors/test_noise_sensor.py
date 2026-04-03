@@ -1,9 +1,21 @@
+"""Validate bounded noise sensor output.
+
+Responsibilities:
+    - Assert that generated samples remain within the configured noise envelope.
+"""
+
 import pytest
+
 from sensors.noise_sensor import NoiseSensor
 
 
 @pytest.mark.sensors
-def test_noise_sensor_range():
+def test_noise_sensor_range() -> None:
+    """Assert that noisy samples stay within ``base +/- noise`` bounds.
+
+    Returns:
+        None: This test asserts the configured output envelope.
+    """
     s = NoiseSensor("noise", base=10, noise=3, period_ms=100, callback=None)
     v = s.generate_value()
 

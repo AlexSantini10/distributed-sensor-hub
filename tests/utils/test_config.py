@@ -1,8 +1,26 @@
+"""Validate environment-driven configuration parsing.
+
+Responsibilities:
+    - Assert successful config loading from required variables.
+    - Reject missing or malformed environment input deterministically.
+"""
+
+from typing import Any
+
 import pytest
-from utils.config import load_config, _parse_peers
+
+from utils.config import _parse_peers, load_config
 
 
-def _set_base_env(monkeypatch):
+def _set_base_env(monkeypatch: Any) -> None:
+    """Populate the minimum environment required for config loading.
+
+    Args:
+        monkeypatch (Any): Pytest monkeypatch fixture used to set environment variables.
+
+    Returns:
+        None: This helper mutates the process environment for the current test.
+    """
     monkeypatch.setenv("NODE_ID", "node-1")
     monkeypatch.setenv("HOST", "127.0.0.1")
     monkeypatch.setenv("PORT", "9000")
@@ -10,7 +28,15 @@ def _set_base_env(monkeypatch):
     monkeypatch.setenv("LOG_FILE", "logs/test.log")
 
 
-def test_load_config_success(monkeypatch):
+def test_load_config_success(monkeypatch: Any) -> None:
+    """Assert that valid environment variables produce the expected config object.
+
+    Args:
+        monkeypatch (Any): Pytest monkeypatch fixture used to set environment variables.
+
+    Returns:
+        None: This test asserts successful parsing.
+    """
     _set_base_env(monkeypatch)
     monkeypatch.setenv(
         "BOOTSTRAP_PEERS",
@@ -30,7 +56,15 @@ def test_load_config_success(monkeypatch):
     assert config.log_file == "logs/test.log"
 
 
-def test_missing_required_env(monkeypatch):
+def test_missing_required_env(monkeypatch: Any) -> None:
+    """Assert that missing required variables abort config loading.
+
+    Args:
+        monkeypatch (Any): Pytest monkeypatch fixture used to remove environment variables.
+
+    Returns:
+        None: This test asserts validation failure.
+    """
     _set_base_env(monkeypatch)
     monkeypatch.delenv("NODE_ID")
 
@@ -38,7 +72,15 @@ def test_missing_required_env(monkeypatch):
         load_config()
 
 
-def test_empty_bootstrap_peers(monkeypatch):
+def test_empty_bootstrap_peers(monkeypatch: Any) -> None:
+    """Assert that an empty peer list is accepted as no bootstrap peers.
+
+    Args:
+        monkeypatch (Any): Pytest monkeypatch fixture used to set environment variables.
+
+    Returns:
+        None: This test asserts optional peer-list handling.
+    """
     _set_base_env(monkeypatch)
     monkeypatch.setenv("BOOTSTRAP_PEERS", "")
 
@@ -46,6 +88,11 @@ def test_empty_bootstrap_peers(monkeypatch):
     assert config.bootstrap_peers == []
 
 
-def test_invalid_peer_format():
+def test_invalid_peer_format() -> None:
+    """Assert that malformed ``host:port`` entries are rejected.
+
+    Returns:
+        None: This test asserts peer-list validation.
+    """
     with pytest.raises(RuntimeError):
         _parse_peers("127.0.0.1")
