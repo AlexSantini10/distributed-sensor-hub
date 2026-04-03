@@ -1,4 +1,11 @@
-# protocol/setup.py
+"""Wire protocol handlers and node-local dependencies into a dispatcher.
+
+Responsibilities:
+    - Build the protocol dispatcher used by the node runtime.
+    - Create the membership peer table shared with membership handlers.
+    - Register message handlers for membership, liveness, and state replication.
+"""
+
 from typing import Callable, Optional, Tuple
 
 from protocol.dispatcher import MessageDispatcher
@@ -19,12 +26,23 @@ def setup_protocol(
 	state_worker=None,
 	on_peer_discovered: Optional[OnPeerDiscovered] = None,
 ) -> Tuple[MessageDispatcher, PeerTable]:
-	"""
-	Setup protocol dispatcher and register all message handlers.
+	"""Build the protocol dispatcher and register message handlers.
 
-	- PeerTable (membership) is owned by the node.
-	- on_peer_discovered is invoked when membership learns a new peer.
-	- state_worker (if provided) is injected into SENSOR_UPDATE handling.
+	Membership messages are delegated to the membership subsystem, while
+	``SENSOR_UPDATE`` can be bound to a state worker so replicated updates are
+	merged locally. The returned peer table is the membership view owned by the
+	node and updated by membership handlers as peers are discovered or announced.
+
+	Args:
+		self_node_id: Identifier of the local node.
+		send_function: Callable used by handlers to emit outbound protocol messages.
+		state_worker: Optional state merge component for ``SENSOR_UPDATE`` handling.
+		on_peer_discovered: Optional callback invoked when membership discovers a
+			new peer.
+
+	Returns:
+		Tuple[MessageDispatcher, PeerTable]: Configured dispatcher and the peer
+		table used by membership handlers.
 	"""
 	dispatcher = MessageDispatcher()
 
