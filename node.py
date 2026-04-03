@@ -1,4 +1,13 @@
-"""Node process entrypoint."""
+"""Launch a distributed sensor-hub node process.
+
+Responsibilities:
+    - Initialize bootstrap logging and process-wide exception hooks.
+    - Load environment-backed node configuration and logging settings.
+    - Construct the runtime application that owns networking, membership,
+      sensor ingestion, LWW state replication, gossip-driven peer discovery,
+      and the monitoring API.
+    - Transfer control to the long-running node lifecycle until shutdown.
+"""
 
 import logging
 
@@ -14,7 +23,23 @@ from utils.logging import get_logger, setup_logging
 
 
 def main() -> None:
-	"""Start the node process."""
+	"""Start the node runtime from process bootstrap through steady state.
+
+	This function prepares logging, validates configuration, and starts the
+	application container that brings up the TCP protocol stack, membership
+	bootstrap, sensor event processing, and replicated state dissemination. Once
+	started, the node participates in best-effort gossip-style peer discovery and
+	last-writer-wins state convergence through the subsystems owned by
+	``NodeApplication``.
+
+	Returns:
+		None: This function blocks in the application main loop until the process
+		shuts down.
+
+	Raises:
+		Exception: Propagates configuration, logging, or runtime startup failures
+		after recording them through bootstrap or node logging.
+	"""
 	setup_bootstrap_logging()
 	install_global_exception_hooks()
 
