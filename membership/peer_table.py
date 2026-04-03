@@ -67,17 +67,7 @@ class PeerTable:
             Optional[Peer]: The stored peer record, or None when the peer is unknown.
         """
         with self._lock:
-            peer = self._peers.get(node_id)
-            if peer is None:
-                return None
-            return Peer(
-                node_id=peer.node_id,
-                host=peer.host,
-                port=peer.port,
-                last_heartbeat=peer.last_heartbeat,
-                phi=peer.phi,
-                status=peer.status,
-            )
+            return self._peers.get(node_id)
 
     def update_heartbeat(self, node_id: str, timestamp: float) -> None:
         """Record a liveness update for an existing peer.

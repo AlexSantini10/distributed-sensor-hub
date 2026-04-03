@@ -6,7 +6,7 @@ Responsibilities:
 
 import pytest
 
-from sensors.boolean_sensor import BooleanSensor
+from sensors.providers.boolean_sensor import BooleanSensor
 
 
 @pytest.mark.sensors
@@ -16,7 +16,7 @@ def test_boolean_sensor_distribution() -> None:
     Returns:
         None: This test asserts probabilistic output boundaries.
     """
-    s = BooleanSensor("bool", p_true=0.8, period_ms=100, callback=None)
+    s = BooleanSensor("bool", p_true=0.8, period_ms=100, handler=None)
 
     values = [s.generate_value() for _ in range(200)]
     ratio = sum(values) / len(values)

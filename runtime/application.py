@@ -20,6 +20,7 @@ from runtime.networking import (
     setup_node_networking,
 )
 from membership.peer_table import PeerTable
+from sensors.handler import QueueingSensorHandler
 from sensors.sensor_manager import SensorManager
 from state.events import SensorEventQueue
 from state.node_state_worker import NodeStateWorker
@@ -255,7 +256,8 @@ class NodeApplication:
         assert self.state_worker is not None
 
         try:
-            self.sensor_manager = SensorManager(callback=self.sensor_event_queue.put)
+            sensor_handler = QueueingSensorHandler(self.sensor_event_queue.put)
+            self.sensor_manager = SensorManager(handler=sensor_handler)
             self.sensor_manager.load(self.config.sensors)
             self.sensor_manager.start_all()
             self.log.info(f"Started {len(self.sensor_manager.sensors)} sensors")

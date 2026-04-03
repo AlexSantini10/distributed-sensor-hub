@@ -213,8 +213,6 @@ class SensorEventSource(Protocol):
         """
         ...
 
-type SensorCallback = Callable[[SensorEventDict], None]
-
 
 if TYPE_CHECKING:
     from membership.peer import Peer as MembershipPeer

@@ -6,7 +6,7 @@ Responsibilities:
 
 import pytest
 
-from sensors.wave_sensor import WaveSensor
+from sensors.providers.wave_sensor import WaveSensor
 
 
 @pytest.mark.sensors
@@ -16,7 +16,7 @@ def test_wave_sensor_output_within_amplitude() -> None:
     Returns:
         None: This test asserts the configured oscillation envelope.
     """
-    s = WaveSensor("wave", amplitude=5, frequency=1, period_ms=100, callback=None)
+    s = WaveSensor("wave", amplitude=5, frequency=1, period_ms=100, handler=None)
 
     v = s.generate_value()
 

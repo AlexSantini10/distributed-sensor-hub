@@ -1,16 +1,10 @@
-"""Define a sensor that emits a sinusoidal waveform over wall-clock time.
-
-Responsibilities:
-    Produce deterministic periodic readings from amplitude and frequency
-    parameters, and publish them through the common message format used by the
-    distributed event pipeline.
-"""
+"""Define a sensor that emits a sinusoidal waveform over wall-clock time."""
 
 import math
 import time
 
-from sensors.base_sensor import BaseSensor
-from utils.typing import SensorCallback
+from sensors.contracts import SensorHandler
+from sensors.providers.base_sensor import BaseSensor
 
 
 class WaveSensor(BaseSensor):
@@ -20,17 +14,13 @@ class WaveSensor(BaseSensor):
         sensor_id (str): Stable sensor identifier inherited from the base
             contract.
         period_ms (int | float): Emission period in milliseconds.
-        callback (SensorCallback | None): Consumer for
-            emitted sensor messages.
+        handler (SensorHandler | None): Ingestion boundary for emitted
+            readings.
         unit (str | None): Optional engineering unit included in metadata.
         amplitude (int | float): Peak magnitude of the waveform.
         frequency (int | float): Wave frequency in cycles per second.
         start_time (float): Reference wall-clock timestamp used to compute phase
             progression.
-        _stop_event (threading.Event): Stop signal inherited from the base
-            sensor lifecycle.
-        _thread (threading.Thread | None): Background publisher thread
-            inherited from the base sensor lifecycle.
     """
 
     def __init__(
@@ -39,27 +29,27 @@ class WaveSensor(BaseSensor):
         amplitude: int | float,
         frequency: int | float,
         period_ms: int | float,
-        callback: SensorCallback | None = None,
+        handler: SensorHandler | None = None,
         unit: str | None = None,
     ) -> None:
         """Initialize waveform parameters and phase reference.
 
         Args:
-            sensor_id (str): Stable identifier attached to emitted messages.
+            sensor_id (str): Stable identifier attached to emitted readings.
             amplitude (int | float): Peak magnitude of the waveform.
             frequency (int | float): Wave frequency in cycles per second.
             period_ms (int | float): Emission cadence in milliseconds.
-            callback (SensorCallback | None): Consumer invoked
-                for each emitted message.
+            handler (SensorHandler | None): Ingestion boundary invoked for each
+                emitted reading.
             unit (str | None): Optional engineering unit stored in metadata.
 
         Returns:
-            None (None): This constructor initializes the sensor instance.
+            None: This constructor initializes the provider instance.
         """
         super().__init__(
             sensor_id,
             period_ms,
-            callback,
+            handler,
             unit=unit,
         )
         self.amplitude = amplitude

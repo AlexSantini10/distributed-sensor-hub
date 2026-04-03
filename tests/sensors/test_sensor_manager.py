@@ -7,7 +7,7 @@ Responsibilities:
 import pytest
 from pytest import MonkeyPatch
 
-from sensors.numeric_sensor import NumericSensor
+from sensors.providers.numeric_sensor import NumericSensor
 from sensors.sensor_manager import SensorManager
 from utils.config import load_config
 
@@ -34,7 +34,21 @@ def test_sensor_manager_load_from_env(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("LOG_LEVEL", "INFO")
     monkeypatch.setenv("LOG_FILE", "logs/test.log")
 
-    mgr = SensorManager(callback=lambda *_: None)
+    class NullHandler:
+        """Provide a no-op handler for manager tests."""
+
+        def handle(self, reading: object) -> None:
+            """Ignore one reading.
+
+            Args:
+                reading (object): Reading ignored by the test handler.
+
+            Returns:
+                None: This helper has no side effects.
+            """
+            _ = reading
+
+    mgr = SensorManager(handler=NullHandler())
     mgr.load(load_config().sensors)
 
     assert len(mgr.sensors) == 1

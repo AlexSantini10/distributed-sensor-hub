@@ -80,8 +80,16 @@ class Message:
         Raises:
             ValueError: If a field has the wrong type or a required field is invalid.
         """
+        if not isinstance(self.msg_type, MessageType):
+            raise ValueError(
+                f"msg_type must be MessageType, got {type(self.msg_type)}"
+            )
+        if not isinstance(self.sender_id, str) or self.sender_id == "":
+            raise ValueError("sender_id must be a non-empty string")
         if not isinstance(self.payload, dict):
             raise ValueError(f"payload must be dict, got {type(self.payload)}")
+        if not isinstance(self.timestamp, int):
+            raise ValueError(f"timestamp must be int, got {type(self.timestamp)}")
 
     def to_dict(self) -> JsonObject:
         """Convert the message to the canonical JSON-object representation.

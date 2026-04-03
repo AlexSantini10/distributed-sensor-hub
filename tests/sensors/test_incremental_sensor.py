@@ -6,7 +6,7 @@ Responsibilities:
 
 import pytest
 
-from sensors.incremental_sensor import IncrementalSensor
+from sensors.providers.incremental_sensor import IncrementalSensor
 
 
 @pytest.mark.sensors
@@ -16,7 +16,7 @@ def test_incremental_sensor_updates_correctly() -> None:
     Returns:
         None: This test asserts monotonic state evolution behavior.
     """
-    s = IncrementalSensor("inc", start=100, step_pct=10, period_ms=100, callback=None)
+    s = IncrementalSensor("inc", start=100, step_pct=10, period_ms=100, handler=None)
 
     v1 = s.generate_value()
     v2 = s.generate_value()

@@ -1,15 +1,9 @@
-"""Define a sensor that emits continuous values from a numeric interval.
-
-Responsibilities:
-    Generate independent numeric observations within configured bounds and
-    publish them using the shared message format expected by downstream gossip
-    dissemination and LWW state consumers.
-"""
+"""Define a sensor that emits continuous values from a numeric interval."""
 
 import random
 
-from sensors.base_sensor import BaseSensor
-from utils.typing import SensorCallback
+from sensors.contracts import SensorHandler
+from sensors.providers.base_sensor import BaseSensor
 
 
 class NumericSensor(BaseSensor):
@@ -19,15 +13,11 @@ class NumericSensor(BaseSensor):
         sensor_id (str): Stable sensor identifier inherited from the base
             contract.
         period_ms (int | float): Emission period in milliseconds.
-        callback (SensorCallback): Consumer for emitted sensor
-            messages.
+        handler (SensorHandler | None): Ingestion boundary for emitted
+            readings.
         unit (str | None): Optional engineering unit included in metadata.
         min_val (float): Lower bound for generated values.
         max_val (float): Upper bound for generated values.
-        _stop_event (threading.Event): Stop signal inherited from the base
-            sensor lifecycle.
-        _thread (threading.Thread | None): Background publisher thread
-            inherited from the base sensor lifecycle.
     """
 
     def __init__(
@@ -36,27 +26,27 @@ class NumericSensor(BaseSensor):
         min_val: int | float,
         max_val: int | float,
         period_ms: int | float,
-        callback: SensorCallback,
+        handler: SensorHandler | None,
         *,
         unit: str | None = None,
     ) -> None:
         """Initialize the numeric range contract.
 
         Args:
-            sensor_id (str): Stable identifier attached to emitted messages.
+            sensor_id (str): Stable identifier attached to emitted readings.
             min_val (int | float): Lower bound for generated values.
             max_val (int | float): Upper bound for generated values.
             period_ms (int | float): Emission cadence in milliseconds.
-            callback (SensorCallback): Consumer invoked for
-                each emitted message.
+            handler (SensorHandler | None): Ingestion boundary invoked for each
+                emitted reading.
             unit (str | None): Optional engineering unit stored in metadata.
 
         Returns:
-            None (None): This constructor initializes the sensor instance.
+            None: This constructor initializes the provider instance.
 
         Raises:
-            ValueError: Raised when `min_val` is greater than or equal to
-                `max_val`.
+            ValueError: Raised when ``min_val`` is greater than or equal to
+                ``max_val``.
         """
         min_val = float(min_val)
         max_val = float(max_val)
@@ -69,7 +59,7 @@ class NumericSensor(BaseSensor):
         super().__init__(
             sensor_id=sensor_id,
             period_ms=period_ms,
-            callback=callback,
+            handler=handler,
             unit=unit,
         )
 
@@ -80,7 +70,7 @@ class NumericSensor(BaseSensor):
         """Sample a numeric reading from the configured interval.
 
         Returns:
-            float (float): Uniformly distributed value between `min_val` and
-                `max_val`.
+            float (float): Uniformly distributed value between ``min_val`` and
+                ``max_val``.
         """
         return random.uniform(self.min_val, self.max_val)

@@ -6,7 +6,7 @@ Responsibilities:
 
 import pytest
 
-from sensors.categorical_sensor import CategoricalSensor
+from sensors.providers.categorical_sensor import CategoricalSensor
 
 
 @pytest.mark.sensors

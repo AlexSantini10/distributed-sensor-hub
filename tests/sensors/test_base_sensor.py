@@ -1,16 +1,11 @@
-"""Validate shared sensor base-class contracts.
-
-Responsibilities:
-    - Assert that abstract value generation is enforced.
-    - Verify that the sensor loop emits timestamped events through the callback.
-"""
+"""Validate shared sensor base-class contracts."""
 
 import time
 
 import pytest
 
-from sensors.base_sensor import BaseSensor
-from utils.typing import SensorCallback
+from sensors.contracts import SensorReading
+from sensors.providers.base_sensor import BaseSensor
 
 
 @pytest.mark.sensors
@@ -20,14 +15,14 @@ def test_base_sensor_generate_not_implemented() -> None:
     Returns:
         None: This test asserts the abstract generation contract.
     """
-    s = BaseSensor("base", 100, callback=lambda *_: None)
+    s = BaseSensor("base", 100, handler=None)
     with pytest.raises(NotImplementedError):
         s.generate_value()
 
 
 @pytest.mark.sensors
 def test_base_sensor_start_stop() -> None:
-    """Assert that the base sensor loop invokes the callback with event payloads.
+    """Assert that the base sensor loop invokes the handler with readings.
 
     Returns:
         None: This test asserts start-stop callback behavior.
@@ -35,13 +30,7 @@ def test_base_sensor_start_stop() -> None:
     results = []
 
     class Dummy(BaseSensor):
-        """Provide a deterministic concrete sensor for start-stop testing.
-
-        Attributes:
-            sensor_id (str): Inherited logical sensor identifier.
-            period_ms (int): Inherited sample cadence.
-            callback (SensorCallback | None): Inherited event sink called by the sensor loop.
-        """
+        """Provide a deterministic concrete sensor for start-stop testing."""
 
         def generate_value(self) -> int:
             """Return a constant value for deterministic assertions.
@@ -51,18 +40,23 @@ def test_base_sensor_start_stop() -> None:
             """
             return 1
 
-    def cb(evt: dict[str, object]) -> None:
-        """Record emitted sensor events for assertions.
+    class RecordingHandler:
+        """Record emitted readings for assertions."""
 
-        Args:
-            evt (dict): Event payload emitted by the base sensor loop.
+        def handle(self, reading: SensorReading) -> None:
+            """Record one emitted reading.
 
-        Returns:
-            None: This helper appends event tuples to the capture list.
-        """
-        results.append((evt["sensor_id"], evt["value"], evt["ts_ms"]))
+            Args:
+                reading (SensorReading): Reading emitted by the base sensor loop.
 
-    s = Dummy("dummy", 50, cb)
+            Returns:
+                None: This helper appends event tuples to the capture list.
+            """
+            results.append(
+                (reading.sensor_id, reading.value, reading.observed_at_ms)
+            )
+
+    s = Dummy("dummy", 50, RecordingHandler())
 
     s.start()
     time.sleep(0.15)

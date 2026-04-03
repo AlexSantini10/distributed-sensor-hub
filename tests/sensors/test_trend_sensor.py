@@ -6,7 +6,7 @@ Responsibilities:
 
 import pytest
 
-from sensors.trend_sensor import TrendSensor
+from sensors.providers.trend_sensor import TrendSensor
 
 
 @pytest.mark.sensors
@@ -16,7 +16,7 @@ def test_trend_sensor_increasing() -> None:
     Returns:
         None: This test asserts ordered trend progression.
     """
-    s = TrendSensor("trend", start=0, slope=1, noise=0, period_ms=100, callback=None)
+    s = TrendSensor("trend", start=0, slope=1, noise=0, period_ms=100, handler=None)
 
     v1 = s.generate_value()
     v2 = s.generate_value()

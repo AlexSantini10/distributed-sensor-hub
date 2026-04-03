@@ -1,15 +1,9 @@
-"""Define a sensor that evolves by bounded percentage drift.
-
-Responsibilities:
-    Maintain mutable local state across emissions, generate successive readings
-    by perturbing the current value within a percentage envelope, and preserve
-    a single-writer sequence suitable for downstream LWW consumers.
-"""
+"""Define a sensor that evolves by bounded percentage drift."""
 
 import random
 
-from sensors.base_sensor import BaseSensor
-from utils.typing import SensorCallback
+from sensors.contracts import SensorHandler
+from sensors.providers.base_sensor import BaseSensor
 
 
 class IncrementalSensor(BaseSensor):
@@ -19,16 +13,12 @@ class IncrementalSensor(BaseSensor):
         sensor_id (str): Stable sensor identifier inherited from the base
             contract.
         period_ms (int | float): Emission period in milliseconds.
-        callback (SensorCallback): Consumer for emitted sensor
-            messages.
+        handler (SensorHandler | None): Ingestion boundary for emitted
+            readings.
         unit (str | None): Optional engineering unit included in metadata.
         value (float): Current local state used to derive the next reading.
         step_pct (float): Maximum absolute percentage change applied per
             emission.
-        _stop_event (threading.Event): Stop signal inherited from the base
-            sensor lifecycle.
-        _thread (threading.Thread | None): Background publisher thread
-            inherited from the base sensor lifecycle.
     """
 
     def __init__(
@@ -37,27 +27,27 @@ class IncrementalSensor(BaseSensor):
         start: int | float,
         step_pct: int | float,
         period_ms: int | float,
-        callback: SensorCallback,
+        handler: SensorHandler | None,
         *,
         unit: str | None = None,
     ) -> None:
         """Initialize the starting value and drift envelope.
 
         Args:
-            sensor_id (str): Stable identifier attached to emitted messages.
+            sensor_id (str): Stable identifier attached to emitted readings.
             start (int | float): Initial value for the local sensor state.
             step_pct (int | float): Maximum percentage delta applied per
                 emission.
             period_ms (int | float): Emission cadence in milliseconds.
-            callback (SensorCallback): Consumer invoked for
-                each emitted message.
+            handler (SensorHandler | None): Ingestion boundary invoked for each
+                emitted reading.
             unit (str | None): Optional engineering unit stored in metadata.
 
         Returns:
-            None (None): This constructor initializes the sensor instance.
+            None: This constructor initializes the provider instance.
 
         Raises:
-            ValueError: Raised when `step_pct` is negative.
+            ValueError: Raised when ``step_pct`` is negative.
         """
         if step_pct < 0:
             raise ValueError("step_pct must be >= 0")
@@ -65,7 +55,7 @@ class IncrementalSensor(BaseSensor):
         super().__init__(
             sensor_id=sensor_id,
             period_ms=period_ms,
-            callback=callback,
+            handler=handler,
             unit=unit,
         )
 
