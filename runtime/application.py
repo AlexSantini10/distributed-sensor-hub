@@ -1,4 +1,12 @@
-"""Node runtime orchestration."""
+"""Coordinate node startup, steady-state execution, and shutdown.
+
+Responsibilities:
+    Start state management before any external input can arrive.
+    Assemble networking, membership bootstrap, sensor publication, and the
+    monitoring API into a single node process.
+    Stop subsystems in reverse dependency order to reduce message loss and
+    partially-torn-down runtime state.
+"""
 
 import os
 import time
@@ -21,10 +29,30 @@ from runtime.networking import (
 
 
 class NodeApplication:
-	"""Lifecycle coordinator for the node process."""
+	"""Manage the lifecycle of a distributed sensor-hub node.
+
+	Attributes:
+		config: Runtime configuration for node identity, bind address, and peers.
+		log: Logger used for lifecycle and failure reporting.
+		sensor_event_queue: Queue that transfers sensor events into state
+			processing.
+		state_worker: Background worker that owns authoritative local state.
+		client: Outbound TCP client used to send protocol messages.
+		server: Inbound TCP server that accepts protocol messages.
+		peer_table: Membership view shared with gossip and publication flows.
+		sensor_manager: Manager for local sensor producers.
+		publisher: Publisher that forwards local state changes to peers.
+		web_api: HTTP server exposing state snapshots for monitoring.
+		bootstrap_peers: Configured peers contacted during initial membership join.
+	"""
 
 	def __init__(self, config, log):
-		"""Initialize the runtime container."""
+		"""Initialize the runtime container.
+
+		Args:
+			config: Runtime configuration object consumed by startup helpers.
+			log: Logger used by the application and child components.
+		"""
 		self.config = config
 		self.log = log
 
@@ -40,7 +68,12 @@ class NodeApplication:
 		self.bootstrap_peers = []
 
 	def start(self) -> None:
-		"""Start all node subsystems in dependency order."""
+		"""Start all node subsystems in dependency order.
+
+		The sequence ensures that state reception is available before networking,
+		that membership bootstrap happens before sensor publication, and that the
+		monitoring API observes a fully initialized node.
+		"""
 		self._start_state()
 		self._start_networking()
 		self._bootstrap_membership()
@@ -48,7 +81,12 @@ class NodeApplication:
 		self._start_web_api()
 
 	def run_forever(self) -> None:
-		"""Run the main process loop until interruption or failure."""
+		"""Keep the process alive until interruption or unrecoverable failure.
+
+		Raises:
+			No exception is propagated. Failures are logged and shutdown is always
+			attempted.
+		"""
 		try:
 			while True:
 				time.sleep(1)
@@ -63,7 +101,11 @@ class NodeApplication:
 			self.stop()
 
 	def stop(self) -> None:
-		"""Stop all node subsystems in safe reverse order."""
+		"""Stop all node subsystems in reverse dependency order.
+
+		This method is best-effort. Each subsystem is asked to stop even if an
+		earlier shutdown step fails.
+		"""
 		self.log.info("Node cleanup started")
 
 		if self.publisher is not None:
@@ -103,7 +145,7 @@ class NodeApplication:
 		self.log.info("Node shutdown complete")
 
 	def _start_state(self) -> None:
-		"""Start the state worker early so it can receive events."""
+		"""Start the state worker before any network or sensor input begins."""
 		self.state_worker = NodeStateWorker(
 			node_id=self.config.node_id,
 			event_queue=self.sensor_event_queue,
@@ -113,7 +155,12 @@ class NodeApplication:
 		self.log.info("State worker started")
 
 	def _start_networking(self) -> None:
-		"""Create protocol stack, outbound client, and inbound server."""
+		"""Create the protocol stack and start inbound networking.
+
+		Raises:
+			Exception: Propagates setup or server startup failures so startup can
+				abort atomically.
+		"""
 		try:
 			networking = setup_node_networking(
 				config=self.config,
@@ -139,7 +186,12 @@ class NodeApplication:
 		self.log.info(f"Node listening on {self.config.host}:{self.config.port}")
 
 	def _bootstrap_membership(self) -> None:
-		"""Seed peer table and send initial JOIN_REQUEST messages."""
+		"""Seed the membership view and send initial `JOIN_REQUEST` messages.
+
+		Bootstrap peers are inserted optimistically so outbound gossip and update
+		routing have an initial target set. The explicit join requests establish
+		the node's advertised endpoint and begin membership convergence.
+		"""
 		seed_peer_table(
 			peer_table=self.peer_table,
 			bootstrap_peers=self.bootstrap_peers,
@@ -160,7 +212,12 @@ class NodeApplication:
 		)
 
 	def _start_sensors(self) -> None:
-		"""Start sensor simulation and outbound update publishing."""
+		"""Start local sensors and publish their updates to the cluster.
+
+		Raises:
+			Exception: Propagates initialization failures so partial startup does
+				not continue with missing data producers or publishers.
+		"""
 		try:
 			self.sensor_manager = SensorManager(callback=self.sensor_event_queue.put)
 			self.sensor_manager.load_from_env()
@@ -182,7 +239,12 @@ class NodeApplication:
 			raise
 
 	def _start_web_api(self) -> None:
-		"""Start the monitoring Web API."""
+		"""Start the HTTP monitoring API backed by state snapshots.
+
+		Raises:
+			Exception: Propagates API startup failures to keep process startup
+				consistent.
+		"""
 		web_api_port = int(os.getenv("WEB_API_PORT", str(self.config.port + 1000)))
 
 		try:
