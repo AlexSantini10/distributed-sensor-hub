@@ -15,7 +15,8 @@ import struct
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+
+from utils.typing import JsonValue, SupportsToBytes
 
 
 @dataclass(frozen=True)
@@ -60,7 +61,7 @@ class TcpClient:
         backoff_mode: str = "exponential",
         idle_check_interval_s: float = 1.0,
         tcp_keepalive: bool = True,
-    ):
+    ) -> None:
         """Initialize the outbound transport manager.
 
         Args:
@@ -138,7 +139,7 @@ class TcpClient:
         if worker is not None:
             worker.stop()
 
-    def send_json(self, peer_id: str, obj: Any) -> None:
+    def send_json(self, peer_id: str, obj: SupportsToBytes | JsonValue) -> None:
         """Enqueue a message for best-effort delivery to a peer.
 
         Messages are serialized immediately and delivered in FIFO order per
@@ -149,7 +150,8 @@ class TcpClient:
 
         Args:
             peer_id (str): Node identifier of the destination peer.
-            obj (Any): JSON-serializable object or value exposing ``to_bytes()``.
+            obj (SupportsToBytes | JsonValue): JSON-serializable object or value
+                exposing ``to_bytes()``.
 
         Returns:
             None
@@ -199,7 +201,7 @@ class TcpClient:
         return worker
 
 
-def _serialize_to_json_bytes(obj: Any) -> bytes:
+def _serialize_to_json_bytes(obj: SupportsToBytes | JsonValue) -> bytes:
     """Serialize a message object into transport payload bytes.
 
     The serializer accepts protocol message objects that already define their
@@ -207,7 +209,7 @@ def _serialize_to_json_bytes(obj: Any) -> bytes:
     values. This keeps message-format ownership in the protocol layer.
 
     Args:
-        obj (Any): Value to serialize for transport.
+        obj (SupportsToBytes | JsonValue): Value to serialize for transport.
 
     Returns:
         bytes: UTF-8 JSON bytes or protocol-defined binary bytes.
@@ -216,12 +218,9 @@ def _serialize_to_json_bytes(obj: Any) -> bytes:
         TypeError: If ``to_bytes()`` returns a non-bytes value or if ``obj``
             is not JSON serializable.
     """
-    to_bytes = getattr(obj, "to_bytes", None)
-    if callable(to_bytes):
-        raw = to_bytes()
-        if not isinstance(raw, (bytes, bytearray)):
-            raise TypeError("to_bytes() must return bytes")
-        return bytes(raw)
+    if isinstance(obj, SupportsToBytes):
+        raw = obj.to_bytes()
+        return raw
 
     try:
         return json.dumps(obj).encode("utf-8")
@@ -245,7 +244,7 @@ class _PeerWorker:
         _tcp_keepalive (bool): Whether keepalive is enabled on created sockets.
         _queue (queue.Queue[bytes]): FIFO queue of serialized payloads awaiting transmission.
         _sock_lock (threading.Lock): Synchronizes socket replacement and shutdown.
-        _sock (Optional[socket.socket]): Active socket or None when disconnected.
+        _sock (socket.socket | None): Active socket or None when disconnected.
         _thread (threading.Thread): Background thread running the worker loop.
         _local_stop (threading.Event): Per-worker shutdown signal.
     """
@@ -295,7 +294,7 @@ class _PeerWorker:
 
         self._queue: queue.Queue[bytes] = queue.Queue()
         self._sock_lock = threading.Lock()
-        self._sock: Optional[socket.socket] = None
+        self._sock: socket.socket | None = None
 
         self._thread = threading.Thread(
             target=self._run,
@@ -487,11 +486,11 @@ class _PeerWorker:
         except (ConnectionResetError, OSError):
             return True
 
-    def _get_socket(self) -> Optional[socket.socket]:
+    def _get_socket(self) -> socket.socket | None:
         """Return the current socket snapshot for this worker.
 
         Returns:
-            Optional[socket.socket]: Active socket or ``None`` if disconnected.
+            socket.socket | None: Active socket or ``None`` if disconnected.
         """
         with self._sock_lock:
             return self._sock

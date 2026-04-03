@@ -7,10 +7,9 @@ Responsibilities:
 """
 
 import random
-from collections.abc import Callable
-from typing import Any
 
 from sensors.base_sensor import BaseSensor
+from utils.typing import SensorCallback
 
 
 class TrendSensor(BaseSensor):
@@ -20,7 +19,7 @@ class TrendSensor(BaseSensor):
         sensor_id (str): Stable sensor identifier inherited from the base
             contract.
         period_ms (int | float): Emission period in milliseconds.
-        callback (Callable[[dict[str, Any]], None] | None): Consumer for
+        callback (SensorCallback | None): Consumer for
             emitted sensor messages.
         unit (str | None): Optional engineering unit included in metadata.
         value (int | float): Current local state advanced on each emission.
@@ -39,7 +38,7 @@ class TrendSensor(BaseSensor):
         slope: int | float,
         noise: int | float,
         period_ms: int | float,
-        callback: Callable[[dict[str, Any]], None] | None = None,
+        callback: SensorCallback | None = None,
         unit: str | None = None,
     ) -> None:
         """Initialize the starting value, slope, and noise envelope.
@@ -50,7 +49,7 @@ class TrendSensor(BaseSensor):
             slope (int | float): Deterministic increment applied per emission.
             noise (int | float): Maximum absolute noise added per emission.
             period_ms (int | float): Emission cadence in milliseconds.
-            callback (Callable[[dict[str, Any]], None] | None): Consumer invoked
+            callback (SensorCallback | None): Consumer invoked
                 for each emitted message.
             unit (str | None): Optional engineering unit stored in metadata.
 

@@ -4,6 +4,7 @@
         "sensors",
         "networking",
         "membership",
-        "web"
+        "web",
+        "types"
     ]
 }

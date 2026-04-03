@@ -8,7 +8,7 @@ Responsibilities:
 
 import logging
 import os
-from typing import Any
+from collections.abc import MutableMapping
 
 
 def setup_logging(node_id: str, level: str, log_file: str) -> None:
@@ -45,21 +45,34 @@ class NodeLogger(logging.LoggerAdapter):
 
     Attributes:
         logger (logging.Logger): Wrapped logger used for actual record emission.
-        extra (dict): Adapter context containing the required ``node_id`` field.
+        extra (dict[str, object]): Adapter context containing the required ``node_id`` field.
     """
 
-    def process(self, msg: Any, kwargs: dict) -> tuple[Any, dict]:
+    def process(
+        self,
+        msg: object,
+        kwargs: MutableMapping[str, object],
+    ) -> tuple[object, MutableMapping[str, object]]:
         """Inject ``node_id`` into the record extras for downstream formatting.
 
         Args:
-            msg (Any): Log message passed through the adapter.
-            kwargs (dict): Logging keyword arguments supplied by the caller.
+            msg (object): Log message passed through the adapter.
+            kwargs (MutableMapping[str, object]): Logging keyword arguments supplied
+                by the caller.
 
         Returns:
-            tuple[Any, dict]: Message and keyword arguments with ``node_id`` attached.
+            tuple[object, MutableMapping[str, object]]: Message and keyword arguments
+                with ``node_id`` attached.
         """
-        extra = kwargs.get("extra", {})
-        extra["node_id"] = self.extra["node_id"]
+        extra_value = kwargs.get("extra", {})
+        extra: dict[str, object]
+        if isinstance(extra_value, dict):
+            extra = dict(extra_value)
+        else:
+            extra = {}
+        adapter_extra = self.extra
+        if adapter_extra is not None and "node_id" in adapter_extra:
+            extra["node_id"] = adapter_extra["node_id"]
         kwargs["extra"] = extra
         return msg, kwargs
 

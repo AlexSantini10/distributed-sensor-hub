@@ -9,8 +9,8 @@ Responsibilities:
 
 import threading
 import time
-from collections.abc import Callable
-from typing import Any
+
+from utils.typing import JsonValue, SensorCallback, SensorEventDict, SensorMetaDict
 
 
 class BaseSensor:
@@ -21,7 +21,7 @@ class BaseSensor:
             message and assumed unique within the deployment.
         period_ms (int | float): Emission period in milliseconds for successive
             readings.
-        callback (Callable[[dict[str, Any]], None] | None): Sink that receives
+        callback (SensorCallback | None): Sink that receives
             sensor messages as atomic dictionaries suitable for transport.
         unit (str | None): Optional engineering unit propagated in message
             metadata.
@@ -35,7 +35,7 @@ class BaseSensor:
         self,
         sensor_id: str,
         period_ms: int | float,
-        callback: Callable[[dict[str, Any]], None] | None,
+        callback: SensorCallback | None,
         *,
         unit: str | None = None,
     ) -> None:
@@ -45,7 +45,7 @@ class BaseSensor:
             sensor_id (str): Stable identifier attached to all generated
                 messages.
             period_ms (int | float): Emission cadence in milliseconds.
-            callback (Callable[[dict[str, Any]], None] | None): Consumer
+            callback (SensorCallback | None): Consumer
                 invoked once per generated message.
             unit (str | None): Optional engineering unit stored in message
                 metadata.
@@ -59,13 +59,13 @@ class BaseSensor:
         self.unit = unit
 
         self._stop_event = threading.Event()
-        self._thread = None
+        self._thread: threading.Thread | None = None
 
-    def generate_value(self) -> Any:
+    def generate_value(self) -> JsonValue:
         """Produce the next sensor reading for publication.
 
         Returns:
-            Any (Any): Sensor-specific value to encode in the outgoing message.
+            JsonValue (JsonValue): Sensor-specific value to encode in the outgoing message.
 
         Raises:
             NotImplementedError: Raised when a subclass does not provide a value
@@ -94,18 +94,22 @@ class BaseSensor:
         while not self._stop_event.is_set():
             value = self.generate_value()
             ts_ms = int(time.time() * 1000)
+            callback = self.callback
+            if callback is None:
+                raise TypeError("'NoneType' object is not callable")
 
-            self.callback(
-                {
-                    "sensor_id": self.sensor_id,
-                    "value": value,
-                    "ts_ms": ts_ms,
-                    "meta": {
-                        "unit": self.unit,
-                        "period_ms": self.period_ms,
-                    },
-                }
-            )
+            meta: SensorMetaDict = {
+                "unit": self.unit,
+                "period_ms": self.period_ms,
+            }
+            event: SensorEventDict = {
+                "sensor_id": self.sensor_id,
+                "value": value,
+                "ts_ms": ts_ms,
+                "meta": meta,
+            }
+
+            callback(event)
 
             next_deadline += period_s
             sleep_time = next_deadline - time.monotonic()

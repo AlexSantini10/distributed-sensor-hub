@@ -6,8 +6,6 @@ Responsibilities:
 """
 
 import threading
-from typing import Any
-
 from networking.tcp_client import Peer, TcpClient
 from networking.tcp_server import TcpServer
 from protocol.message import Message
@@ -31,11 +29,11 @@ class DummyDispatcher:
         self.messages = []
         self._event = threading.Event()
 
-    def dispatch(self, msg: Any) -> None:
+    def dispatch(self, msg: Message) -> None:
         """Record one dispatched message and release waiters.
 
         Args:
-            msg (Any): Decoded protocol message delivered by the server.
+            msg (Message): Decoded protocol message delivered by the server.
 
         Returns:
             None: This method appends to the capture buffer.

@@ -8,7 +8,8 @@ Responsibilities:
 
 from dataclasses import dataclass
 from queue import Queue
-from typing import Any
+
+from utils.typing import JsonObject, JsonValue, SensorEventDict, SensorMetaDict
 
 
 @dataclass
@@ -17,22 +18,23 @@ class SensorEvent:
 
     Attributes:
         sensor_id (str): Logical sensor identifier that competes in the LWW register.
-        value (Any): Sample payload associated with the sensor update.
+        value (JsonValue): Sample payload associated with the sensor update.
         ts_ms (int): Millisecond timestamp used as the primary LWW ordering key.
-        meta (dict): Sensor metadata propagated with the sample for downstream consumers.
+        meta (SensorMetaDict): Sensor metadata propagated with the sample for downstream consumers.
     """
 
     sensor_id: str
-    value: Any
+    value: JsonValue
     ts_ms: int
-    meta: dict
+    meta: SensorMetaDict
 
     @staticmethod
-    def from_dict(event: dict) -> "SensorEvent":
+    def from_dict(event: JsonObject | SensorEventDict) -> "SensorEvent":
         """Build a normalized sensor event from a mapping payload.
 
         Args:
-            event (dict): Raw event mapping that must provide ``sensor_id`` and ``ts_ms``.
+            event (JsonObject | SensorEventDict): Raw event mapping that must provide
+                ``sensor_id`` and ``ts_ms``.
 
         Returns:
             SensorEvent: Validated event instance with normalized metadata.
@@ -52,14 +54,23 @@ class SensorEvent:
         if not isinstance(meta, dict):
             meta = {}
 
-        return SensorEvent(sensor_id=sensor_id, value=value, ts_ms=ts_ms, meta=meta)
+        normalized_meta: SensorMetaDict = {
+            "unit": meta.get("unit"),
+            "period_ms": meta.get("period_ms"),
+        }
+        return SensorEvent(
+            sensor_id=sensor_id,
+            value=value,
+            ts_ms=ts_ms,
+            meta=normalized_meta,
+        )
 
     @staticmethod
-    def from_any(event: Any) -> "SensorEvent":
+    def from_any(event: object) -> "SensorEvent":
         """Convert a supported event representation into a canonical event.
 
         Args:
-            event (Any): Event object supplied by sensors, tests, or networking code.
+            event (object): Event object supplied by sensors, tests, or networking code.
 
         Returns:
             SensorEvent: Canonical event instance accepted by the state pipeline.
@@ -78,7 +89,8 @@ class SensorEventQueue:
     """Serialize queue ingress into validated ``SensorEvent`` objects.
 
     Attributes:
-        _queue (Queue): FIFO buffer whose contents are guaranteed to be normalized events.
+        _queue (Queue[SensorEvent]): FIFO buffer whose contents are guaranteed to be
+            normalized events.
     """
 
     def __init__(self) -> None:
@@ -87,13 +99,13 @@ class SensorEventQueue:
         Returns:
             None: This constructor does not return a value.
         """
-        self._queue = Queue()
+        self._queue: Queue[SensorEvent] = Queue()
 
-    def put(self, event: Any) -> None:
+    def put(self, event: object) -> None:
         """Enqueue one normalized sensor event.
 
         Args:
-            event (Any): Raw event value accepted by ``SensorEvent.from_any``.
+            event (object): Raw event value accepted by ``SensorEvent.from_any``.
 
         Returns:
             None: This method enqueues the event in place.
@@ -103,11 +115,11 @@ class SensorEventQueue:
         """
         self._queue.put(SensorEvent.from_any(event))
 
-    def get(self, timeout: Any = None) -> SensorEvent:
+    def get(self, timeout: float | None = None) -> SensorEvent:
         """Dequeue one normalized sensor event.
 
         Args:
-            timeout (Any): Timeout forwarded to the underlying queue implementation.
+            timeout (float | None): Timeout forwarded to the underlying queue implementation.
 
         Returns:
             SensorEvent: Next normalized event in FIFO order.

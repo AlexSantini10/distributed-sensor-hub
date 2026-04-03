@@ -390,11 +390,13 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
     except ValueError as exc:
         raise ValueError(f"Unsupported sensor type: {sensor_type_raw}") from exc
 
-    period_ms = int(_get_sensor_value(env, index, SensorEnvSuffix.PERIOD_MS, default="0"))
+    period_ms = int(
+        _get_sensor_value_or_default(env, index, SensorEnvSuffix.PERIOD_MS, default="0")
+    )
     if period_ms <= 0:
         raise ValueError(f"Invalid {_sensor_key(index, SensorEnvSuffix.PERIOD_MS)}")
 
-    name = _get_sensor_value(
+    name = _get_sensor_value_or_default(
         env,
         index,
         SensorEnvSuffix.NAME,
@@ -423,12 +425,17 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             period_ms=period_ms,
             unit=unit,
             p_true=float(
-                _get_sensor_value(env, index, SensorEnvSuffix.P_TRUE, default="0.5")
+                _get_sensor_value_or_default(
+                    env,
+                    index,
+                    SensorEnvSuffix.P_TRUE,
+                    default="0.5",
+                )
             ),
         )
 
     if sensor_type == SensorType.CATEGORICAL:
-        raw_values = _get_sensor_value(
+        raw_values = _get_sensor_value_or_default(
             env,
             index,
             SensorEnvSuffix.VALUES,
@@ -460,10 +467,20 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             period_ms=period_ms,
             unit=unit,
             start=float(
-                _get_sensor_value(env, index, SensorEnvSuffix.START, default="0")
+                _get_sensor_value_or_default(
+                    env,
+                    index,
+                    SensorEnvSuffix.START,
+                    default="0",
+                )
             ),
             step_pct=float(
-                _get_sensor_value(env, index, SensorEnvSuffix.STEP_PCT, default="1")
+                _get_sensor_value_or_default(
+                    env,
+                    index,
+                    SensorEnvSuffix.STEP_PCT,
+                    default="1",
+                )
             ),
         )
 
@@ -475,13 +492,28 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             period_ms=period_ms,
             unit=unit,
             start=float(
-                _get_sensor_value(env, index, SensorEnvSuffix.START, default="0")
+                _get_sensor_value_or_default(
+                    env,
+                    index,
+                    SensorEnvSuffix.START,
+                    default="0",
+                )
             ),
             slope=float(
-                _get_sensor_value(env, index, SensorEnvSuffix.SLOPE, default="0.1")
+                _get_sensor_value_or_default(
+                    env,
+                    index,
+                    SensorEnvSuffix.SLOPE,
+                    default="0.1",
+                )
             ),
             noise=float(
-                _get_sensor_value(env, index, SensorEnvSuffix.NOISE, default="0.0")
+                _get_sensor_value_or_default(
+                    env,
+                    index,
+                    SensorEnvSuffix.NOISE,
+                    default="0.0",
+                )
             ),
         )
 
@@ -493,10 +525,15 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             period_ms=period_ms,
             unit=unit,
             baseline=float(
-                _get_sensor_value(env, index, SensorEnvSuffix.BASELINE, default="0")
+                _get_sensor_value_or_default(
+                    env,
+                    index,
+                    SensorEnvSuffix.BASELINE,
+                    default="0",
+                )
             ),
             spike_height=float(
-                _get_sensor_value(
+                _get_sensor_value_or_default(
                     env,
                     index,
                     SensorEnvSuffix.SPIKE_HEIGHT,
@@ -504,7 +541,12 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
                 )
             ),
             p_spike=float(
-                _get_sensor_value(env, index, SensorEnvSuffix.P_SPIKE, default="0.2")
+                _get_sensor_value_or_default(
+                    env,
+                    index,
+                    SensorEnvSuffix.P_SPIKE,
+                    default="0.2",
+                )
             ),
         )
 
@@ -516,10 +558,20 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             period_ms=period_ms,
             unit=unit,
             amplitude=float(
-                _get_sensor_value(env, index, SensorEnvSuffix.AMPLITUDE, default="1")
+                _get_sensor_value_or_default(
+                    env,
+                    index,
+                    SensorEnvSuffix.AMPLITUDE,
+                    default="1",
+                )
             ),
             frequency=float(
-                _get_sensor_value(env, index, SensorEnvSuffix.FREQUENCY, default="1")
+                _get_sensor_value_or_default(
+                    env,
+                    index,
+                    SensorEnvSuffix.FREQUENCY,
+                    default="1",
+                )
             ),
         )
 
@@ -529,8 +581,22 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
         name=name,
         period_ms=period_ms,
         unit=unit,
-        base=float(_get_sensor_value(env, index, SensorEnvSuffix.BASE, default="0")),
-        noise=float(_get_sensor_value(env, index, SensorEnvSuffix.NOISE, default="1")),
+        base=float(
+            _get_sensor_value_or_default(
+                env,
+                index,
+                SensorEnvSuffix.BASE,
+                default="0",
+            )
+        ),
+        noise=float(
+            _get_sensor_value_or_default(
+                env,
+                index,
+                SensorEnvSuffix.NOISE,
+                default="1",
+            )
+        ),
     )
 
 
@@ -570,6 +636,30 @@ def _get_sensor_value(
     if value is None:
         return default
     return value.strip()
+
+
+def _get_sensor_value_or_default(
+    env: Mapping[str, str],
+    index: int,
+    suffix: SensorEnvSuffix,
+    *,
+    default: str,
+) -> str:
+    """Read one indexed sensor environment-variable value with a required fallback.
+
+    Args:
+        env (Mapping[str, str]): Environment mapping to read from.
+        index (int): Zero-based sensor index.
+        suffix (SensorEnvSuffix): Sensor-variable suffix.
+        default (str): Fallback used when the variable is absent.
+
+    Returns:
+        str: Trimmed environment value or ``default`` when absent.
+    """
+    value = _get_sensor_value(env, index, suffix, default=default)
+    if value is None:
+        return default
+    return value
 
 
 def _require_sensor_float(

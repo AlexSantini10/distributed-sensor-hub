@@ -4,9 +4,8 @@ Responsibilities:
     - Assert that environment-defined sensors are instantiated with expected types and ids.
 """
 
-from typing import Any
-
 import pytest
+from pytest import MonkeyPatch
 
 from sensors.numeric_sensor import NumericSensor
 from sensors.sensor_manager import SensorManager
@@ -14,11 +13,11 @@ from utils.config import load_config
 
 
 @pytest.mark.sensors
-def test_sensor_manager_load_from_env(monkeypatch: Any) -> None:
+def test_sensor_manager_load_from_env(monkeypatch: MonkeyPatch) -> None:
     """Assert that environment variables produce the expected sensor instance.
 
     Args:
-        monkeypatch (Any): Pytest monkeypatch fixture used to set environment variables.
+        monkeypatch (MonkeyPatch): Pytest monkeypatch fixture used to set environment variables.
 
     Returns:
         None: This test asserts environment-driven sensor loading.

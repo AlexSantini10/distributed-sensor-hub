@@ -6,8 +6,6 @@ Responsibilities:
     publishers whose messages feed the distributed event pipeline.
 """
 
-from collections.abc import Callable
-
 from sensors.boolean_sensor import BooleanSensor
 from sensors.categorical_sensor import CategoricalSensor
 from sensors.incremental_sensor import IncrementalSensor
@@ -17,6 +15,7 @@ from sensors.spike_sensor import SpikeSensor
 from sensors.trend_sensor import TrendSensor
 from sensors.wave_sensor import WaveSensor
 from utils.config import SensorConfig, SensorType
+from utils.typing import SensorCallback
 
 
 SensorInstance = (
@@ -35,16 +34,16 @@ class SensorManager:
     """Represent configuration-driven ownership of local sensor publishers.
 
     Attributes:
-        callback (Callable[[dict[str, object]], None]): Shared sink that receives
+        callback (SensorCallback): Shared sink that receives
             every sensor message emitted by managed sensors.
         sensors (list[SensorInstance]): Loaded sensor instances that belong to this runtime.
     """
 
-    def __init__(self, callback: Callable[[dict[str, object]], None]) -> None:
+    def __init__(self, callback: SensorCallback) -> None:
         """Initialize the manager with a shared message sink.
 
         Args:
-            callback (Callable[[dict[str, object]], None]): Consumer invoked by all
+            callback (SensorCallback): Consumer invoked by all
                 managed sensors for emitted messages.
 
         Returns:

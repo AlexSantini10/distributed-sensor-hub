@@ -6,8 +6,6 @@ Responsibilities:
     - Verify duplicate registration and handler failures surface correctly.
 """
 
-from typing import Any
-
 import pytest
 
 from protocol.dispatcher import MessageDispatcher, ProtocolError
@@ -24,11 +22,11 @@ def test_dispatch_calls_correct_handler() -> None:
     dispatcher = MessageDispatcher()
     called = {}
 
-    def handler(msg: Any) -> None:
+    def handler(msg: Message) -> None:
         """Record handler invocation for the dispatched message.
 
         Args:
-            msg (Any): Protocol message passed by the dispatcher.
+            msg (Message): Protocol message passed by the dispatcher.
 
         Returns:
             None: This helper mutates the capture dictionary.
@@ -73,11 +71,11 @@ def test_handler_exception_is_propagated() -> None:
     """
     dispatcher = MessageDispatcher()
 
-    def handler(msg: Any) -> None:
+    def handler(msg: Message) -> None:
         """Raise a controlled exception for propagation testing.
 
         Args:
-            msg (Any): Protocol message passed by the dispatcher.
+            msg (Message): Protocol message passed by the dispatcher.
 
         Returns:
             None: This helper always raises.
@@ -107,11 +105,11 @@ def test_duplicate_handler_registration_fails() -> None:
     """
     dispatcher = MessageDispatcher()
 
-    def handler(msg: Any) -> None:
+    def handler(msg: Message) -> None:
         """Accept a dispatched message without side effects.
 
         Args:
-            msg (Any): Protocol message passed by the dispatcher.
+            msg (Message): Protocol message passed by the dispatcher.
 
         Returns:
             None: This helper intentionally performs no action.

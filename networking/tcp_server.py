@@ -11,8 +11,9 @@ import socket
 import struct
 import threading
 from types import TracebackType
-from typing import Any, Optional, Protocol
+from typing import Protocol
 
+from protocol.message import Message
 
 class Dispatcher(Protocol):
     """Define the dispatch contract for decoded inbound messages.
@@ -21,11 +22,11 @@ class Dispatcher(Protocol):
         None (None): This protocol defines behavior and no instance attributes.
     """
 
-    def dispatch(self, msg: Any) -> None:
+    def dispatch(self, msg: Message) -> None:
         """Handle a decoded protocol message.
 
         Args:
-            msg (Any): Decoded message object produced by the protocol layer.
+            msg (Message): Decoded message object produced by the protocol layer.
 
         Returns:
             None: This method forwards a decoded message to the protocol layer.
@@ -45,8 +46,8 @@ class TcpServer:
         _max_frame_size (int): Upper bound for inbound frame payload size.
         _backlog (int): Kernel listen backlog for pending connections.
         _stop_event (threading.Event): Shared shutdown signal for server threads.
-        _server_sock (Optional[socket.socket]): Listening socket, if started.
-        _accept_thread (Optional[threading.Thread]): Thread running the accept loop, if started.
+        _server_sock (socket.socket | None): Listening socket, if started.
+        _accept_thread (threading.Thread | None): Thread running the accept loop, if started.
         _lock (threading.Lock): Synchronizes connection and thread tracking.
         _connections (set[socket.socket]): Active accepted sockets.
         _conn_threads (set[threading.Thread]): Active per-connection worker threads.
@@ -93,8 +94,8 @@ class TcpServer:
         self._stop_event = threading.Event()
 
         # Listening socket and accept thread
-        self._server_sock: Optional[socket.socket] = None
-        self._accept_thread: Optional[threading.Thread] = None
+        self._server_sock: socket.socket | None = None
+        self._accept_thread: threading.Thread | None = None
 
         # Tracking of active connections and threads
         self._lock = threading.Lock()
@@ -290,7 +291,7 @@ class TcpServer:
             with self._lock:
                 self._conn_threads.discard(current)
 
-    def _read_frame(self, conn: socket.socket) -> Optional[bytes]:
+    def _read_frame(self, conn: socket.socket) -> bytes | None:
         """Read one length-prefixed payload from a socket.
 
         The framing contract is a 4-byte big-endian unsigned length followed by
@@ -301,7 +302,7 @@ class TcpServer:
             conn (socket.socket): Accepted socket connected to a remote peer.
 
         Returns:
-            Optional[bytes]: Payload bytes, ``b""`` for an empty frame, or
+            bytes | None: Payload bytes, ``b""`` for an empty frame, or
             ``None`` if the connection closes or violates framing rules.
         """
         header = self._recv_exact(conn, 4)
@@ -319,7 +320,7 @@ class TcpServer:
         payload = self._recv_exact(conn, length)
         return payload
 
-    def _recv_exact(self, conn: socket.socket, n: int) -> Optional[bytes]:
+    def _recv_exact(self, conn: socket.socket, n: int) -> bytes | None:
         """Receive exactly ``n`` bytes from a connection.
 
         Args:
@@ -327,7 +328,7 @@ class TcpServer:
             n (int): Number of bytes required.
 
         Returns:
-            Optional[bytes]: Exactly ``n`` bytes, or ``None`` if the stream
+            bytes | None: Exactly ``n`` bytes, or ``None`` if the stream
             closes, resets, or shutdown interrupts the read.
         """
         chunks: list[bytes] = []
@@ -353,7 +354,7 @@ class TcpServer:
 
         return b"".join(chunks)
 
-    def _decode_message(self, frame: bytes) -> "Message":
+    def _decode_message(self, frame: bytes) -> Message:
         """Decode a frame into the protocol-layer message representation.
 
         Args:
@@ -365,5 +366,4 @@ class TcpServer:
         Raises:
             Exception: Propagates decoder errors for malformed payloads.
         """
-        from protocol.message import Message
         return Message.decode(frame)

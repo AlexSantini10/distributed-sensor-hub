@@ -6,173 +6,183 @@ Responsibilities:
     - Preserve sender identity and logical timestamp metadata for merge policies.
 """
 
+from __future__ import annotations
+
 import json
 import time
+from collections.abc import Mapping
 
 from protocol.contracts import MessageField, TextEncoding
 from protocol.message_types import MessageType
+from utils.typing import JsonObject, JsonValue
 
 
 class Message:
-	"""Represent a validated protocol message exchanged between nodes.
+    """Represent a validated protocol message exchanged between nodes.
 
-	Messages use a JSON object envelope with ``type``, ``sender_id``,
-	``timestamp``, and ``payload`` fields. ``timestamp`` is a millisecond value
-	carried with the message so downstream components can apply ordering or merge
-	policies such as last-writer-wins without relying on transport order.
+    Messages use a JSON object envelope with ``type``, ``sender_id``,
+    ``timestamp``, and ``payload`` fields. ``timestamp`` is a millisecond value
+    carried with the message so downstream components can apply ordering or merge
+    policies such as last-writer-wins without relying on transport order.
 
-	Attributes:
-		msg_type (MessageType): Enumerated protocol message category.
-		sender_id (str): Stable identifier of the node that emitted the message.
-		payload (dict): Message-specific JSON object carried as the protocol body.
-		timestamp (int): Millisecond timestamp associated with the message envelope.
-	"""
+    Attributes:
+        msg_type (MessageType): Enumerated protocol message category.
+        sender_id (str): Stable identifier of the node that emitted the message.
+        payload (JsonObject): Message-specific JSON object carried as the protocol body.
+        timestamp (int): Millisecond timestamp associated with the message envelope.
+    """
 
-	def __init__(self, msg_type: MessageType, sender_id: str, payload: dict, timestamp: int | None = None):
-		"""Initialize and validate a protocol message.
+    def __init__(
+        self,
+        msg_type: MessageType,
+        sender_id: str,
+        payload: Mapping[str, JsonValue],
+        timestamp: int | None = None,
+    ) -> None:
+        """Initialize and validate a protocol message.
 
-		Args:
-			msg_type (MessageType): Enumerated protocol message category.
-			sender_id (str): Identifier of the node creating the message.
-			payload (dict): JSON-serializable mapping containing message-specific data.
-			timestamp (int | None): Optional millisecond timestamp. When omitted,
-			the current Unix time in milliseconds is used.
+        Args:
+            msg_type (MessageType): Enumerated protocol message category.
+            sender_id (str): Identifier of the node creating the message.
+            payload (Mapping[str, JsonValue]): JSON-compatible mapping containing
+                message-specific data.
+            timestamp (int | None): Optional millisecond timestamp. When omitted,
+                the current Unix time in milliseconds is used.
 
-		Returns:
-			None.
+        Returns:
+            None: This initializer stores and validates the message envelope.
 
-		Raises:
-			ValueError: If any field violates the message contract.
-		"""
-		self.msg_type = msg_type
-		self.sender_id = sender_id
-		self.payload = payload or {}
-		self.timestamp = timestamp if timestamp is not None else self._now_ms()
+        Raises:
+            ValueError: If any field violates the message contract.
+        """
+        self.msg_type = msg_type
+        self.sender_id = sender_id
+        self.payload: JsonObject = dict(payload)
+        self.timestamp = timestamp if timestamp is not None else self._now_ms()
 
-		self._validate()
+        self._validate()
 
-	@staticmethod
-	def _now_ms() -> int:
-		"""Return the current Unix time in milliseconds.
+    @staticmethod
+    def _now_ms() -> int:
+        """Return the current Unix time in milliseconds.
 
-		Returns:
-			int: Current wall-clock time in milliseconds.
-		"""
-		return int(time.time() * 1000)
+        Returns:
+            int: Current wall-clock time in milliseconds.
+        """
+        return int(time.time() * 1000)
 
-	def _validate(self) -> None:
-		"""Validate the in-memory message fields against the wire contract.
+    def _validate(self) -> None:
+        """Validate the in-memory message fields against the wire contract.
 
-		Returns:
-			None.
+        Returns:
+            None: This method raises on invalid message state.
 
-		Raises:
-			ValueError: If a field has the wrong type or a required field is invalid.
-		"""
-		if not isinstance(self.msg_type, MessageType):
-			raise ValueError(f"msg_type must be MessageType, got {self.msg_type}")
+        Raises:
+            ValueError: If a field has the wrong type or a required field is invalid.
+        """
+        if not isinstance(self.payload, dict):
+            raise ValueError(f"payload must be dict, got {type(self.payload)}")
 
-		if not isinstance(self.sender_id, str):
-			raise ValueError(f"sender_id must be str, got {type(self.sender_id)}")
+    def to_dict(self) -> JsonObject:
+        """Convert the message to the canonical JSON-object representation.
 
-		if not isinstance(self.payload, dict):
-			raise ValueError(f"payload must be dict, got {type(self.payload)}")
+        Returns:
+            JsonObject: Message envelope with ``type``, ``sender_id``, ``timestamp``,
+                and ``payload`` fields.
+        """
+        return {
+            MessageField.TYPE.value: self.msg_type.value,
+            MessageField.SENDER_ID.value: self.sender_id,
+            MessageField.TIMESTAMP.value: self.timestamp,
+            MessageField.PAYLOAD.value: self.payload,
+        }
 
-		if not isinstance(self.timestamp, int):
-			raise ValueError(f"timestamp must be int, got {type(self.timestamp)}")
+    def to_json(self) -> str:
+        """Serialize the message envelope to a JSON string.
 
-	def to_dict(self) -> dict:
-		"""Convert the message to the canonical JSON-object representation.
+        Returns:
+            str: JSON representation of the message.
+        """
+        return json.dumps(self.to_dict())
 
-		Returns:
-			dict: Message envelope with ``type``, ``sender_id``, ``timestamp``, and
-				``payload`` fields.
-		"""
-		return {
-			MessageField.TYPE.value: self.msg_type.value,
-			MessageField.SENDER_ID.value: self.sender_id,
-			MessageField.TIMESTAMP.value: self.timestamp,
-			MessageField.PAYLOAD.value: self.payload,
-		}
+    def to_bytes(self) -> bytes:
+        """Encode the message as UTF-8 JSON bytes for transport.
 
-	def to_json(self) -> str:
-		"""Serialize the message envelope to a JSON string.
+        Returns:
+            bytes: UTF-8 encoded message envelope.
+        """
+        return self.to_json().encode(TextEncoding.UTF8.value)
 
-		Returns:
-			str: JSON representation of the message.
-		"""
-		return json.dumps(self.to_dict())
+    @classmethod
+    def from_json(cls, raw: object) -> Message:
+        """Build a message from a decoded JSON object.
 
-	def to_bytes(self) -> bytes:
-		"""Encode the message as UTF-8 JSON bytes for transport.
+        Args:
+            raw (object): Decoded JSON object representing a protocol message.
 
-		Returns:
-			bytes: UTF-8 encoded message envelope.
-		"""
-		return self.to_json().encode(TextEncoding.UTF8.value)
+        Returns:
+            Message: Validated protocol message instance.
 
-	@classmethod
-	def from_json(cls, raw: dict) -> "Message":
-		"""Build a message from a decoded JSON object.
+        Raises:
+            ValueError: If required fields are missing or invalid.
+        """
+        if not isinstance(raw, Mapping):
+            raise ValueError("JSON object must be a dict")
 
-		Args:
-			raw (dict): Decoded JSON object representing a protocol message.
+        type_value = raw.get(MessageField.TYPE.value)
+        if not isinstance(type_value, str):
+            raise ValueError(f"Missing field: {MessageField.TYPE.value}")
 
-		Returns:
-			Message: Validated protocol message instance.
+        try:
+            msg_type = MessageType(type_value)
+        except ValueError as exc:
+            raise ValueError(f"Invalid message type: {type_value}") from exc
 
-		Raises:
-			ValueError: If required fields are missing or invalid.
-		"""
-		if not isinstance(raw, dict):
-			raise ValueError("JSON object must be a dict")
+        sender_id = raw.get(MessageField.SENDER_ID.value)
+        if not isinstance(sender_id, str):
+            raise ValueError(f"Missing field: {MessageField.SENDER_ID.value}")
 
-		type_str = raw.get(MessageField.TYPE.value)
-		if type_str is None:
-			raise ValueError(f"Missing field: {MessageField.TYPE.value}")
+        payload_value = raw.get(MessageField.PAYLOAD.value, {})
+        if not isinstance(payload_value, Mapping):
+            raise ValueError(f"payload must be dict, got {type(payload_value)}")
 
-		try:
-			msg_type = MessageType(type_str)
-		except ValueError as exc:
-			raise ValueError(f"Invalid message type: {type_str}") from exc
+        timestamp_value = raw.get(MessageField.TIMESTAMP.value)
+        if timestamp_value is not None and not isinstance(timestamp_value, int):
+            raise ValueError(f"timestamp must be int, got {type(timestamp_value)}")
 
-		sender_id = raw.get(MessageField.SENDER_ID.value)
-		if sender_id is None:
-			raise ValueError(f"Missing field: {MessageField.SENDER_ID.value}")
+        return cls(
+            msg_type=msg_type,
+            sender_id=sender_id,
+            payload=dict(payload_value),
+            timestamp=timestamp_value,
+        )
 
-		return cls(
-			msg_type=msg_type,
-			sender_id=sender_id,
-			payload=raw.get(MessageField.PAYLOAD.value, {}),
-			timestamp=raw.get(MessageField.TIMESTAMP.value),
-		)
+    @staticmethod
+    def encode(msg: Message) -> bytes:
+        """Encode a message instance for transport.
 
-	@staticmethod
-	def encode(msg: "Message") -> bytes:
-		"""Encode a message instance for transport.
+        Args:
+            msg (Message): Message to encode.
 
-		Args:
-			msg (Message): Message to encode.
+        Returns:
+            bytes: UTF-8 encoded message envelope.
+        """
+        return msg.to_bytes()
 
-		Returns:
-			bytes: UTF-8 encoded message envelope.
-		"""
-		return msg.to_bytes()
+    @staticmethod
+    def decode(json_bytes: bytes) -> Message:
+        """Decode UTF-8 JSON bytes into a validated message.
 
-	@staticmethod
-	def decode(json_bytes: bytes) -> "Message":
-		"""Decode UTF-8 JSON bytes into a validated message.
+        Args:
+            json_bytes (bytes): UTF-8 encoded JSON message envelope.
 
-		Args:
-			json_bytes (bytes): UTF-8 encoded JSON message envelope.
+        Returns:
+            Message: Decoded protocol message.
 
-		Returns:
-			Message: Decoded protocol message.
-
-		Raises:
-			UnicodeDecodeError: If ``json_bytes`` is not valid UTF-8.
-			json.JSONDecodeError: If the byte sequence is not valid JSON.
-			ValueError: If the decoded object does not satisfy the message contract.
-		"""
-		raw = json.loads(json_bytes.decode(TextEncoding.UTF8.value))
-		return Message.from_json(raw)
+        Raises:
+            UnicodeDecodeError: If ``json_bytes`` is not valid UTF-8.
+            json.JSONDecodeError: If the byte sequence is not valid JSON.
+            ValueError: If the decoded object does not satisfy the message contract.
+        """
+        raw: JsonValue = json.loads(json_bytes.decode(TextEncoding.UTF8.value))
+        return Message.from_json(raw)

@@ -6,18 +6,18 @@ Responsibilities:
 """
 
 import os
-from typing import Any
 
 import pytest
+from pytest import MonkeyPatch
 
 from utils.config import Config, LogLevel, _parse_peers
 
 
-def _set_base_env(monkeypatch: Any) -> None:
+def _set_base_env(monkeypatch: MonkeyPatch) -> None:
     """Populate the minimum environment required for config loading.
 
     Args:
-        monkeypatch (Any): Pytest monkeypatch fixture used to set environment variables.
+        monkeypatch (MonkeyPatch): Pytest monkeypatch fixture used to set environment variables.
 
     Returns:
         None: This helper mutates the process environment for the current test.
@@ -29,11 +29,11 @@ def _set_base_env(monkeypatch: Any) -> None:
     monkeypatch.setenv("LOG_FILE", "logs/test.log")
 
 
-def test_load_config_success(monkeypatch: Any) -> None:
+def test_load_config_success(monkeypatch: MonkeyPatch) -> None:
     """Assert that valid environment variables produce the expected config object.
 
     Args:
-        monkeypatch (Any): Pytest monkeypatch fixture used to set environment variables.
+        monkeypatch (MonkeyPatch): Pytest monkeypatch fixture used to set environment variables.
 
     Returns:
         None: This test asserts successful parsing.
@@ -60,11 +60,11 @@ def test_load_config_success(monkeypatch: Any) -> None:
     assert config.sensors == ()
 
 
-def test_missing_required_env(monkeypatch: Any) -> None:
+def test_missing_required_env(monkeypatch: MonkeyPatch) -> None:
     """Assert that missing required variables abort config loading.
 
     Args:
-        monkeypatch (Any): Pytest monkeypatch fixture used to remove environment variables.
+        monkeypatch (MonkeyPatch): Pytest monkeypatch fixture used to remove environment variables.
 
     Returns:
         None: This test asserts validation failure.
@@ -76,11 +76,11 @@ def test_missing_required_env(monkeypatch: Any) -> None:
         Config.from_env(dict(os.environ))
 
 
-def test_empty_bootstrap_peers(monkeypatch: Any) -> None:
+def test_empty_bootstrap_peers(monkeypatch: MonkeyPatch) -> None:
     """Assert that an empty peer list is accepted as no bootstrap peers.
 
     Args:
-        monkeypatch (Any): Pytest monkeypatch fixture used to set environment variables.
+        monkeypatch (MonkeyPatch): Pytest monkeypatch fixture used to set environment variables.
 
     Returns:
         None: This test asserts optional peer-list handling.

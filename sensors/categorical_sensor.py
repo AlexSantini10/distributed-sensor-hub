@@ -7,10 +7,10 @@ Responsibilities:
 """
 
 import random
-from collections.abc import Callable, Sequence
-from typing import Any
+from collections.abc import Sequence
 
 from sensors.base_sensor import BaseSensor
+from utils.typing import SensorCallback
 
 
 class CategoricalSensor(BaseSensor):
@@ -20,7 +20,7 @@ class CategoricalSensor(BaseSensor):
         sensor_id (str): Stable sensor identifier inherited from the base
             contract.
         period_ms (int | float): Emission period in milliseconds.
-        callback (Callable[[dict[str, Any]], None]): Consumer for emitted sensor
+        callback (SensorCallback): Consumer for emitted sensor
             messages.
         unit (str | None): Optional engineering unit included in metadata.
         categories (list[str]): Allowed output domain for emitted readings.
@@ -35,7 +35,7 @@ class CategoricalSensor(BaseSensor):
         sensor_id: str,
         categories: Sequence[str],
         period_ms: int | float,
-        callback: Callable[[dict[str, Any]], None],
+        callback: SensorCallback,
         *,
         unit: str | None = None,
     ) -> None:
@@ -46,7 +46,7 @@ class CategoricalSensor(BaseSensor):
             categories (Sequence[str]): Non-empty set of categories eligible for
                 emission.
             period_ms (int | float): Emission cadence in milliseconds.
-            callback (Callable[[dict[str, Any]], None]): Consumer invoked for
+            callback (SensorCallback): Consumer invoked for
                 each emitted message.
             unit (str | None): Optional engineering unit stored in metadata.
 

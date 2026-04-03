@@ -8,7 +8,6 @@ Responsibilities:
 import socket
 import struct
 import threading
-from typing import Any
 
 from networking.tcp_server import TcpServer
 from protocol.message import Message
@@ -20,7 +19,7 @@ class DummyDispatcher:
 
     Attributes:
         _event (threading.Event): Signal set when a message is dispatched.
-        messages (list): Ordered list of dispatched messages.
+        messages (list[Message]): Ordered list of dispatched messages.
     """
 
     def __init__(self) -> None:
@@ -30,13 +29,13 @@ class DummyDispatcher:
             None: This constructor does not return a value.
         """
         self._event = threading.Event()
-        self.messages = []
+        self.messages: list[Message] = []
 
-    def dispatch(self, msg: Any) -> None:
+    def dispatch(self, msg: Message) -> None:
         """Record one dispatched message and release waiters.
 
         Args:
-            msg (Any): Decoded protocol message delivered by the server.
+            msg (Message): Decoded protocol message delivered by the server.
 
         Returns:
             None: This method appends to the capture buffer.
@@ -75,11 +74,8 @@ def _send_frame(host: str, port: int, payload: bytes) -> None:
         s.sendall(frame)
 
 
-def test_tcp_server_dispatches_message(tmp_path: Any) -> None:
+def test_tcp_server_dispatches_message() -> None:
     """Assert that the TCP server dispatches one received framed message.
-
-    Args:
-        tmp_path (Any): Unused pytest fixture preserved by the existing test signature.
 
     Returns:
         None: This test asserts server dispatch behavior.

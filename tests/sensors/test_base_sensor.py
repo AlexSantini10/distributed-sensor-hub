@@ -6,11 +6,11 @@ Responsibilities:
 """
 
 import time
-from typing import Any
 
 import pytest
 
 from sensors.base_sensor import BaseSensor
+from utils.typing import SensorCallback
 
 
 @pytest.mark.sensors
@@ -40,7 +40,7 @@ def test_base_sensor_start_stop() -> None:
         Attributes:
             sensor_id (str): Inherited logical sensor identifier.
             period_ms (int): Inherited sample cadence.
-            callback (Any): Inherited event sink called by the sensor loop.
+            callback (SensorCallback | None): Inherited event sink called by the sensor loop.
         """
 
         def generate_value(self) -> int:
@@ -51,7 +51,7 @@ def test_base_sensor_start_stop() -> None:
             """
             return 1
 
-    def cb(evt: dict) -> None:
+    def cb(evt: dict[str, object]) -> None:
         """Record emitted sensor events for assertions.
 
         Args:

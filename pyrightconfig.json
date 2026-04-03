@@ -1,0 +1,28 @@
+{
+  "include": [
+    "node.py",
+    "membership",
+    "networking",
+    "protocol",
+    "runtime",
+    "sensors",
+    "state",
+    "utils",
+    "webapi"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".git",
+    ".pytest_cache",
+    ".pytest_tmp",
+    "logs",
+    "docs",
+    "docker",
+    "manual_tests",
+    "web"
+  ],
+  "typeCheckingMode": "standard",
+  "pythonVersion": "3.13",
+  "reportMissingTypeStubs": false,
+  "reportMissingImports": false
+}

@@ -7,10 +7,9 @@ Responsibilities:
 """
 
 import random
-from collections.abc import Callable
-from typing import Any
 
 from sensors.base_sensor import BaseSensor
+from utils.typing import SensorCallback
 
 
 class SpikeSensor(BaseSensor):
@@ -20,7 +19,7 @@ class SpikeSensor(BaseSensor):
         sensor_id (str): Stable sensor identifier inherited from the base
             contract.
         period_ms (int | float): Emission period in milliseconds.
-        callback (Callable[[dict[str, Any]], None] | None): Consumer for
+        callback (SensorCallback | None): Consumer for
             emitted sensor messages.
         unit (str | None): Optional engineering unit included in metadata.
         baseline (int | float): Value emitted when no spike occurs.
@@ -39,7 +38,7 @@ class SpikeSensor(BaseSensor):
         spike_height: int | float,
         p_spike: int | float,
         period_ms: int | float,
-        callback: Callable[[dict[str, Any]], None] | None = None,
+        callback: SensorCallback | None = None,
         unit: str | None = None,
     ) -> None:
         """Initialize the baseline and spike parameters.
@@ -50,7 +49,7 @@ class SpikeSensor(BaseSensor):
             spike_height (int | float): Additional value added during a spike.
             p_spike (int | float): Probability threshold for spike emission.
             period_ms (int | float): Emission cadence in milliseconds.
-            callback (Callable[[dict[str, Any]], None] | None): Consumer invoked
+            callback (SensorCallback | None): Consumer invoked
                 for each emitted message.
             unit (str | None): Optional engineering unit stored in metadata.
 

@@ -10,10 +10,10 @@ Responsibilities:
 import threading
 import time
 from queue import Empty
-from typing import Any
 
 from state.events import SensorEvent
 from state.node_state_store import NodeStateStore, SensorMeta, SensorRecord
+from utils.typing import JsonObject, JsonValue, LoggerLike, NodeSnapshot, SensorEventSource, SensorMetaDict
 
 
 class NodeStateWorker(threading.Thread):
@@ -21,28 +21,28 @@ class NodeStateWorker(threading.Thread):
 
     Attributes:
         node_id (str): Local node identifier used as the origin for locally generated updates.
-        event_queue (Any): Source queue supplying sensor events for local ingestion.
-        log (Any): Logger-like object used for state and failure reporting.
+        event_queue (SensorEventSource): Source queue supplying sensor events for local ingestion.
+        log (LoggerLike): Logger-like object used for state and failure reporting.
         _stop_event (threading.Event): Shutdown signal checked by the worker loop.
         _store (NodeStateStore): Thread-safe LWW store and incremental snapshot buffers.
-        _debug_dump_every_s (Any): Optional periodic dump cadence in seconds.
+        _debug_dump_every_s (float | None): Optional periodic dump cadence in seconds.
         _next_dump_ts (float | None): Monotonic deadline for the next periodic state dump.
     """
 
     def __init__(
         self,
         node_id: str,
-        event_queue: Any,
-        log: Any,
-        debug_dump_every_s: Any = None,
+        event_queue: SensorEventSource,
+        log: LoggerLike,
+        debug_dump_every_s: float | None = None,
     ) -> None:
         """Initialize the background worker and its LWW store.
 
         Args:
             node_id (str): Local node identifier for self-originated updates.
-            event_queue (Any): Queue-like object supporting ``get(timeout=...)``.
-            log (Any): Logger-like object supporting standard logging methods.
-            debug_dump_every_s (Any): Optional positive interval for periodic full-state dumps.
+            event_queue (SensorEventSource): Queue-like object supporting ``get(timeout=...)``.
+            log (LoggerLike): Logger-like object supporting standard logging methods.
+            debug_dump_every_s (float | None): Optional positive interval for periodic full-state dumps.
 
         Returns:
             None: This constructor does not return a value.
@@ -59,7 +59,7 @@ class NodeStateWorker(threading.Thread):
         self._debug_dump_every_s = debug_dump_every_s
         self._next_dump_ts = (
             time.time() + debug_dump_every_s
-            if isinstance(debug_dump_every_s, (int, float)) and debug_dump_every_s > 0
+            if debug_dump_every_s is not None and debug_dump_every_s > 0
             else None
         )
 
@@ -96,7 +96,8 @@ class NodeStateWorker(threading.Thread):
             return
 
         self.log_full_state(level="INFO")
-        self._next_dump_ts = now + float(self._debug_dump_every_s)
+        if self._debug_dump_every_s is not None:
+            self._next_dump_ts = now + self._debug_dump_every_s
 
     def _log_msg(self, level: str, msg: str) -> None:
         """Write one log message using the best available logger method.
@@ -108,9 +109,6 @@ class NodeStateWorker(threading.Thread):
         Returns:
             None: This method delegates emission to the logger-like object.
         """
-        if self.log is None:
-            return
-
         method = getattr(self.log, level, None)
         if callable(method):
             method(msg)
@@ -140,11 +138,11 @@ class NodeStateWorker(threading.Thread):
             f"period_ms={rec.meta.period_ms}"
         )
 
-    def dump_full_state(self) -> dict:
+    def dump_full_state(self) -> JsonObject:
         """Expose a deterministic inspection view of the full register set.
 
         Returns:
-            dict: Full state summary grouped by winning origin.
+            JsonObject: Full state summary grouped by winning origin.
         """
         return self._store.dump_full_state()
 
@@ -159,10 +157,10 @@ class NodeStateWorker(threading.Thread):
         """
         items = self._store.get_items_for_logging()
 
-        count_by_origin = {}
+        count_by_origin: dict[str, int] = {}
         for sensor_id, rec in items:
             origin = rec.origin
-            if not isinstance(origin, str) or origin == "":
+            if origin == "":
                 origin = "UNKNOWN"
             count_by_origin[origin] = count_by_origin.get(origin, 0) + 1
 
@@ -183,19 +181,20 @@ class NodeStateWorker(threading.Thread):
     def merge_update(
         self,
         sensor_id: str,
-        value: Any,
+        value: JsonValue,
         ts_ms: int,
         origin: str,
-        meta: Any = None,
+        meta: JsonObject | SensorMetaDict | None = None,
     ) -> bool:
         """Apply one local or remote sensor update under LWW ordering.
 
         Args:
             sensor_id (str): Logical sensor identifier shared across all origins.
-            value (Any): Candidate sensor value.
+            value (JsonValue): Candidate sensor value.
             ts_ms (int): Candidate timestamp used as the primary LWW key.
             origin (str): Candidate origin used as the secondary LWW tie-break key.
-            meta (Any): Optional metadata payload normalized into ``SensorMeta``.
+            meta (JsonObject | SensorMetaDict | None): Optional metadata payload normalized
+                into ``SensorMeta``.
 
         Returns:
             bool: ``True`` if the candidate becomes the new winner, else ``False``.
@@ -203,11 +202,9 @@ class NodeStateWorker(threading.Thread):
         if meta is None:
             meta = {}
 
-        if not isinstance(sensor_id, str) or sensor_id == "":
+        if sensor_id == "":
             return False
-        if not isinstance(origin, str) or origin == "":
-            return False
-        if not isinstance(ts_ms, int):
+        if origin == "":
             return False
 
         update = SensorRecord(
@@ -229,7 +226,7 @@ class NodeStateWorker(threading.Thread):
             self._log_msg("info", self._format_record_line(sensor_id, update))
             return True
 
-        if applied and reason == "newer_ts":
+        if applied and reason == "newer_ts" and previous is not None:
             self._log_msg(
                 "info",
                 f"LWW applied (newer_ts): sensor={sensor_id} origin={origin} "
@@ -238,7 +235,7 @@ class NodeStateWorker(threading.Thread):
             self._log_msg("info", self._format_record_line(sensor_id, update))
             return True
 
-        if applied and reason == "tie_break":
+        if applied and reason == "tie_break" and previous is not None:
             self._log_msg(
                 "info",
                 f"LWW applied (tie_break): sensor={sensor_id} origin={origin} "
@@ -247,12 +244,13 @@ class NodeStateWorker(threading.Thread):
             self._log_msg("info", self._format_record_line(sensor_id, update))
             return True
 
-        self._log_msg(
-            "debug",
-            f"LWW ignored (stale): sensor={sensor_id} origin={origin} "
-            f"ts={ts_ms} value={value} prev_origin={previous.origin} prev_ts={previous.ts_ms}",
-        )
-        self._log_msg("debug", self._format_record_line(sensor_id, previous))
+        if previous is not None:
+            self._log_msg(
+                "debug",
+                f"LWW ignored (stale): sensor={sensor_id} origin={origin} "
+                f"ts={ts_ms} value={value} prev_origin={previous.origin} prev_ts={previous.ts_ms}",
+            )
+            self._log_msg("debug", self._format_record_line(sensor_id, previous))
         return False
 
     def remove_sensor(self, sensor_id: str) -> bool:
@@ -266,11 +264,11 @@ class NodeStateWorker(threading.Thread):
         """
         return self._store.remove(sensor_id)
 
-    def _handle_sensor_event(self, event: Any) -> None:
+    def _handle_sensor_event(self, event: object) -> None:
         """Normalize one local event and merge it as a self-originated update.
 
         Args:
-            event (Any): Raw event accepted by ``SensorEvent.from_any``.
+            event (object): Raw event accepted by ``SensorEvent.from_any``.
 
         Returns:
             None: This method updates replicated state in place.
@@ -288,27 +286,27 @@ class NodeStateWorker(threading.Thread):
             meta=normalized_event.meta,
         )
 
-    def get_state_snapshot(self) -> dict:
+    def get_state_snapshot(self) -> NodeSnapshot:
         """Return a full state snapshot shaped for the Web API and UI.
 
         Returns:
-            dict: Full snapshot grouped by local node id and global sensor id.
+            NodeSnapshot: Full snapshot grouped by local node id and global sensor id.
         """
         return self._store.get_state_snapshot(node_id=self.node_id)
 
-    def get_updates_snapshot(self) -> dict:
+    def get_updates_snapshot(self) -> NodeSnapshot:
         """Drain updates intended for the Web API and UI consumer.
 
         Returns:
-            dict: Incremental snapshot of records not yet read by the UI consumer.
+            NodeSnapshot: Incremental snapshot of records not yet read by the UI consumer.
         """
         return self._store.get_updates_snapshot(node_id=self.node_id)
 
-    def pop_replication_updates(self) -> dict:
+    def pop_replication_updates(self) -> NodeSnapshot:
         """Drain updates intended for best-effort replication gossip.
 
         Returns:
-            dict: Incremental snapshot of records not yet read by the publisher thread.
+            NodeSnapshot: Incremental snapshot of records not yet read by the publisher thread.
         """
         return self._store.pop_replication_updates(node_id=self.node_id)
 
