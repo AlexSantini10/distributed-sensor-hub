@@ -1,14 +1,10 @@
-"""Membership protocol handlers for peer discovery exchanges.
+"""Handle membership messages used for peer discovery and convergence.
 
 Responsibilities:
-- Build message handlers bound to a specific peer table and send primitive.
-- Process join requests as best-effort membership advertisements.
-- Integrate peer-list gossip replies idempotently.
-- Notify the runtime when membership learns previously unknown peers.
-
-The handlers implement additive membership only: they discover peers and
-refresh local knowledge, but they do not remove peers or resolve conflicting
-address records.
+    - Build join and peer-list handlers bound to a shared membership table.
+    - Apply additive, idempotent membership updates from bootstrap and gossip.
+    - Reply with the local peer view so discovery can converge across nodes.
+    - Notify runtime code when membership learns a previously unknown peer.
 """
 
 from typing import Callable, Optional
@@ -30,19 +26,19 @@ def make_membership_handlers(
 	send: Sender,
 	self_node_id: str,
 	on_peer_discovered: Optional[OnPeerDiscovered] = None,
-):
+) -> tuple[Callable[[Message], None], Callable[[Message], None]]:
 	"""Create handlers for join and peer-list membership messages.
 
 	Args:
-		peer_table: Shared membership table updated by both handlers.
-		send: Transport callback used to send protocol messages to a peer ID.
-		self_node_id: Logical identifier of the local node.
-		on_peer_discovered: Optional callback invoked only when a previously
-			unknown peer is inserted into `peer_table`.
+		peer_table (PeerTable): Shared membership table updated by both handlers.
+		send (Sender): Transport callback used to send protocol messages to a peer ID.
+		self_node_id (str): Logical identifier of the local node.
+		on_peer_discovered (Optional[OnPeerDiscovered]): Optional callback invoked
+		only when a previously unknown peer is inserted into ``peer_table``.
 
 	Returns:
-		tuple[Callable[[Message], None], Callable[[Message], None]]: A pair of
-		handlers for `JOIN_REQUEST` and `PEER_LIST` messages.
+		tuple[Callable[[Message], None], Callable[[Message], None]]: Pair of
+		handlers for ``JOIN_REQUEST`` and ``PEER_LIST`` messages.
 	"""
 	log = get_logger(__name__, self_node_id)
 
@@ -50,7 +46,7 @@ def make_membership_handlers(
 		"""Invoke the discovery callback for a newly learned peer.
 
 		Args:
-			peer: Peer that was inserted into the membership table.
+			peer (Peer): Peer that was inserted into the membership table.
 
 		Returns:
 			None: This helper emits side effects only through the callback.
@@ -73,16 +69,11 @@ def make_membership_handlers(
 		"""Process a join request and reply with the current peer list.
 
 		Args:
-			msg: Incoming `JOIN_REQUEST` message whose payload must contain
-				`node_id`, `host`, and `port`.
+			msg (Message): Incoming ``JOIN_REQUEST`` message whose payload must
+			contain ``node_id``, ``host``, and ``port``.
 
 		Returns:
 			None: The handler updates membership state and may emit a reply.
-
-		Notes:
-			The handler treats repeated join requests as idempotent advertisements.
-			It replies to `msg.sender_id`, which is the transport-level sender,
-			rather than the logical `node_id` declared in the payload.
 		"""
 		payload = msg.payload
 
@@ -129,17 +120,12 @@ def make_membership_handlers(
 		"""Merge peers from a peer-list message into local membership state.
 
 		Args:
-			msg: Incoming `PEER_LIST` message whose payload must contain a
-				`peers` list of dictionaries with `node_id`, `host`, and `port`.
+			msg (Message): Incoming ``PEER_LIST`` message whose payload must
+			contain a ``peers`` list of dictionaries with ``node_id``, ``host``,
+			and ``port``.
 
 		Returns:
 			None: The handler updates membership state in place.
-
-		Notes:
-			This merge is additive and idempotent. Existing peers are retained,
-			invalid entries are skipped, and self entries are ignored. The message
-			format carries network coordinates only and does not attempt LWW-style
-			reconciliation of peer metadata.
 		"""
 		payload = msg.payload
 		peers = payload.get("peers")

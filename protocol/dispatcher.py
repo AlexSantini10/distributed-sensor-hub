@@ -1,9 +1,9 @@
-"""Route validated protocol messages to registered local handlers.
+"""Route validated protocol messages to node-local handlers.
 
 Responsibilities:
-    - Maintain a single handler binding for each protocol message type.
-    - Dispatch inbound messages according to their declared message type.
-    - Enforce fail-fast behavior for handler registration and local handler errors.
+    - Maintain one handler binding per supported protocol message type.
+    - Dispatch inbound messages according to their declared message category.
+    - Enforce local registration and error-propagation contracts for handlers.
 """
 
 from typing import Callable, Dict
@@ -16,27 +16,35 @@ Handler = Callable[[Message], None]
 
 
 class ProtocolError(Exception):
-    """Signal protocol-level contract violations in local dispatcher setup."""
+    """Signal protocol-level contract violations in local dispatcher setup.
+
+    Attributes:
+        None (None): This exception defines no additional instance attributes.
+    """
 
 
 class MessageDispatcher:
     """Dispatch inbound messages to type-specific handlers.
 
     Attributes:
-        _handlers: Mapping from message type to the handler responsible for that
-            protocol message on the current node.
+        _handlers (Dict[MessageType, Handler]): Mapping from message type to the
+        handler responsible for that protocol message on the current node.
     """
 
     def __init__(self):
-        """Initialize an empty dispatcher with no registered message handlers."""
+        """Initialize an empty dispatcher with no registered message handlers.
+
+        Returns:
+            None: This initializer configures an empty handler registry.
+        """
         self._handlers: Dict[MessageType, Handler] = {}
 
     def register(self, msg_type: MessageType, handler: Handler) -> None:
         """Bind a handler to a message type.
 
         Args:
-            msg_type: Protocol message type accepted by the handler.
-            handler: Callable invoked for inbound messages of ``msg_type``.
+            msg_type (MessageType): Protocol message type accepted by the handler.
+            handler (Handler): Callable invoked for inbound messages of ``msg_type``.
 
         Returns:
             None.
@@ -65,7 +73,7 @@ class MessageDispatcher:
         exceptions are delegated to the local error policy.
 
         Args:
-            msg: Validated protocol message to route.
+            msg (Message): Validated protocol message to route.
 
         Returns:
             None.
@@ -91,7 +99,7 @@ class MessageDispatcher:
         """Ignore an unsupported message type at the local protocol boundary.
 
         Args:
-            msg: Message whose type has no registered handler on this node.
+            msg (Message): Message whose type has no registered handler on this node.
 
         Returns:
             None.
@@ -105,8 +113,8 @@ class MessageDispatcher:
         """Propagate a handler failure according to the local fail-fast policy.
 
         Args:
-            msg: Message being processed when the handler failed.
-            exc: Exception raised by the handler.
+            msg (Message): Message being processed when the handler failed.
+            exc (Exception): Exception raised by the handler.
 
         Returns:
             None.

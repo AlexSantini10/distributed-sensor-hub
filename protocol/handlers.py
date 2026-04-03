@@ -1,10 +1,12 @@
-"""Provide default protocol handlers and handler factories.
+"""Provide protocol handlers and handler factories used by runtime wiring.
 
 Responsibilities:
-    - Define placeholders for protocol message types owned by other subsystems.
-    - Bind node-local dependencies into protocol handlers when wiring the node.
-    - Enforce message payload contracts for replicated sensor updates.
+    - Define placeholder handlers for message types owned by other subsystems.
+    - Bind node-local dependencies into message handlers during node startup.
+    - Enforce sensor-update payload contracts before local state merges occur.
 """
+
+from typing import Any, Callable
 
 from protocol.message import Message
 from utils.logging import get_logger
@@ -14,7 +16,7 @@ def handle_join_request(msg: Message) -> None:
 	"""Reject direct handling of a membership join request in this module.
 
 	Args:
-		msg: Inbound ``JOIN_REQUEST`` message.
+		msg (Message): Inbound ``JOIN_REQUEST`` message.
 
 	Returns:
 		None.
@@ -29,7 +31,7 @@ def handle_peer_list(msg: Message) -> None:
 	"""Reject direct handling of a membership peer list in this module.
 
 	Args:
-		msg: Inbound ``PEER_LIST`` message.
+		msg (Message): Inbound ``PEER_LIST`` message.
 
 	Returns:
 		None.
@@ -44,7 +46,7 @@ def handle_ping(msg: Message) -> None:
 	"""Log receipt of a liveness probe and reject unsupported processing.
 
 	Args:
-		msg: Inbound ``PING`` message.
+		msg (Message): Inbound ``PING`` message.
 
 	Returns:
 		None.
@@ -61,7 +63,7 @@ def handle_pong(msg: Message) -> None:
 	"""Reject processing of an unimplemented liveness acknowledgement.
 
 	Args:
-		msg: Inbound ``PONG`` message.
+		msg (Message): Inbound ``PONG`` message.
 
 	Returns:
 		None.
@@ -72,7 +74,10 @@ def handle_pong(msg: Message) -> None:
 	raise NotImplementedError("PONG not implemented yet")
 
 
-def make_sensor_update_handler(state_worker, self_node_id: str):
+def make_sensor_update_handler(
+	state_worker: Any,
+	self_node_id: str,
+) -> Callable[[Message], None]:
 	"""Create a handler for replicated sensor updates.
 
 	The returned handler expects a ``SENSOR_UPDATE`` payload with the fields
@@ -83,11 +88,11 @@ def make_sensor_update_handler(state_worker, self_node_id: str):
 	last-writer-wins policy based on ``ts_ms`` and origin metadata.
 
 	Args:
-		state_worker: Local state merge component exposing ``merge_update``.
-		self_node_id: Identifier of the local node used for logger scoping.
+		state_worker (Any): Local state merge component exposing ``merge_update``.
+		self_node_id (str): Identifier of the local node used for logger scoping.
 
 	Returns:
-		callable[[Message], None]: Handler that validates and merges
+		Callable[[Message], None]: Handler that validates and merges
 		``SENSOR_UPDATE`` messages.
 	"""
 	log = get_logger(__name__, self_node_id)
@@ -100,10 +105,13 @@ def make_sensor_update_handler(state_worker, self_node_id: str):
 		state worker's conflict-resolution policy.
 
 		Args:
-			msg: Inbound ``SENSOR_UPDATE`` message.
+			msg (Message): Inbound ``SENSOR_UPDATE`` message.
 
 		Returns:
-			None.
+			None: This handler validates the payload and attempts a local merge.
+
+		Raises:
+			Exception: Merge failures are caught internally, logged, and not propagated.
 		"""
 		payload = msg.payload or {}
 
@@ -149,7 +157,7 @@ def handle_sensor_update(msg: Message) -> None:
 	"""Warn that sensor-update handling has not been wired for this node.
 
 	Args:
-		msg: Inbound ``SENSOR_UPDATE`` message.
+		msg (Message): Inbound ``SENSOR_UPDATE`` message.
 
 	Returns:
 		None.
@@ -163,7 +171,7 @@ def handle_gossip_state(msg: Message) -> None:
 	"""Reject processing of an unimplemented state gossip message.
 
 	Args:
-		msg: Inbound ``GOSSIP_STATE`` message.
+		msg (Message): Inbound ``GOSSIP_STATE`` message.
 
 	Returns:
 		None.
@@ -178,7 +186,7 @@ def handle_full_sync_request(msg: Message) -> None:
 	"""Reject processing of an unimplemented full-sync request.
 
 	Args:
-		msg: Inbound ``FULL_SYNC_REQUEST`` message.
+		msg (Message): Inbound ``FULL_SYNC_REQUEST`` message.
 
 	Returns:
 		None.
@@ -193,7 +201,7 @@ def handle_full_sync_response(msg: Message) -> None:
 	"""Reject processing of an unimplemented full-sync response.
 
 	Args:
-		msg: Inbound ``FULL_SYNC_RESPONSE`` message.
+		msg (Message): Inbound ``FULL_SYNC_RESPONSE`` message.
 
 	Returns:
 		None.
@@ -208,7 +216,7 @@ def handle_error(msg: Message) -> None:
 	"""Reject processing of an unimplemented protocol error message.
 
 	Args:
-		msg: Inbound ``ERROR`` message.
+		msg (Message): Inbound ``ERROR`` message.
 
 	Returns:
 		None.
@@ -223,7 +231,7 @@ def handle_ack(msg: Message) -> None:
 	"""Reject processing of an unimplemented acknowledgement message.
 
 	Args:
-		msg: Inbound ``ACK`` message.
+		msg (Message): Inbound ``ACK`` message.
 
 	Returns:
 		None.

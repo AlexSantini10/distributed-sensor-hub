@@ -1,7 +1,7 @@
-"""Membership package for peer discovery and peer-view maintenance.
+"""Provide membership primitives for peer discovery and view maintenance.
 
 Responsibilities:
-- Define the peer record used by the node's membership subsystem.
-- Maintain the local membership table with thread-safe access.
-- Expose handlers for join and gossip-style peer-list exchanges.
+    - Define the peer record exchanged by membership and gossip flows.
+    - Maintain the local peer table with thread-safe additive updates.
+    - Expose handlers for join requests and peer-list convergence messages.
 """

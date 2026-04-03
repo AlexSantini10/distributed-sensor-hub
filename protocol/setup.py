@@ -1,12 +1,12 @@
-"""Wire protocol handlers and node-local dependencies into a dispatcher.
+"""Assemble protocol routing and handler bindings for a runtime node.
 
 Responsibilities:
-    - Build the protocol dispatcher used by the node runtime.
-    - Create the membership peer table shared with membership handlers.
-    - Register message handlers for membership, liveness, and state replication.
+    - Build the dispatcher used to route validated inbound messages.
+    - Create the shared membership table consumed by membership handlers.
+    - Register handlers for membership, liveness, replication, and control flows.
 """
 
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 from protocol.dispatcher import MessageDispatcher
 from protocol.message_types import MessageType
@@ -22,8 +22,8 @@ OnPeerDiscovered = Callable[[MembershipPeer], None]
 
 def setup_protocol(
 	self_node_id: str,
-	send_function,
-	state_worker=None,
+	send_function: Any,
+	state_worker: Any = None,
 	on_peer_discovered: Optional[OnPeerDiscovered] = None,
 ) -> Tuple[MessageDispatcher, PeerTable]:
 	"""Build the protocol dispatcher and register message handlers.
@@ -34,11 +34,11 @@ def setup_protocol(
 	node and updated by membership handlers as peers are discovered or announced.
 
 	Args:
-		self_node_id: Identifier of the local node.
-		send_function: Callable used by handlers to emit outbound protocol messages.
-		state_worker: Optional state merge component for ``SENSOR_UPDATE`` handling.
-		on_peer_discovered: Optional callback invoked when membership discovers a
-			new peer.
+		self_node_id (str): Identifier of the local node.
+		send_function (Any): Callable used by handlers to emit outbound protocol messages.
+		state_worker (Any): Optional state merge component for ``SENSOR_UPDATE`` handling.
+		on_peer_discovered (Optional[OnPeerDiscovered]): Optional callback invoked
+		when membership discovers a new peer.
 
 	Returns:
 		Tuple[MessageDispatcher, PeerTable]: Configured dispatcher and the peer

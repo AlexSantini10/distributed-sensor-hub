@@ -1,10 +1,10 @@
-"""Thread-safe membership table for known peers.
+"""Maintain the local membership view for discovered peers.
 
 Responsibilities:
-- Maintain the local node's view of discovered peers.
-- Enforce idempotent insertion semantics for repeated gossip or join messages.
-- Expose snapshot-style reads for membership replies and other subsystems.
-- Track liveness metadata updates without defining eviction or suspicion policy.
+    - Store the node's current peer set with thread-safe access.
+    - Enforce additive, idempotent insertion for repeated join or gossip input.
+    - Expose snapshot reads used by membership replies and replication senders.
+    - Track liveness metadata without defining suspicion or eviction policy.
 """
 
 import threading
@@ -16,17 +16,20 @@ class PeerTable:
     """Store and query known peers for the local node.
 
     Attributes:
-        _self_node_id: Logical identifier of the local node.
-        _lock: Mutex protecting peer-table mutations and reads.
-        _peers: Mapping from peer node ID to the latest known peer record.
+        _self_node_id (str): Logical identifier of the local node.
+        _lock (threading.Lock): Mutex protecting peer-table mutations and reads.
+        _peers (Dict[str, Peer]): Mapping from peer node ID to the latest known peer record.
     """
 
     def __init__(self, self_node_id: str):
         """Initialize an empty membership table.
 
         Args:
-            self_node_id: Logical identifier of the local node. Entries with
-                this ID are rejected to avoid self-membership loops.
+            self_node_id (str): Logical identifier of the local node. Entries
+            with this ID are rejected to avoid self-membership loops.
+
+        Returns:
+            None: This initializer configures an empty peer table.
         """
         self._self_node_id = self_node_id
         self._lock = threading.Lock()
@@ -36,11 +39,11 @@ class PeerTable:
         """Insert a peer if it is new and not the local node.
 
         Args:
-            peer: Candidate peer record derived from bootstrap or gossip input.
+            peer (Peer): Candidate peer record derived from bootstrap or gossip input.
 
         Returns:
-            bool: `True` if the peer was inserted, or `False` if the peer
-            already existed or refers to the local node.
+            bool: True if the peer was inserted, or False if the peer already
+            existed or refers to the local node.
         """
         if peer.node_id == self._self_node_id:
             return False
@@ -56,11 +59,10 @@ class PeerTable:
         """Return the current peer record for a node ID.
 
         Args:
-            node_id: Logical identifier of the peer to look up.
+            node_id (str): Logical identifier of the peer to look up.
 
         Returns:
-            Optional[Peer]: The stored peer record, or `None` when the peer is
-            unknown.
+            Optional[Peer]: The stored peer record, or None when the peer is unknown.
         """
         with self._lock:
             return self._peers.get(node_id)
@@ -69,15 +71,11 @@ class PeerTable:
         """Record a liveness update for an existing peer.
 
         Args:
-            node_id: Logical identifier of the peer to refresh.
-            timestamp: Accepted heartbeat timestamp in Unix seconds.
+            node_id (str): Logical identifier of the peer to refresh.
+            timestamp (float): Accepted heartbeat timestamp in Unix seconds.
 
         Returns:
             None: This method updates state in place.
-
-        Notes:
-            Unknown peers are ignored. The update marks the peer as `alive`
-            because the caller has accepted a fresh liveness signal.
         """
         with self._lock:
             peer = self._peers.get(node_id)
@@ -92,10 +90,6 @@ class PeerTable:
 
         Returns:
             List[Peer]: Shallow snapshot of peer records known at call time.
-
-        Notes:
-            The returned list is detached from future table insertions or
-            removals, which makes it suitable for gossip replies.
         """
         with self._lock:
             return list(self._peers.values())

@@ -1,14 +1,10 @@
-"""Persistent outbound TCP transport for peer-to-peer cluster messaging.
+"""Maintain outbound framed TCP transport for peer-to-peer messaging.
 
 Responsibilities:
-    - Maintain one outgoing connection per known peer.
-    - Serialize application messages into framed payloads.
-    - Preserve per-peer enqueue order on successful sends.
-    - Retry failed connections with bounded backoff.
-
-The module provides best-effort delivery for higher-level distributed-system
-messages such as gossip exchanges and state updates. It does not guarantee
-delivery, deduplication, or merge semantics such as LWW conflict resolution.
+    - Keep one best-effort outbound connection per known peer.
+    - Serialize protocol messages into framed payloads suitable for transport.
+    - Preserve per-peer FIFO enqueue order while a connection remains healthy.
+    - Retry connection establishment with bounded backoff after failures.
 """
 
 import json
@@ -27,9 +23,9 @@ class Peer:
     """Describe a remote node addressable by the outbound transport.
 
     Attributes:
-        node_id: Stable identifier used to route messages to the peer worker.
-        host: IPv4 or hostname value used for the TCP connection target.
-        port: TCP port exposed by the peer server.
+        node_id (str): Stable identifier used to route messages to the peer worker.
+        host (str): IPv4 address or hostname used for the TCP connection target.
+        port (int): TCP port exposed by the peer server.
     """
 
     node_id: str
@@ -41,17 +37,17 @@ class TcpClient:
     """Maintain persistent outbound TCP sessions to known peers.
 
     Attributes:
-        _connect_timeout_s: Connection-establishment timeout in seconds.
-        _send_timeout_s: Send operation timeout in seconds.
-        _max_frame_size: Maximum allowed payload size before framing.
-        _backoff_initial_s: Initial reconnect delay in seconds.
-        _backoff_max_s: Upper bound for reconnect delay in seconds.
-        _backoff_mode: Backoff strategy name, either linear or exponential.
-        _idle_check_interval_s: Interval for idle connection liveness checks.
-        _tcp_keepalive: Whether OS-level TCP keepalive is enabled.
-        _stop_event: Shared shutdown signal for all peer workers.
-        _lock: Synchronizes access to the worker registry.
-        _workers: Active outbound workers keyed by peer node ID.
+        _connect_timeout_s (float): Connection-establishment timeout in seconds.
+        _send_timeout_s (float): Send operation timeout in seconds.
+        _max_frame_size (int): Maximum allowed payload size before framing.
+        _backoff_initial_s (float): Initial reconnect delay in seconds.
+        _backoff_max_s (float): Upper bound for reconnect delay in seconds.
+        _backoff_mode (str): Backoff strategy name, either linear or exponential.
+        _idle_check_interval_s (float): Interval for idle connection liveness checks.
+        _tcp_keepalive (bool): Whether OS-level TCP keepalive is enabled.
+        _stop_event (threading.Event): Shared shutdown signal for all peer workers.
+        _lock (threading.Lock): Synchronizes access to the worker registry.
+        _workers (dict[str, _PeerWorker]): Active outbound workers keyed by peer node ID.
     """
 
     def __init__(
@@ -68,14 +64,17 @@ class TcpClient:
         """Initialize the outbound transport manager.
 
         Args:
-            connect_timeout_s: Maximum time allowed for a TCP connect attempt.
-            send_timeout_s: Maximum time allowed for a framed send operation.
-            max_frame_size: Maximum payload size, in bytes, before rejection.
-            backoff_initial_s: Initial reconnect delay after a failure.
-            backoff_max_s: Maximum reconnect delay.
-            backoff_mode: Reconnect growth policy, typically exponential.
-            idle_check_interval_s: Delay between idle-side liveness probes.
-            tcp_keepalive: Enables socket keepalive when supported.
+            connect_timeout_s (float): Maximum time allowed for a TCP connect attempt.
+            send_timeout_s (float): Maximum time allowed for a framed send operation.
+            max_frame_size (int): Maximum payload size, in bytes, before rejection.
+            backoff_initial_s (float): Initial reconnect delay after a failure.
+            backoff_max_s (float): Maximum reconnect delay.
+            backoff_mode (str): Reconnect growth policy, typically exponential.
+            idle_check_interval_s (float): Delay between idle-side liveness probes.
+            tcp_keepalive (bool): Enables socket keepalive when supported.
+
+        Returns:
+            None: This initializer configures the outbound transport manager.
         """
         self._connect_timeout_s = connect_timeout_s
         self._send_timeout_s = send_timeout_s
@@ -97,7 +96,7 @@ class TcpClient:
         """Register a peer and start maintaining its outbound connection.
 
         Args:
-            peer: Peer descriptor identifying the remote node and endpoint.
+            peer (Peer): Peer descriptor identifying the remote node and endpoint.
 
         Returns:
             None
@@ -128,7 +127,7 @@ class TcpClient:
         """Remove a peer worker and discard unsent queued messages.
 
         Args:
-            peer_id: Node identifier of the peer to remove.
+            peer_id (str): Node identifier of the peer to remove.
 
         Returns:
             None
@@ -149,8 +148,8 @@ class TcpClient:
         exchanges.
 
         Args:
-            peer_id: Node identifier of the destination peer.
-            obj: JSON-serializable object or value exposing ``to_bytes()``.
+            peer_id (str): Node identifier of the destination peer.
+            obj (Any): JSON-serializable object or value exposing ``to_bytes()``.
 
         Returns:
             None
@@ -185,7 +184,7 @@ class TcpClient:
         """Resolve the worker responsible for a peer.
 
         Args:
-            peer_id: Node identifier of the destination peer.
+            peer_id (str): Node identifier of the destination peer.
 
         Returns:
             _PeerWorker: Worker assigned to the peer.
@@ -208,7 +207,7 @@ def _serialize_to_json_bytes(obj: Any) -> bytes:
     values. This keeps message-format ownership in the protocol layer.
 
     Args:
-        obj: Value to serialize for transport.
+        obj (Any): Value to serialize for transport.
 
     Returns:
         bytes: UTF-8 JSON bytes or protocol-defined binary bytes.
@@ -234,21 +233,21 @@ class _PeerWorker:
     """Own a single outbound peer connection and its send queue.
 
     Attributes:
-        _peer: Remote peer served by this worker.
-        _stop_event: Global stop signal shared by the client.
-        _connect_timeout_s: Timeout applied to connection attempts.
-        _send_timeout_s: Timeout applied to send operations.
-        _max_frame_size: Maximum permitted payload size.
-        _backoff_initial_s: Initial reconnect delay.
-        _backoff_max_s: Maximum reconnect delay.
-        _backoff_mode: Backoff policy name.
-        _idle_check_interval_s: Delay between idle liveness checks.
-        _tcp_keepalive: Whether keepalive is enabled on created sockets.
-        _queue: FIFO queue of serialized payloads awaiting transmission.
-        _sock_lock: Synchronizes socket replacement and shutdown.
-        _sock: Active socket or ``None`` when disconnected.
-        _thread: Background thread running the worker loop.
-        _local_stop: Per-worker shutdown signal.
+        _peer (Peer): Remote peer served by this worker.
+        _stop_event (threading.Event): Global stop signal shared by the client.
+        _connect_timeout_s (float): Timeout applied to connection attempts.
+        _send_timeout_s (float): Timeout applied to send operations.
+        _max_frame_size (int): Maximum permitted payload size.
+        _backoff_initial_s (float): Initial reconnect delay.
+        _backoff_max_s (float): Maximum reconnect delay.
+        _backoff_mode (str): Backoff policy name.
+        _idle_check_interval_s (float): Delay between idle liveness checks.
+        _tcp_keepalive (bool): Whether keepalive is enabled on created sockets.
+        _queue (queue.Queue[bytes]): FIFO queue of serialized payloads awaiting transmission.
+        _sock_lock (threading.Lock): Synchronizes socket replacement and shutdown.
+        _sock (Optional[socket.socket]): Active socket or None when disconnected.
+        _thread (threading.Thread): Background thread running the worker loop.
+        _local_stop (threading.Event): Per-worker shutdown signal.
     """
 
     def __init__(
@@ -267,16 +266,19 @@ class _PeerWorker:
         """Initialize a worker for a single remote peer.
 
         Args:
-            peer: Remote peer descriptor.
-            stop_event: Shared client-wide stop signal.
-            connect_timeout_s: Timeout for connection attempts.
-            send_timeout_s: Timeout for socket send operations.
-            max_frame_size: Maximum permitted payload size.
-            backoff_initial_s: Initial reconnect delay.
-            backoff_max_s: Maximum reconnect delay.
-            backoff_mode: Backoff policy name.
-            idle_check_interval_s: Delay between idle liveness checks.
-            tcp_keepalive: Enables keepalive on created sockets.
+            peer (Peer): Remote peer descriptor.
+            stop_event (threading.Event): Shared client-wide stop signal.
+            connect_timeout_s (float): Timeout for connection attempts.
+            send_timeout_s (float): Timeout for socket send operations.
+            max_frame_size (int): Maximum permitted payload size.
+            backoff_initial_s (float): Initial reconnect delay.
+            backoff_max_s (float): Maximum reconnect delay.
+            backoff_mode (str): Backoff policy name.
+            idle_check_interval_s (float): Delay between idle liveness checks.
+            tcp_keepalive (bool): Enables keepalive on created sockets.
+
+        Returns:
+            None: This initializer configures the peer worker state.
         """
         self._peer = peer
         self._stop_event = stop_event
@@ -331,7 +333,7 @@ class _PeerWorker:
         """Append a serialized payload to the peer FIFO queue.
 
         Args:
-            payload: Serialized message bytes without the length prefix.
+            payload (bytes): Serialized message bytes without the length prefix.
 
         Returns:
             None
@@ -436,7 +438,7 @@ class _PeerWorker:
         """Send one length-prefixed payload to the peer.
 
         Args:
-            payload: Serialized message bytes without the frame header.
+            payload (bytes): Serialized message bytes without the frame header.
 
         Returns:
             bool: ``True`` if the frame is sent or intentionally skipped,
@@ -518,7 +520,7 @@ class _PeerWorker:
         """Sleep for a reconnect backoff interval unless interrupted.
 
         Args:
-            backoff_s: Delay in seconds.
+            backoff_s (float): Delay in seconds.
 
         Returns:
             None
@@ -529,7 +531,7 @@ class _PeerWorker:
         """Sleep in short increments so shutdown can preempt the delay.
 
         Args:
-            seconds: Maximum time to sleep.
+            seconds (float): Maximum time to sleep.
 
         Returns:
             None
@@ -542,7 +544,7 @@ class _PeerWorker:
         """Compute the next reconnect delay.
 
         Args:
-            current: Current backoff delay in seconds.
+            current (float): Current backoff delay in seconds.
 
         Returns:
             float: Next bounded backoff delay.

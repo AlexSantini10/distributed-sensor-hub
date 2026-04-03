@@ -1,16 +1,16 @@
 """Coordinate node startup, steady-state execution, and shutdown.
 
 Responsibilities:
-    Start state management before any external input can arrive.
-    Assemble networking, membership bootstrap, sensor publication, and the
-    monitoring API into a single node process.
-    Stop subsystems in reverse dependency order to reduce message loss and
-    partially-torn-down runtime state.
+    - Start state processing before any network or sensor input can arrive.
+    - Assemble networking, membership, publication, and monitoring subsystems.
+    - Stop subsystems in reverse dependency order during process shutdown.
 """
 
 import os
 import time
+from typing import Any
 
+from networking.tcp_client import Peer as TcpPeer
 from networking.tcp_server import TcpServer
 
 from sensors.sensor_manager import SensorManager
@@ -32,26 +32,28 @@ class NodeApplication:
 	"""Manage the lifecycle of a distributed sensor-hub node.
 
 	Attributes:
-		config: Runtime configuration for node identity, bind address, and peers.
-		log: Logger used for lifecycle and failure reporting.
-		sensor_event_queue: Queue that transfers sensor events into state
-			processing.
-		state_worker: Background worker that owns authoritative local state.
-		client: Outbound TCP client used to send protocol messages.
-		server: Inbound TCP server that accepts protocol messages.
-		peer_table: Membership view shared with gossip and publication flows.
-		sensor_manager: Manager for local sensor producers.
-		publisher: Publisher that forwards local state changes to peers.
-		web_api: HTTP server exposing state snapshots for monitoring.
-		bootstrap_peers: Configured peers contacted during initial membership join.
+		config (Any): Runtime configuration for node identity, bind address, and peers.
+		log (Any): Logger used for lifecycle and failure reporting.
+		sensor_event_queue (SensorEventQueue): Queue that transfers sensor events into state processing.
+		state_worker (Any): Background worker that owns authoritative local state.
+		client (Any): Outbound TCP client used to send protocol messages.
+		server (Any): Inbound TCP server that accepts protocol messages.
+		peer_table (Any): Membership view shared with gossip and publication flows.
+		sensor_manager (Any): Manager for local sensor producers.
+		publisher (Any): Publisher that forwards local state changes to peers.
+		web_api (Any): HTTP server exposing state snapshots for monitoring.
+		bootstrap_peers (list[TcpPeer]): Configured peers contacted during initial membership join.
 	"""
 
-	def __init__(self, config, log):
+	def __init__(self, config: Any, log: Any) -> None:
 		"""Initialize the runtime container.
 
 		Args:
-			config: Runtime configuration object consumed by startup helpers.
-			log: Logger used by the application and child components.
+			config (Any): Runtime configuration object consumed by startup helpers.
+			log (Any): Logger used by the application and child components.
+
+		Returns:
+			None: This initializer stores runtime dependencies without starting them.
 		"""
 		self.config = config
 		self.log = log
@@ -65,7 +67,7 @@ class NodeApplication:
 		self.sensor_manager = None
 		self.publisher = None
 		self.web_api = None
-		self.bootstrap_peers = []
+		self.bootstrap_peers: list[TcpPeer] = []
 
 	def start(self) -> None:
 		"""Start all node subsystems in dependency order.
@@ -73,6 +75,9 @@ class NodeApplication:
 		The sequence ensures that state reception is available before networking,
 		that membership bootstrap happens before sensor publication, and that the
 		monitoring API observes a fully initialized node.
+
+		Returns:
+			None: This method starts the node subsystems in dependency order.
 		"""
 		self._start_state()
 		self._start_networking()
@@ -83,9 +88,11 @@ class NodeApplication:
 	def run_forever(self) -> None:
 		"""Keep the process alive until interruption or unrecoverable failure.
 
+		Returns:
+			None: This method blocks until shutdown is requested or a fatal error occurs.
+
 		Raises:
-			No exception is propagated. Failures are logged and shutdown is always
-			attempted.
+			Exception: Runtime failures are caught internally, logged, and not propagated.
 		"""
 		try:
 			while True:
@@ -105,6 +112,9 @@ class NodeApplication:
 
 		This method is best-effort. Each subsystem is asked to stop even if an
 		earlier shutdown step fails.
+
+		Returns:
+			None: This method stops all started subsystems.
 		"""
 		self.log.info("Node cleanup started")
 
@@ -145,7 +155,11 @@ class NodeApplication:
 		self.log.info("Node shutdown complete")
 
 	def _start_state(self) -> None:
-		"""Start the state worker before any network or sensor input begins."""
+		"""Start the state worker before any network or sensor input begins.
+
+		Returns:
+			None: This method creates and starts the local state worker.
+		"""
 		self.state_worker = NodeStateWorker(
 			node_id=self.config.node_id,
 			event_queue=self.sensor_event_queue,
@@ -157,9 +171,12 @@ class NodeApplication:
 	def _start_networking(self) -> None:
 		"""Create the protocol stack and start inbound networking.
 
+		Returns:
+			None: This method initializes protocol routing and starts inbound transport.
+
 		Raises:
 			Exception: Propagates setup or server startup failures so startup can
-				abort atomically.
+			abort atomically.
 		"""
 		try:
 			networking = setup_node_networking(
@@ -191,6 +208,9 @@ class NodeApplication:
 		Bootstrap peers are inserted optimistically so outbound gossip and update
 		routing have an initial target set. The explicit join requests establish
 		the node's advertised endpoint and begin membership convergence.
+
+		Returns:
+			None: This method seeds membership and emits initial join messages.
 		"""
 		seed_peer_table(
 			peer_table=self.peer_table,
@@ -214,9 +234,12 @@ class NodeApplication:
 	def _start_sensors(self) -> None:
 		"""Start local sensors and publish their updates to the cluster.
 
+		Returns:
+			None: This method starts local sensors and the replication publisher.
+
 		Raises:
 			Exception: Propagates initialization failures so partial startup does
-				not continue with missing data producers or publishers.
+			not continue with missing data producers or publishers.
 		"""
 		try:
 			self.sensor_manager = SensorManager(callback=self.sensor_event_queue.put)
@@ -241,9 +264,11 @@ class NodeApplication:
 	def _start_web_api(self) -> None:
 		"""Start the HTTP monitoring API backed by state snapshots.
 
+		Returns:
+			None: This method starts the HTTP monitoring API.
+
 		Raises:
-			Exception: Propagates API startup failures to keep process startup
-				consistent.
+			Exception: Propagates API startup failures to keep process startup consistent.
 		"""
 		web_api_port = int(os.getenv("WEB_API_PORT", str(self.config.port + 1000)))
 

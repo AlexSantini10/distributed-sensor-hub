@@ -1,7 +1,7 @@
-"""Runtime package for node process composition and startup flow.
+"""Provide runtime assembly for launching a sensor-hub node process.
 
 Responsibilities:
-    Provide the top-level application assembly for each node.
-    Wire bootstrap, networking, membership join, sensor ingestion, and HTTP
-    monitoring components into a runnable process.
+    - Compose process bootstrap, networking, membership, and sensor subsystems.
+    - Expose application-level startup and shutdown coordination for a node.
+    - Keep runtime wiring separate from protocol and transport implementations.
 """

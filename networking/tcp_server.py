@@ -1,33 +1,34 @@
-"""Inbound TCP server for framed protocol messages exchanged between nodes.
+"""Accept inbound framed TCP messages and dispatch them to the protocol layer.
 
 Responsibilities:
-    - Accept incoming peer connections on a bound endpoint.
-    - Read length-prefixed message frames from each connection.
-    - Decode frames into protocol messages and dispatch them upstream.
-    - Provide transport-level shutdown and connection lifecycle management.
-
-The server is transport-only. It forwards decoded messages used by gossip,
-membership, and replicated-state flows, but it does not apply merge semantics
-such as LWW or validate higher-level message intent beyond frame integrity.
+    - Bind a listening socket for node-to-node protocol traffic.
+    - Read length-prefixed frames from each accepted connection.
+    - Decode protocol envelopes and dispatch validated messages upstream.
+    - Manage connection lifecycle and shutdown without interpreting message semantics.
 """
 
 import socket
 import struct
 import threading
-from typing import Optional, Protocol
+from types import TracebackType
+from typing import Any, Optional, Protocol
 
 
 class Dispatcher(Protocol):
-    """Define the dispatch contract for decoded inbound messages."""
+    """Define the dispatch contract for decoded inbound messages.
 
-    def dispatch(self, msg) -> None:
+    Attributes:
+        None (None): This protocol defines behavior and no instance attributes.
+    """
+
+    def dispatch(self, msg: Any) -> None:
         """Handle a decoded protocol message.
 
         Args:
-            msg: Decoded message object produced by the protocol layer.
+            msg (Any): Decoded message object produced by the protocol layer.
 
         Returns:
-            None
+            None: This method forwards a decoded message to the protocol layer.
         """
         ...
 
@@ -36,19 +37,19 @@ class TcpServer:
     """Accept framed TCP messages and forward them to a dispatcher.
 
     Attributes:
-        _host: Local interface address bound by the listening socket.
-        _port: Local TCP port bound by the listening socket.
-        _dispatcher: Consumer of decoded protocol messages.
-        _recv_timeout_s: Timeout for per-connection reads.
-        _accept_timeout_s: Timeout for accept-loop wakeups.
-        _max_frame_size: Upper bound for inbound frame payload size.
-        _backlog: Kernel listen backlog for pending connections.
-        _stop_event: Shared shutdown signal for server threads.
-        _server_sock: Listening socket, if started.
-        _accept_thread: Thread running the accept loop, if started.
-        _lock: Synchronizes connection and thread tracking.
-        _connections: Active accepted sockets.
-        _conn_threads: Active per-connection worker threads.
+        _host (str): Local interface address bound by the listening socket.
+        _port (int): Local TCP port bound by the listening socket.
+        _dispatcher (Dispatcher): Consumer of decoded protocol messages.
+        _recv_timeout_s (float): Timeout for per-connection reads.
+        _accept_timeout_s (float): Timeout for accept-loop wakeups.
+        _max_frame_size (int): Upper bound for inbound frame payload size.
+        _backlog (int): Kernel listen backlog for pending connections.
+        _stop_event (threading.Event): Shared shutdown signal for server threads.
+        _server_sock (Optional[socket.socket]): Listening socket, if started.
+        _accept_thread (Optional[threading.Thread]): Thread running the accept loop, if started.
+        _lock (threading.Lock): Synchronizes connection and thread tracking.
+        _connections (set[socket.socket]): Active accepted sockets.
+        _conn_threads (set[threading.Thread]): Active per-connection worker threads.
     """
 
     def __init__(
@@ -64,13 +65,16 @@ class TcpServer:
         """Initialize the inbound transport server.
 
         Args:
-            host: Interface address to bind.
-            port: TCP port to bind.
-            dispatcher: Receiver for decoded inbound messages.
-            recv_timeout_s: Timeout for socket reads.
-            accept_timeout_s: Timeout for socket accepts.
-            max_frame_size: Maximum permitted inbound payload size in bytes.
-            backlog: Maximum number of pending connections.
+            host (str): Interface address to bind.
+            port (int): TCP port to bind.
+            dispatcher (Dispatcher): Receiver for decoded inbound messages.
+            recv_timeout_s (float): Timeout for socket reads.
+            accept_timeout_s (float): Timeout for socket accepts.
+            max_frame_size (int): Maximum permitted inbound payload size in bytes.
+            backlog (int): Maximum number of pending connections.
+
+        Returns:
+            None: This initializer configures the inbound transport server.
         """
         # Network binding parameters
         self._host = host
@@ -178,7 +182,7 @@ class TcpServer:
 
         self._server_sock = None
 
-    def __enter__(self):
+    def __enter__(self) -> "TcpServer":
         """Start the server when entering a context manager.
 
         Returns:
@@ -191,13 +195,19 @@ class TcpServer:
         self.start()
         return self
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
         """Stop the server when leaving a context manager.
 
         Args:
-            exc_type: Exception type raised inside the context, if any.
-            exc: Exception instance raised inside the context, if any.
-            tb: Traceback associated with ``exc``, if any.
+            exc_type (type[BaseException] | None): Exception type raised inside
+            the context, if any.
+            exc (BaseException | None): Exception instance raised inside the context, if any.
+            tb (TracebackType | None): Traceback associated with ``exc``, if any.
 
         Returns:
             bool: ``False`` so exceptions propagate to the caller.
@@ -243,7 +253,7 @@ class TcpServer:
         """Receive, decode, and dispatch messages from one connection.
 
         Args:
-            conn: Accepted socket connected to a remote peer.
+            conn (socket.socket): Accepted socket connected to a remote peer.
 
         Returns:
             None
@@ -288,7 +298,7 @@ class TcpServer:
         treated as protocol violations and terminate the connection.
 
         Args:
-            conn: Accepted socket connected to a remote peer.
+            conn (socket.socket): Accepted socket connected to a remote peer.
 
         Returns:
             Optional[bytes]: Payload bytes, ``b""`` for an empty frame, or
@@ -313,8 +323,8 @@ class TcpServer:
         """Receive exactly ``n`` bytes from a connection.
 
         Args:
-            conn: Accepted socket connected to a remote peer.
-            n: Number of bytes required.
+            conn (socket.socket): Accepted socket connected to a remote peer.
+            n (int): Number of bytes required.
 
         Returns:
             Optional[bytes]: Exactly ``n`` bytes, or ``None`` if the stream
@@ -343,11 +353,11 @@ class TcpServer:
 
         return b"".join(chunks)
 
-    def _decode_message(self, frame: bytes):
+    def _decode_message(self, frame: bytes) -> "Message":
         """Decode a frame into the protocol-layer message representation.
 
         Args:
-            frame: Raw payload bytes extracted from a transport frame.
+            frame (bytes): Raw payload bytes extracted from a transport frame.
 
         Returns:
             Message: Decoded protocol message instance.

@@ -1,9 +1,9 @@
-"""Define the canonical wire-format container for protocol messages.
+"""Define the canonical protocol envelope exchanged over the transport layer.
 
 Responsibilities:
-    - Validate message fields before they enter the transport or dispatcher.
-    - Serialize and deserialize the JSON message envelope used over TCP.
-    - Preserve protocol metadata such as sender identity and logical timestamp.
+    - Validate protocol fields before messages enter transport or dispatch.
+    - Serialize and deserialize the JSON envelope carried inside TCP frames.
+    - Preserve sender identity and logical timestamp metadata for merge policies.
 """
 
 import json
@@ -21,21 +21,21 @@ class Message:
 	policies such as last-writer-wins without relying on transport order.
 
 	Attributes:
-		msg_type: Enumerated protocol message category.
-		sender_id: Stable identifier of the node that emitted the message.
-		payload: Message-specific JSON object carried as the protocol body.
-		timestamp: Millisecond timestamp associated with the message envelope.
+		msg_type (MessageType): Enumerated protocol message category.
+		sender_id (str): Stable identifier of the node that emitted the message.
+		payload (dict): Message-specific JSON object carried as the protocol body.
+		timestamp (int): Millisecond timestamp associated with the message envelope.
 	"""
 
-	def __init__(self, msg_type: MessageType, sender_id: str, payload: dict, timestamp: int = None):
+	def __init__(self, msg_type: MessageType, sender_id: str, payload: dict, timestamp: int | None = None):
 		"""Initialize and validate a protocol message.
 
 		Args:
-			msg_type: Enumerated protocol message category.
-			sender_id: Identifier of the node creating the message.
-			payload: JSON-serializable mapping containing message-specific data.
-			timestamp: Optional millisecond timestamp. When omitted, the current
-				Unix time in milliseconds is used.
+			msg_type (MessageType): Enumerated protocol message category.
+			sender_id (str): Identifier of the node creating the message.
+			payload (dict): JSON-serializable mapping containing message-specific data.
+			timestamp (int | None): Optional millisecond timestamp. When omitted,
+			the current Unix time in milliseconds is used.
 
 		Returns:
 			None.
@@ -115,7 +115,7 @@ class Message:
 		"""Build a message from a decoded JSON object.
 
 		Args:
-			raw: Decoded JSON object representing a protocol message.
+			raw (dict): Decoded JSON object representing a protocol message.
 
 		Returns:
 			Message: Validated protocol message instance.
@@ -151,7 +151,7 @@ class Message:
 		"""Encode a message instance for transport.
 
 		Args:
-			msg: Message to encode.
+			msg (Message): Message to encode.
 
 		Returns:
 			bytes: UTF-8 encoded message envelope.
@@ -163,7 +163,7 @@ class Message:
 		"""Decode UTF-8 JSON bytes into a validated message.
 
 		Args:
-			json_bytes: UTF-8 encoded JSON message envelope.
+			json_bytes (bytes): UTF-8 encoded JSON message envelope.
 
 		Returns:
 			Message: Decoded protocol message.

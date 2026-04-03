@@ -1,15 +1,14 @@
 """Assemble runtime networking and membership bootstrap behavior.
 
 Responsibilities:
-    Build the transport and protocol stack used by a node at runtime.
-    Convert configured bootstrap addresses into an initial membership seed.
-    Send join messages and register newly discovered peers so gossip and state
-    dissemination can converge across the cluster.
+    - Build the transport and protocol stack used by a runtime node.
+    - Convert configured bootstrap addresses into initial membership seeds.
+    - Register discovered peers so gossip and state dissemination can converge.
 """
 
 import threading
 from dataclasses import dataclass
-from typing import Callable, List, Tuple
+from typing import Any, Callable, List, Tuple
 
 from protocol.message import Message
 from protocol.message_types import MessageType
@@ -26,11 +25,11 @@ class NetworkingContext:
 	"""Bundle the networking objects required by the runtime.
 
 	Attributes:
-		client: Outbound TCP client used to send protocol messages to peers.
-		server: Inbound server that accepts and dispatches protocol messages.
-		dispatcher: Protocol dispatcher that routes decoded messages to handlers.
-		peer_table: Membership view updated by protocol handlers and gossip.
-		bootstrap_peers: Configured peers available for initial cluster contact.
+		client (TcpClient): Outbound TCP client used to send protocol messages to peers.
+		server (object): Inbound server that accepts and dispatches protocol messages.
+		dispatcher (object): Protocol dispatcher that routes decoded messages to handlers.
+		peer_table (object): Membership view updated by protocol handlers and gossip.
+		bootstrap_peers (List[TcpPeer]): Configured peers available for initial cluster contact.
 	"""
 
 	client: TcpClient
@@ -44,9 +43,9 @@ def make_join_request(self_node_id: str, host: str, port: int) -> Message:
 	"""Build a membership `JOIN_REQUEST` message.
 
 	Args:
-		self_node_id: Stable identifier of the local node.
-		host: Advertised host that peers should use for future connections.
-		port: Advertised TCP port that peers should use for future connections.
+		self_node_id (str): Stable identifier of the local node.
+		host (str): Advertised host that peers should use for future connections.
+		port (int): Advertised TCP port that peers should use for future connections.
 
 	Returns:
 		Message: Protocol message announcing the local node's reachable endpoint.
@@ -68,21 +67,23 @@ def bootstrap_membership(
 	port: int,
 	peers: List[TcpPeer],
 	send: Callable[[str, Message], None],
-	log,
+	log: Any,
 ) -> None:
 	"""Send `JOIN_REQUEST` messages to configured bootstrap peers.
 
 	Args:
-		self_node_id: Stable identifier of the local node.
-		host: Advertised host for the local node.
-		port: Advertised TCP port for the local node.
-		peers: Bootstrap peers that should receive the initial join attempt.
-		send: Function that transmits a protocol message to a peer by node ID.
-		log: Logger used for membership bootstrap diagnostics.
+		self_node_id (str): Stable identifier of the local node.
+		host (str): Advertised host for the local node.
+		port (int): Advertised TCP port for the local node.
+		peers (List[TcpPeer]): Bootstrap peers that should receive the initial join attempt.
+		send (Callable[[str, Message], None]): Function that transmits a protocol message to a peer by node ID.
+		log (Any): Logger used for membership bootstrap diagnostics.
+
+	Returns:
+		None: This function emits best-effort join messages to bootstrap peers.
 
 	Raises:
-		No exception is propagated. Individual send failures are logged and the
-		remaining peers are still attempted.
+		Exception: Send failures are caught internally, logged, and not propagated.
 	"""
 	join_msg = make_join_request(
 		self_node_id=self_node_id,
@@ -105,8 +106,8 @@ def resolve_peer_host(node_id: str, advertised_host: str) -> str:
 	"""Resolve a connectable host from an advertised endpoint.
 
 	Args:
-		node_id: Peer identifier, which may also be a routable service name.
-		advertised_host: Host value advertised by the peer.
+		node_id (str): Peer identifier, which may also be a routable service name.
+		advertised_host (str): Host value advertised by the peer.
 
 	Returns:
 		str: Host value suitable for outbound connections.
@@ -125,16 +126,19 @@ class ClientPeerRegistry:
 	"""Track outbound client peers and suppress duplicate registrations.
 
 	Attributes:
-		_client: TCP client that owns the outbound peer list.
-		_known_peer_ids: Set of peer identifiers already registered locally.
-		_lock: Mutex guarding concurrent peer discovery updates.
+		_client (TcpClient): TCP client that owns the outbound peer list.
+		_known_peer_ids (set): Set of peer identifiers already registered locally.
+		_lock (threading.Lock): Mutex guarding concurrent peer discovery updates.
 	"""
 
 	def __init__(self, client: TcpClient):
 		"""Initialize the registry.
 
 		Args:
-			client: TCP client that should learn about discovered peers.
+			client (TcpClient): TCP client that should learn about discovered peers.
+
+		Returns:
+			None: This initializer configures the peer registry.
 		"""
 		self._client = client
 		self._known_peer_ids = set()
@@ -144,13 +148,15 @@ class ClientPeerRegistry:
 		"""Register a peer with the outbound client if it is not known yet.
 
 		Args:
-			node_id: Stable identifier of the peer.
-			host: Advertised host for the peer.
-			port: Advertised TCP port for the peer.
+			node_id (str): Stable identifier of the peer.
+			host (str): Advertised host for the peer.
+			port (int): Advertised TCP port for the peer.
+
+		Returns:
+			None: This method ensures the outbound client can address the peer.
 
 		Raises:
-			No exception is propagated. Duplicate-registration races are treated
-			as benign and absorbed.
+			RuntimeError: Duplicate registrations are treated as benign and absorbed.
 		"""
 		with self._lock:
 			if node_id in self._known_peer_ids:
@@ -177,9 +183,9 @@ def build_bootstrap_peers(bootstrap_peers: List[Tuple[str, int]], client: TcpCli
 	"""Register configured bootstrap peers with the outbound client.
 
 	Args:
-		bootstrap_peers: Host and port pairs configured for initial cluster
-			contact.
-		client: TCP client that should be able to send to bootstrap peers.
+		bootstrap_peers (List[Tuple[str, int]]): Host and port pairs configured
+		for initial cluster contact.
+		client (TcpClient): TCP client that should be able to send to bootstrap peers.
 
 	Returns:
 		List[TcpPeer]: Peer descriptors representing the configured bootstrap
@@ -201,17 +207,19 @@ def build_bootstrap_peers(bootstrap_peers: List[Tuple[str, int]], client: TcpCli
 	return registered_peers
 
 
-def seed_peer_table(peer_table, bootstrap_peers: List[TcpPeer], log) -> None:
+def seed_peer_table(peer_table: Any, bootstrap_peers: List[TcpPeer], log: Any) -> None:
 	"""Insert bootstrap peers into membership as a best-effort seed.
 
 	Args:
-		peer_table: Membership table consumed by gossip and message routing.
-		bootstrap_peers: Peers that should appear in the initial membership view.
-		log: Logger used for best-effort seeding diagnostics.
+		peer_table (Any): Membership table consumed by gossip and message routing.
+		bootstrap_peers (List[TcpPeer]): Peers that should appear in the initial membership view.
+		log (Any): Logger used for best-effort seeding diagnostics.
+
+	Returns:
+		None: This function inserts configured peers into the initial membership view.
 
 	Raises:
-		No exception is propagated. Seeding failures are logged and ignored so
-		active bootstrap can still proceed.
+		Exception: Seeding failures are caught internally, logged, and not propagated.
 	"""
 	for peer in bootstrap_peers:
 		try:
@@ -227,20 +235,20 @@ def seed_peer_table(peer_table, bootstrap_peers: List[TcpPeer], log) -> None:
 
 
 def setup_node_networking(
-	config,
-	log,
-	state_worker,
-	tcp_server_cls,
+	config: Any,
+	log: Any,
+	state_worker: Any,
+	tcp_server_cls: Any,
 ) -> NetworkingContext:
 	"""Create the runtime networking stack for a node.
 
 	Args:
-		config: Runtime configuration containing node identity, bind address, and
-			configured bootstrap peers.
-		log: Logger used for networking diagnostics.
-		state_worker: State worker used by protocol handlers to apply updates and
-			serve snapshots.
-		tcp_server_cls: Server class used to bind inbound transport.
+		config (Any): Runtime configuration containing node identity, bind address,
+		and configured bootstrap peers.
+		log (Any): Logger used for networking diagnostics.
+		state_worker (Any): State worker used by protocol handlers to apply updates
+		and serve snapshots.
+		tcp_server_cls (Any): Server class used to bind inbound transport.
 
 	Returns:
 		NetworkingContext: Fully assembled networking objects for the runtime.
@@ -252,7 +260,10 @@ def setup_node_networking(
 		"""Register a discovered peer and actively initiate reciprocal join.
 
 		Args:
-			peer: Membership entry discovered through gossip or join handling.
+			peer (MembershipPeer): Membership entry discovered through gossip or join handling.
+
+		Returns:
+			None: This callback registers the peer and initiates reciprocal discovery.
 
 		The follow-up `JOIN_REQUEST` reduces dependence on passive gossip by
 		prompting the new peer to learn the local node's advertised endpoint.

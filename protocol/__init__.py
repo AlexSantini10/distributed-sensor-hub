@@ -1,9 +1,9 @@
-"""Expose protocol primitives used to encode, route, and initialize messages.
+"""Expose the protocol types used to encode and route node messages.
 
 Responsibilities:
-    - Re-export the canonical message enum and message container.
-    - Re-export dispatcher types used by the node runtime.
-    - Provide a stable import surface for protocol setup code.
+    - Re-export the canonical message enum and message envelope container.
+    - Re-export dispatcher types used by runtime networking assembly.
+    - Provide a stable import surface for protocol-aware subsystems.
 """
 
 from .message_types import MessageType

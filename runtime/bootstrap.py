@@ -1,25 +1,27 @@
-"""Prepare process-wide runtime behavior before node startup.
+"""Prepare process-wide behavior required before node startup.
 
 Responsibilities:
-    Configure early logging that is available before the main application is
-    constructed.
-    Install global exception hooks so unexpected failures in the main thread
-    and worker threads are surfaced consistently.
-    Load environment variables and optionally clear persisted logs for a fresh
-    run.
+    - Configure early logging that is available before the application exists.
+    - Install global exception hooks for main-thread and worker-thread failures.
+    - Load environment variables and optionally clear persisted bootstrap logs.
 """
 
 import logging
 import os
 import sys
 import threading
+from types import TracebackType
 from typing import Optional
 
 from dotenv import load_dotenv
 
 
 def setup_bootstrap_logging() -> None:
-	"""Configure process logging for bootstrap-time diagnostics."""
+	"""Configure process logging for bootstrap-time diagnostics.
+
+	Returns:
+		None: This function installs bootstrap logging configuration.
+	"""
 	logging.basicConfig(
 		level=logging.DEBUG,
 		format="%(asctime)s | %(levelname)s | BOOTSTRAP | %(message)s",
@@ -27,13 +29,20 @@ def setup_bootstrap_logging() -> None:
 	)
 
 
-def _global_exception_hook(exc_type, exc, tb) -> None:
+def _global_exception_hook(
+	exc_type: type[BaseException],
+	exc: BaseException,
+	tb: TracebackType | None,
+) -> None:
 	"""Log an unhandled exception raised on the main thread.
 
 	Args:
-		exc_type: Exception class raised by the interpreter.
-		exc: Exception instance associated with the failure.
-		tb: Traceback object captured at the failure site.
+		exc_type (type[BaseException]): Exception class raised by the interpreter.
+		exc (BaseException): Exception instance associated with the failure.
+		tb (TracebackType | None): Traceback object captured at the failure site.
+
+	Returns:
+		None: This hook records the failure through bootstrap logging.
 	"""
 	logging.getLogger("bootstrap").critical(
 		"UNHANDLED EXCEPTION",
@@ -41,11 +50,15 @@ def _global_exception_hook(exc_type, exc, tb) -> None:
 	)
 
 
-def _thread_exception_hook(args) -> None:
+def _thread_exception_hook(args: threading.ExceptHookArgs) -> None:
 	"""Log an unhandled exception raised by a worker thread.
 
 	Args:
-		args: Thread exception payload provided by `threading.excepthook`.
+		args (threading.ExceptHookArgs): Thread exception payload provided by
+		``threading.excepthook``.
+
+	Returns:
+		None: This hook records the failure through bootstrap logging.
 	"""
 	logging.getLogger("bootstrap").critical(
 		f"UNHANDLED THREAD EXCEPTION in thread {args.thread.name}",
@@ -58,6 +71,9 @@ def install_global_exception_hooks() -> None:
 
 	This should run before subsystem construction so all threads inherit the
 	bootstrap failure-reporting behavior.
+
+	Returns:
+		None: This function installs exception hooks and loads environment variables.
 	"""
 	load_dotenv()
 	sys.excepthook = _global_exception_hook
@@ -68,10 +84,13 @@ def clear_log_file_if_requested(log_file: Optional[str]) -> None:
 	"""Truncate the configured log file when `CLEAR_LOG=true`.
 
 	Args:
-		log_file: Path to the log file to clear, if file logging is enabled.
+		log_file (Optional[str]): Path to the log file to clear, if file logging is enabled.
+
+	Returns:
+		None: This function truncates the configured log file when requested.
 
 	Raises:
-		No exception is propagated. File-system errors are logged and ignored.
+		OSError: File-system failures are caught internally, logged, and not propagated.
 	"""
 	clear_log = os.getenv("CLEAR_LOG", "false").lower() == "true"
 	if not clear_log or not log_file:
