@@ -1,3 +1,5 @@
+"""Send a manual PING message to a locally running node for smoke testing."""
+
 # Requires node.py to be running
 from networking.tcp_client import TcpClient, Peer
 from protocol.message import Message

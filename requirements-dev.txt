@@ -1,0 +1,2 @@
+-r requirements.txt
+pydocstyle>=6.3
