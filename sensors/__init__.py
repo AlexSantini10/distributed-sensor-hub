@@ -1,3 +1,11 @@
+"""Expose the sensor package public API.
+
+Responsibilities:
+    Provide stable imports for sensor types and orchestration utilities used by
+    runtime components that emit periodic sensor messages into the distributed
+    pipeline.
+"""
+
 from .base_sensor import BaseSensor
 from .numeric_sensor import NumericSensor
 from .boolean_sensor import BooleanSensor
@@ -19,5 +27,5 @@ __all__ = [
     "TrendSensor",
     "SpikeSensor",
     "WaveSensor",
-    "NoiseSensor"
+    "NoiseSensor",
 ]
