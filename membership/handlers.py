@@ -1,4 +1,16 @@
-# membership/handlers.py
+"""Membership protocol handlers for peer discovery exchanges.
+
+Responsibilities:
+- Build message handlers bound to a specific peer table and send primitive.
+- Process join requests as best-effort membership advertisements.
+- Integrate peer-list gossip replies idempotently.
+- Notify the runtime when membership learns previously unknown peers.
+
+The handlers implement additive membership only: they discover peers and
+refresh local knowledge, but they do not remove peers or resolve conflicting
+address records.
+"""
+
 from typing import Callable, Optional
 
 from protocol.message import Message
@@ -19,15 +31,34 @@ def make_membership_handlers(
 	self_node_id: str,
 	on_peer_discovered: Optional[OnPeerDiscovered] = None,
 ):
-	"""
-	Factory returning JOIN_REQUEST and PEER_LIST handlers
-	bound to a specific PeerTable, sender, and optional discovery callback.
+	"""Create handlers for join and peer-list membership messages.
 
-	on_peer_discovered(peer) is called only when a peer is newly added to the PeerTable.
+	Args:
+		peer_table: Shared membership table updated by both handlers.
+		send: Transport callback used to send protocol messages to a peer ID.
+		self_node_id: Logical identifier of the local node.
+		on_peer_discovered: Optional callback invoked only when a previously
+			unknown peer is inserted into `peer_table`.
+
+	Returns:
+		tuple[Callable[[Message], None], Callable[[Message], None]]: A pair of
+		handlers for `JOIN_REQUEST` and `PEER_LIST` messages.
 	"""
 	log = get_logger(__name__, self_node_id)
 
 	def _notify_discovered(peer: Peer) -> None:
+		"""Invoke the discovery callback for a newly learned peer.
+
+		Args:
+			peer: Peer that was inserted into the membership table.
+
+		Returns:
+			None: This helper emits side effects only through the callback.
+
+		Raises:
+			Exception: Any callback exception is caught internally and converted
+			into a warning log entry.
+		"""
 		if on_peer_discovered is None:
 			return
 		try:
@@ -39,6 +70,20 @@ def make_membership_handlers(
 			)
 
 	def handle_join_request(msg: Message) -> None:
+		"""Process a join request and reply with the current peer list.
+
+		Args:
+			msg: Incoming `JOIN_REQUEST` message whose payload must contain
+				`node_id`, `host`, and `port`.
+
+		Returns:
+			None: The handler updates membership state and may emit a reply.
+
+		Notes:
+			The handler treats repeated join requests as idempotent advertisements.
+			It replies to `msg.sender_id`, which is the transport-level sender,
+			rather than the logical `node_id` declared in the payload.
+		"""
 		payload = msg.payload
 
 		node_id = payload.get("node_id")
@@ -81,6 +126,21 @@ def make_membership_handlers(
 		send(msg.sender_id, reply)
 
 	def handle_peer_list(msg: Message) -> None:
+		"""Merge peers from a peer-list message into local membership state.
+
+		Args:
+			msg: Incoming `PEER_LIST` message whose payload must contain a
+				`peers` list of dictionaries with `node_id`, `host`, and `port`.
+
+		Returns:
+			None: The handler updates membership state in place.
+
+		Notes:
+			This merge is additive and idempotent. Existing peers are retained,
+			invalid entries are skipped, and self entries are ignored. The message
+			format carries network coordinates only and does not attempt LWW-style
+			reconciliation of peer metadata.
+		"""
 		payload = msg.payload
 		peers = payload.get("peers")
 
