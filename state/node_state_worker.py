@@ -317,3 +317,8 @@ class NodeStateWorker(threading.Thread):
             None: This method only signals shutdown.
         """
         self._stop_event.set()
+        if threading.current_thread() is self:
+            return
+        if self.ident is None:
+            return
+        self.join(timeout=2.0)

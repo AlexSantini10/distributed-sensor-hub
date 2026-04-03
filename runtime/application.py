@@ -6,6 +6,9 @@ Responsibilities:
     - Stop subsystems in reverse dependency order during process shutdown.
 """
 
+from __future__ import annotations
+
+import threading
 import time
 
 from networking.tcp_client import Peer as TcpPeer
@@ -69,6 +72,8 @@ class NodeApplication:
         self.publisher: SensorUpdatePublisher | None = None
         self.web_api: WebAPIServer | None = None
         self.bootstrap_peers: list[TcpPeer] = []
+        self._lifecycle_lock = threading.Lock()
+        self._stopped = False
 
     def start(self) -> None:
         """Start all node subsystems in dependency order.
@@ -80,11 +85,15 @@ class NodeApplication:
         Returns:
             None: This method starts the node subsystems in dependency order.
         """
-        self._start_state()
-        self._start_networking()
-        self._bootstrap_membership()
-        self._start_sensors()
-        self._start_web_api()
+        try:
+            self._start_state()
+            self._start_networking()
+            self._bootstrap_membership()
+            self._start_sensors()
+            self._start_web_api()
+        except Exception:
+            self.stop()
+            raise
 
     def run_forever(self) -> None:
         """Keep the process alive until interruption or unrecoverable failure.
@@ -111,6 +120,11 @@ class NodeApplication:
         Returns:
             None: This method stops all started subsystems.
         """
+        with self._lifecycle_lock:
+            if self._stopped:
+                return
+            self._stopped = True
+
         self.log.info("Node cleanup started")
 
         if self.publisher is not None:
@@ -125,17 +139,17 @@ class NodeApplication:
             except Exception:
                 self.log.error("Error while stopping sensors", exc_info=True)
 
-        if self.state_worker is not None:
-            try:
-                self.state_worker.stop()
-            except Exception:
-                self.log.error("Error while stopping state worker", exc_info=True)
-
         if self.web_api is not None:
             try:
                 self.web_api.stop()
             except Exception:
                 self.log.error("Error while stopping WebAPI", exc_info=True)
+
+        if self.state_worker is not None:
+            try:
+                self.state_worker.stop()
+            except Exception:
+                self.log.error("Error while stopping state worker", exc_info=True)
 
         if self.server is not None or self.client is not None:
             try:

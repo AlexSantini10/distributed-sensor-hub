@@ -7,6 +7,8 @@ Responsibilities:
     payload semantics across sensor implementations.
 """
 
+from __future__ import annotations
+
 import threading
 import time
 
@@ -60,6 +62,7 @@ class BaseSensor:
 
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._lifecycle_lock = threading.Lock()
 
     def generate_value(self) -> JsonValue:
         """Produce the next sensor reading for publication.
@@ -126,10 +129,17 @@ class BaseSensor:
             None (None): This method either starts the publisher thread or
                 leaves an already started sensor unchanged.
         """
-        if self._thread is not None:
-            return
-        self._thread = threading.Thread(target=self._loop, daemon=True)
-        self._thread.start()
+        with self._lifecycle_lock:
+            thread = self._thread
+            if thread is not None and thread.is_alive():
+                return
+
+            self._thread = threading.Thread(
+                target=self._loop,
+                name=f"sensor-{self.sensor_id}",
+                daemon=True,
+            )
+            self._thread.start()
 
     def stop(self) -> None:
         """Stop publishing readings and wait briefly for termination.
@@ -141,6 +151,15 @@ class BaseSensor:
             None (None): This method signals termination and joins the worker
                 thread when present.
         """
-        self._stop_event.set()
-        if self._thread:
-            self._thread.join(timeout=2)
+        with self._lifecycle_lock:
+            self._stop_event.set()
+            thread = self._thread
+
+        if thread is None:
+            return
+        if thread is threading.current_thread():
+            return
+        if thread.ident is None:
+            return
+
+        thread.join(timeout=2)

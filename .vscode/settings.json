@@ -5,6 +5,7 @@
         "networking",
         "membership",
         "web",
-        "types"
+        "types",
+        "concurrency"
     ]
 }

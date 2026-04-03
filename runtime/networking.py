@@ -128,6 +128,7 @@ class ClientPeerRegistry:
     Attributes:
         _client (TcpClient): TCP client that owns the outbound peer list.
         _known_peer_ids (set[str]): Set of peer identifiers already registered locally.
+        _pending_peer_ids (set[str]): Set of peer identifiers currently being registered.
         _lock (threading.Lock): Mutex guarding concurrent peer discovery updates.
     """
 
@@ -142,6 +143,7 @@ class ClientPeerRegistry:
         """
         self._client = client
         self._known_peer_ids: set[str] = set()
+        self._pending_peer_ids: set[str] = set()
         self._lock = threading.Lock()
 
     def ensure_peer(self, node_id: str, host: str, port: int) -> None:
@@ -156,8 +158,9 @@ class ClientPeerRegistry:
             None: This method ensures the outbound client can address the peer.
         """
         with self._lock:
-            if node_id in self._known_peer_ids:
+            if node_id in self._known_peer_ids or node_id in self._pending_peer_ids:
                 return
+            self._pending_peer_ids.add(node_id)
 
         connect_host = resolve_peer_host(node_id=node_id, advertised_host=host)
 
@@ -170,9 +173,17 @@ class ClientPeerRegistry:
                 )
             )
         except RuntimeError:
-            pass
+            with self._lock:
+                self._pending_peer_ids.discard(node_id)
+                self._known_peer_ids.add(node_id)
+            return
+        except Exception:
+            with self._lock:
+                self._pending_peer_ids.discard(node_id)
+            raise
 
         with self._lock:
+            self._pending_peer_ids.discard(node_id)
             self._known_peer_ids.add(node_id)
 
 

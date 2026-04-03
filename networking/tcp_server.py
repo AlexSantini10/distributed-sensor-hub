@@ -7,6 +7,8 @@ Responsibilities:
     - Manage connection lifecycle and shutdown without interpreting message semantics.
 """
 
+from __future__ import annotations
+
 import socket
 import struct
 import threading
@@ -14,6 +16,7 @@ from types import TracebackType
 from typing import Protocol
 
 from protocol.message import Message
+
 
 class Dispatcher(Protocol):
     """Define the dispatch contract for decoded inbound messages.
@@ -112,27 +115,35 @@ class TcpServer:
             RuntimeError: If the server has already been started.
             OSError: If socket creation, binding, or listening fails.
         """
-        if self._accept_thread is not None:
-            raise RuntimeError("Server already started")
-
-        self._stop_event.clear()
+        with self._lock:
+            if self._accept_thread is not None:
+                raise RuntimeError("Server already started")
+            self._stop_event.clear()
 
         # Create, bind, and configure listening socket
         server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_sock.bind((self._host, self._port))
-        server_sock.listen(self._backlog)
-        server_sock.settimeout(self._accept_timeout_s)
+        try:
+            server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server_sock.bind((self._host, self._port))
+            server_sock.listen(self._backlog)
+            server_sock.settimeout(self._accept_timeout_s)
+        except Exception:
+            server_sock.close()
+            raise
 
-        self._server_sock = server_sock
-
-        # Start accept loop in a dedicated thread
         t = threading.Thread(
             target=self._accept_loop,
             name="tcp-accept",
             daemon=True,
         )
-        self._accept_thread = t
+
+        with self._lock:
+            if self._accept_thread is not None or self._stop_event.is_set():
+                server_sock.close()
+                raise RuntimeError("Server already started")
+            self._server_sock = server_sock
+            self._accept_thread = t
+
         t.start()
 
     def stop(self) -> None:
@@ -141,18 +152,21 @@ class TcpServer:
         Returns:
             None
         """
-        self._stop_event.set()
+        with self._lock:
+            self._stop_event.set()
+            server_sock = self._server_sock
+            accept_thread = self._accept_thread
+            self._server_sock = None
+            self._accept_thread = None
+            conns = list(self._connections)
+            threads = list(self._conn_threads)
 
         # Close listening socket to unblock accept()
-        if self._server_sock is not None:
+        if server_sock is not None:
             try:
-                self._server_sock.close()
+                server_sock.close()
             except OSError:
                 pass
-
-        # Snapshot active connections and close them
-        with self._lock:
-            conns = list(self._connections)
 
         for conn in conns:
             try:
@@ -165,23 +179,18 @@ class TcpServer:
                 pass
 
         # Wait for accept thread to terminate
-        if self._accept_thread is not None:
-            self._accept_thread.join(timeout=5.0)
-            self._accept_thread = None
-
-        # Wait for all connection threads to terminate
-        with self._lock:
-            threads = list(self._conn_threads)
+        if accept_thread is not None and accept_thread is not threading.current_thread():
+            accept_thread.join(timeout=5.0)
 
         for t in threads:
+            if t is threading.current_thread():
+                continue
             t.join(timeout=5.0)
 
         # Cleanup internal state
         with self._lock:
             self._connections.clear()
             self._conn_threads.clear()
-
-        self._server_sock = None
 
     def __enter__(self) -> "TcpServer":
         """Start the server when entering a context manager.
@@ -222,15 +231,25 @@ class TcpServer:
         Returns:
             None
         """
-        assert self._server_sock is not None
-
         while not self._stop_event.is_set():
+            with self._lock:
+                server_sock = self._server_sock
+            if server_sock is None:
+                break
+
             try:
-                conn, _addr = self._server_sock.accept()
+                conn, _addr = server_sock.accept()
             except socket.timeout:
                 continue
             except OSError:
                 # Socket closed during shutdown
+                break
+
+            if self._stop_event.is_set():
+                try:
+                    conn.close()
+                except OSError:
+                    pass
                 break
 
             # Configure per-connection timeout

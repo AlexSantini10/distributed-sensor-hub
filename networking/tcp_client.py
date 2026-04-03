@@ -7,6 +7,8 @@ Responsibilities:
     - Retry connection establishment with bounded backoff after failures.
 """
 
+from __future__ import annotations
+
 import json
 import queue
 import selectors
@@ -92,6 +94,7 @@ class TcpClient:
 
         self._lock = threading.Lock()
         self._workers: dict[str, _PeerWorker] = {}
+        self._stopped = False
 
     def add_peer(self, peer: Peer) -> None:
         """Register a peer and start maintaining its outbound connection.
@@ -106,6 +109,8 @@ class TcpClient:
             RuntimeError: If a worker already exists for ``peer.node_id``.
         """
         with self._lock:
+            if self._stopped or self._stop_event.is_set():
+                raise RuntimeError("TcpClient is stopped")
             if peer.node_id in self._workers:
                 raise RuntimeError(f"Peer already exists: {peer.node_id}")
 
@@ -173,9 +178,11 @@ class TcpClient:
         Returns:
             None
         """
-        self._stop_event.set()
-
         with self._lock:
+            if self._stopped:
+                return
+            self._stopped = True
+            self._stop_event.set()
             workers = list(self._workers.values())
             self._workers.clear()
 
@@ -403,14 +410,18 @@ class _PeerWorker:
 
         sock.settimeout(self._send_timeout_s)
 
+        install_socket = False
         with self._sock_lock:
-            if self._should_stop():
-                try:
-                    sock.close()
-                except OSError:
-                    pass
-                return False
-            self._sock = sock
+            if not self._should_stop():
+                self._sock = sock
+                install_socket = True
+
+        if not install_socket:
+            try:
+                sock.close()
+            except OSError:
+                pass
+            return False
 
         return True
 
