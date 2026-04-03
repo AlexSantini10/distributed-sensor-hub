@@ -8,6 +8,7 @@ Responsibilities:
 
 from typing import Any, Callable
 
+from protocol.contracts import SensorUpdateField
 from protocol.message import Message
 from utils.logging import get_logger
 
@@ -115,11 +116,11 @@ def make_sensor_update_handler(
 		"""
 		payload = msg.payload or {}
 
-		sensor_id = payload.get("sensor_id")
-		value = payload.get("value")
-		ts_ms = payload.get("ts_ms")
-		origin = payload.get("origin") or msg.sender_id
-		meta = payload.get("meta") or {}
+		sensor_id = payload.get(SensorUpdateField.SENSOR_ID.value)
+		value = payload.get(SensorUpdateField.VALUE.value)
+		ts_ms = payload.get(SensorUpdateField.TS_MS.value)
+		origin = payload.get(SensorUpdateField.ORIGIN.value) or msg.sender_id
+		meta = payload.get(SensorUpdateField.META.value) or {}
 
 		if not isinstance(sensor_id, str) or sensor_id == "":
 			log.warning("Invalid SENSOR_UPDATE: missing/invalid sensor_id")

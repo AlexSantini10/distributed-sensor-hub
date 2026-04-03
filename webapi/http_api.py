@@ -11,6 +11,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from protocol.contracts import HttpContentType, TextEncoding
+
 
 class RequestHandler(BaseHTTPRequestHandler):
     """Handle read-only HTTP requests for state and update snapshots.
@@ -102,7 +104,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         """
         try:
             state = self._state_provider()
-            payload = json.dumps(state).encode("utf-8")
+            payload = json.dumps(state).encode(TextEncoding.UTF8.value)
         except Exception:
             if self._log:
                 self._log.error(
@@ -116,7 +118,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         self.send_response(200)
         self._send_cors_headers()
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", HttpContentType.JSON.value)
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
@@ -129,7 +131,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         """
         try:
             updates = self._updates_provider()
-            payload = json.dumps(updates).encode("utf-8")
+            payload = json.dumps(updates).encode(TextEncoding.UTF8.value)
         except Exception:
             if self._log:
                 self._log.error(
@@ -143,7 +145,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         self.send_response(200)
         self._send_cors_headers()
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", HttpContentType.JSON.value)
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)

@@ -9,6 +9,7 @@ Responsibilities:
 import json
 import time
 
+from protocol.contracts import MessageField, TextEncoding
 from protocol.message_types import MessageType
 
 
@@ -88,10 +89,10 @@ class Message:
 				``payload`` fields.
 		"""
 		return {
-			"type": self.msg_type.value,
-			"sender_id": self.sender_id,
-			"timestamp": self.timestamp,
-			"payload": self.payload,
+			MessageField.TYPE.value: self.msg_type.value,
+			MessageField.SENDER_ID.value: self.sender_id,
+			MessageField.TIMESTAMP.value: self.timestamp,
+			MessageField.PAYLOAD.value: self.payload,
 		}
 
 	def to_json(self) -> str:
@@ -108,7 +109,7 @@ class Message:
 		Returns:
 			bytes: UTF-8 encoded message envelope.
 		"""
-		return self.to_json().encode("utf-8")
+		return self.to_json().encode(TextEncoding.UTF8.value)
 
 	@classmethod
 	def from_json(cls, raw: dict) -> "Message":
@@ -126,24 +127,24 @@ class Message:
 		if not isinstance(raw, dict):
 			raise ValueError("JSON object must be a dict")
 
-		type_str = raw.get("type")
+		type_str = raw.get(MessageField.TYPE.value)
 		if type_str is None:
-			raise ValueError("Missing field: type")
+			raise ValueError(f"Missing field: {MessageField.TYPE.value}")
 
 		try:
 			msg_type = MessageType(type_str)
 		except ValueError as exc:
 			raise ValueError(f"Invalid message type: {type_str}") from exc
 
-		sender_id = raw.get("sender_id")
+		sender_id = raw.get(MessageField.SENDER_ID.value)
 		if sender_id is None:
-			raise ValueError("Missing field: sender_id")
+			raise ValueError(f"Missing field: {MessageField.SENDER_ID.value}")
 
 		return cls(
 			msg_type=msg_type,
 			sender_id=sender_id,
-			payload=raw.get("payload", {}),
-			timestamp=raw.get("timestamp"),
+			payload=raw.get(MessageField.PAYLOAD.value, {}),
+			timestamp=raw.get(MessageField.TIMESTAMP.value),
 		)
 
 	@staticmethod
@@ -173,5 +174,5 @@ class Message:
 			json.JSONDecodeError: If the byte sequence is not valid JSON.
 			ValueError: If the decoded object does not satisfy the message contract.
 		"""
-		raw = json.loads(json_bytes.decode("utf-8"))
+		raw = json.loads(json_bytes.decode(TextEncoding.UTF8.value))
 		return Message.from_json(raw)

@@ -6,9 +6,8 @@ Responsibilities:
     - Stop subsystems in reverse dependency order during process shutdown.
 """
 
-import os
 import time
-from typing import Any
+import logging
 
 from networking.tcp_client import Peer as TcpPeer
 from networking.tcp_server import TcpServer
@@ -26,14 +25,15 @@ from runtime.networking import (
 	seed_peer_table,
 	setup_node_networking,
 )
+from utils.config import Config
 
 
 class NodeApplication:
 	"""Manage the lifecycle of a distributed sensor-hub node.
 
 	Attributes:
-		config (Any): Runtime configuration for node identity, bind address, and peers.
-		log (Any): Logger used for lifecycle and failure reporting.
+		config (Config): Runtime configuration for node identity, bind address, and peers.
+		log (logging.LoggerAdapter): Logger used for lifecycle and failure reporting.
 		sensor_event_queue (SensorEventQueue): Queue that transfers sensor events into state processing.
 		state_worker (Any): Background worker that owns authoritative local state.
 		client (Any): Outbound TCP client used to send protocol messages.
@@ -45,12 +45,17 @@ class NodeApplication:
 		bootstrap_peers (list[TcpPeer]): Configured peers contacted during initial membership join.
 	"""
 
-	def __init__(self, config: Any, log: Any) -> None:
+	def __init__(
+		self,
+		config: Config,
+		log: logging.LoggerAdapter,
+	) -> None:
 		"""Initialize the runtime container.
 
 		Args:
-			config (Any): Runtime configuration object consumed by startup helpers.
-			log (Any): Logger used by the application and child components.
+			config (Config): Runtime configuration object consumed by startup helpers.
+			log (logging.LoggerAdapter): Logger used by the application
+				and child components.
 
 		Returns:
 			None: This initializer stores runtime dependencies without starting them.
@@ -243,7 +248,7 @@ class NodeApplication:
 		"""
 		try:
 			self.sensor_manager = SensorManager(callback=self.sensor_event_queue.put)
-			self.sensor_manager.load_from_env()
+			self.sensor_manager.load(self.config.sensors)
 			self.sensor_manager.start_all()
 			self.log.info(f"Started {len(self.sensor_manager.sensors)} sensors")
 
@@ -270,13 +275,13 @@ class NodeApplication:
 		Raises:
 			Exception: Propagates API startup failures to keep process startup consistent.
 		"""
-		web_api_port = int(os.getenv("WEB_API_PORT", str(self.config.port + 1000)))
-
 		try:
-			self.log.info(f"Starting WebAPI on {self.config.host}:{web_api_port}")
+			self.log.info(
+				f"Starting WebAPI on {self.config.host}:{self.config.web_api_port}"
+			)
 			self.web_api = WebAPIServer(
 				host=self.config.host,
-				port=web_api_port,
+				port=self.config.web_api_port,
 				state_provider=self.state_worker.get_state_snapshot,
 				updates_provider=self.state_worker.get_updates_snapshot,
 				log=self.log,

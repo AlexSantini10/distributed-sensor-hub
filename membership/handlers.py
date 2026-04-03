@@ -9,6 +9,7 @@ Responsibilities:
 
 from typing import Callable, Optional
 
+from protocol.contracts import MembershipField
 from protocol.message import Message
 from protocol.message_types import MessageType
 from membership.peer import Peer
@@ -77,9 +78,9 @@ def make_membership_handlers(
 		"""
 		payload = msg.payload
 
-		node_id = payload.get("node_id")
-		host = payload.get("host")
-		port = payload.get("port")
+		node_id = payload.get(MembershipField.NODE_ID.value)
+		host = payload.get(MembershipField.HOST.value)
+		port = payload.get(MembershipField.PORT.value)
 
 		if not node_id or not host or not isinstance(port, int):
 			log.warning("Invalid JOIN_REQUEST payload")
@@ -100,9 +101,9 @@ def make_membership_handlers(
 
 		peers_payload = [
 			{
-				"node_id": p.node_id,
-				"host": p.host,
-				"port": p.port,
+				MembershipField.NODE_ID.value: p.node_id,
+				MembershipField.HOST.value: p.host,
+				MembershipField.PORT.value: p.port,
 			}
 			for p in peer_table.list_peers()
 		]
@@ -110,7 +111,7 @@ def make_membership_handlers(
 		reply = Message(
 			msg_type=MessageType.PEER_LIST,
 			sender_id=self_node_id,
-			payload={"peers": peers_payload},
+			payload={MembershipField.PEERS.value: peers_payload},
 		)
 
 		# Reply to transport-level sender, not logical node_id
@@ -128,7 +129,7 @@ def make_membership_handlers(
 			None: The handler updates membership state in place.
 		"""
 		payload = msg.payload
-		peers = payload.get("peers")
+		peers = payload.get(MembershipField.PEERS.value)
 
 		if not isinstance(peers, list):
 			log.warning("Invalid PEER_LIST payload")
@@ -137,9 +138,9 @@ def make_membership_handlers(
 		added_count = 0
 
 		for entry in peers:
-			node_id = entry.get("node_id")
-			host = entry.get("host")
-			port = entry.get("port")
+			node_id = entry.get(MembershipField.NODE_ID.value)
+			host = entry.get(MembershipField.HOST.value)
+			port = entry.get(MembershipField.PORT.value)
 
 			if not node_id or not host or not isinstance(port, int):
 				continue

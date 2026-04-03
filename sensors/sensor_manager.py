@@ -1,14 +1,12 @@
-"""Define sensor loading and lifecycle orchestration from environment state.
+"""Define sensor loading and lifecycle orchestration from configuration state.
 
 Responsibilities:
-    Translate environment configuration into concrete sensor instances, enforce
-    configuration invariants, and coordinate the set of local publishers whose
-    messages feed the distributed event pipeline.
+    Translate validated sensor configuration into concrete sensor instances,
+    enforce initialization invariants, and coordinate the set of local
+    publishers whose messages feed the distributed event pipeline.
 """
 
-import os
 from collections.abc import Callable
-from typing import Any
 
 from sensors.boolean_sensor import BooleanSensor
 from sensors.categorical_sensor import CategoricalSensor
@@ -18,187 +16,176 @@ from sensors.numeric_sensor import NumericSensor
 from sensors.spike_sensor import SpikeSensor
 from sensors.trend_sensor import TrendSensor
 from sensors.wave_sensor import WaveSensor
+from utils.config import SensorConfig, SensorType
+
+
+SensorInstance = (
+    NumericSensor
+    | BooleanSensor
+    | CategoricalSensor
+    | IncrementalSensor
+    | TrendSensor
+    | SpikeSensor
+    | WaveSensor
+    | NoiseSensor
+)
 
 
 class SensorManager:
-    """Represent environment-driven ownership of local sensor publishers.
+    """Represent configuration-driven ownership of local sensor publishers.
 
     Attributes:
-        callback (Callable[[dict[str, Any]], None]): Shared sink that receives
+        callback (Callable[[dict[str, object]], None]): Shared sink that receives
             every sensor message emitted by managed sensors.
-        sensors (list[NumericSensor | BooleanSensor | CategoricalSensor | IncrementalSensor | TrendSensor | SpikeSensor | WaveSensor | NoiseSensor]): Loaded sensor instances that belong to this runtime.
+        sensors (list[SensorInstance]): Loaded sensor instances that belong to this runtime.
     """
 
-    def __init__(self, callback: Callable[[dict[str, Any]], None]) -> None:
+    def __init__(self, callback: Callable[[dict[str, object]], None]) -> None:
         """Initialize the manager with a shared message sink.
 
         Args:
-            callback (Callable[[dict[str, Any]], None]): Consumer invoked by all
+            callback (Callable[[dict[str, object]], None]): Consumer invoked by all
                 managed sensors for emitted messages.
 
         Returns:
             None (None): This constructor initializes the manager instance.
         """
         self.callback = callback
-        self.sensors = []
+        self.sensors: list[SensorInstance] = []
 
-    def load_from_env(self) -> None:
-        """Load sensor instances from process environment variables.
+    def load(self, sensor_configs: tuple[SensorConfig, ...]) -> None:
+        """Load sensor instances from validated configuration.
 
-        Sensor identifiers are derived as `{name}@{index}` and are assumed to
+        Sensor identifiers are derived as ``{name}@{index}`` and are assumed to
         remain stable for the life of the process. The emitted message format is
         inherited from each sensor, so downstream gossip or LWW merge logic can
         treat all configured sensors uniformly regardless of concrete type.
 
         Args:
-            None (None): This method reads process environment variables only.
+            sensor_configs (tuple[SensorConfig, ...]): Validated sensor definitions
+                in declaration order.
 
         Returns:
-            None (None): This method populates `sensors` in declaration order.
+            None (None): This method populates ``sensors`` in declaration order.
 
         Raises:
             RuntimeError: Raised when sensors have already been loaded.
-            ValueError: Raised when required configuration is missing or
-                invalid.
         """
         if self.sensors:
             raise RuntimeError("Sensors already loaded")
 
-        try:
-            count = int(os.getenv("SENSORS", "0"))
-        except ValueError:
-            raise ValueError("SENSORS must be an integer")
+        for sensor_config in sensor_configs:
+            self.sensors.append(self._build_sensor(sensor_config))
 
-        for i in range(count):
-            prefix = f"SENSOR_{i}_"
+    def _build_sensor(self, sensor_config: SensorConfig) -> SensorInstance:
+        """Build one concrete sensor instance from typed configuration.
 
-            s_type = os.getenv(prefix + "TYPE")
-            if not s_type:
-                raise ValueError(f"Missing {prefix}TYPE")
+        Args:
+            sensor_config (SensorConfig): Typed configuration for one sensor.
 
-            period_ms = int(os.getenv(prefix + "PERIOD_MS", "0"))
-            if period_ms <= 0:
-                raise ValueError(f"Invalid {prefix}PERIOD_MS")
+        Returns:
+            SensorInstance: Instantiated sensor ready for startup.
+        """
+        sensor_id = sensor_config.sensor_id
+        period_ms = sensor_config.period_ms
+        unit = sensor_config.unit
 
-            name = os.getenv(prefix + "NAME", f"sensor_{i}")
-            sensor_id = f"{name}@{i}"
+        if sensor_config.sensor_type == SensorType.NUMERIC:
+            min_value = _require_config_value(sensor_config.min_value, "min_value")
+            max_value = _require_config_value(sensor_config.max_value, "max_value")
+            return NumericSensor(
+                sensor_id,
+                min_value,
+                max_value,
+                period_ms,
+                callback=self.callback,
+                unit=unit,
+            )
 
-            unit = os.getenv(prefix + "UNIT")
+        if sensor_config.sensor_type == SensorType.BOOLEAN:
+            p_true = _require_config_value(sensor_config.p_true, "p_true")
+            return BooleanSensor(
+                sensor_id,
+                p_true,
+                period_ms,
+                callback=self.callback,
+                unit=unit,
+            )
 
-            if s_type == "numeric":
-                min_val = float(os.getenv(prefix + "MIN"))
-                max_val = float(os.getenv(prefix + "MAX"))
+        if sensor_config.sensor_type == SensorType.CATEGORICAL:
+            return CategoricalSensor(
+                sensor_id,
+                list(sensor_config.values),
+                period_ms,
+                callback=self.callback,
+                unit=unit,
+            )
 
-                sensor = NumericSensor(
-                    sensor_id,
-                    min_val,
-                    max_val,
-                    period_ms,
-                    callback=self.callback,
-                    unit=unit,
-                )
+        if sensor_config.sensor_type == SensorType.INCREMENTAL:
+            start = _require_config_value(sensor_config.start, "start")
+            step_pct = _require_config_value(sensor_config.step_pct, "step_pct")
+            return IncrementalSensor(
+                sensor_id,
+                start,
+                step_pct,
+                period_ms,
+                callback=self.callback,
+                unit=unit,
+            )
 
-            elif s_type == "boolean":
-                p_true = float(os.getenv(prefix + "P_TRUE", 0.5))
+        if sensor_config.sensor_type == SensorType.TREND:
+            start = _require_config_value(sensor_config.start, "start")
+            slope = _require_config_value(sensor_config.slope, "slope")
+            noise = _require_config_value(sensor_config.noise, "noise")
+            return TrendSensor(
+                sensor_id,
+                start,
+                slope,
+                noise,
+                period_ms,
+                callback=self.callback,
+                unit=unit,
+            )
 
-                sensor = BooleanSensor(
-                    sensor_id,
-                    p_true,
-                    period_ms,
-                    callback=self.callback,
-                    unit=unit,
-                )
+        if sensor_config.sensor_type == SensorType.SPIKE:
+            baseline = _require_config_value(sensor_config.baseline, "baseline")
+            spike_height = _require_config_value(
+                sensor_config.spike_height,
+                "spike_height",
+            )
+            p_spike = _require_config_value(sensor_config.p_spike, "p_spike")
+            return SpikeSensor(
+                sensor_id,
+                baseline,
+                spike_height,
+                p_spike,
+                period_ms,
+                callback=self.callback,
+                unit=unit,
+            )
 
-            elif s_type == "categorical":
-                values = [
-                    v.strip()
-                    for v in os.getenv(prefix + "VALUES", "").split(",")
-                    if v.strip()
-                ]
-                if not values:
-                    raise ValueError(f"{prefix}VALUES must not be empty")
+        if sensor_config.sensor_type == SensorType.WAVE:
+            amplitude = _require_config_value(sensor_config.amplitude, "amplitude")
+            frequency = _require_config_value(sensor_config.frequency, "frequency")
+            return WaveSensor(
+                sensor_id,
+                amplitude,
+                frequency,
+                period_ms,
+                callback=self.callback,
+                unit=unit,
+            )
 
-                sensor = CategoricalSensor(
-                    sensor_id,
-                    values,
-                    period_ms,
-                    callback=self.callback,
-                    unit=unit,
-                )
-
-            elif s_type == "incremental":
-                start = float(os.getenv(prefix + "START", 0))
-                step_pct = float(os.getenv(prefix + "STEP_PCT", 1))
-
-                sensor = IncrementalSensor(
-                    sensor_id,
-                    start,
-                    step_pct,
-                    period_ms,
-                    callback=self.callback,
-                    unit=unit,
-                )
-
-            elif s_type == "trend":
-                start = float(os.getenv(prefix + "START", 0))
-                slope = float(os.getenv(prefix + "SLOPE", 0.1))
-                noise = float(os.getenv(prefix + "NOISE", 0.0))
-
-                sensor = TrendSensor(
-                    sensor_id,
-                    start,
-                    slope,
-                    noise,
-                    period_ms,
-                    callback=self.callback,
-                    unit=unit,
-                )
-
-            elif s_type == "spike":
-                baseline = float(os.getenv(prefix + "BASELINE", 0))
-                spike_height = float(os.getenv(prefix + "SPIKE_HEIGHT", 10))
-                p_spike = float(os.getenv(prefix + "P_SPIKE", 0.2))
-
-                sensor = SpikeSensor(
-                    sensor_id,
-                    baseline,
-                    spike_height,
-                    p_spike,
-                    period_ms,
-                    callback=self.callback,
-                    unit=unit,
-                )
-
-            elif s_type == "wave":
-                amplitude = float(os.getenv(prefix + "AMPLITUDE", 1))
-                frequency = float(os.getenv(prefix + "FREQUENCY", 1))
-
-                sensor = WaveSensor(
-                    sensor_id,
-                    amplitude,
-                    frequency,
-                    period_ms,
-                    callback=self.callback,
-                    unit=unit,
-                )
-
-            elif s_type == "noise":
-                base = float(os.getenv(prefix + "BASE", 0))
-                noise = float(os.getenv(prefix + "NOISE", 1))
-
-                sensor = NoiseSensor(
-                    sensor_id,
-                    base,
-                    noise,
-                    period_ms,
-                    callback=self.callback,
-                    unit=unit,
-                )
-
-            else:
-                raise ValueError(f"Unsupported sensor type: {s_type}")
-
-            self.sensors.append(sensor)
+        base = _require_config_value(sensor_config.base, "base")
+        noise = _require_config_value(sensor_config.noise, "noise")
+        return NoiseSensor(
+            sensor_id,
+            base,
+            noise,
+            period_ms,
+            callback=self.callback,
+            unit=unit,
+        )
 
     def start_all(self) -> None:
         """Start every loaded sensor publisher.
@@ -209,8 +196,8 @@ class SensorManager:
         Returns:
             None (None): This method starts each managed sensor in order.
         """
-        for s in self.sensors:
-            s.start()
+        for sensor in self.sensors:
+            sensor.start()
 
     def stop_all(self) -> None:
         """Stop every loaded sensor publisher.
@@ -221,5 +208,23 @@ class SensorManager:
         Returns:
             None (None): This method stops each managed sensor in order.
         """
-        for s in self.sensors:
-            s.stop()
+        for sensor in self.sensors:
+            sensor.stop()
+
+
+def _require_config_value(value: float | None, field_name: str) -> float:
+    """Assert that a required numeric sensor field was populated by config parsing.
+
+    Args:
+        value (float | None): Parsed config value.
+        field_name (str): SensorConfig field name used in the defensive error.
+
+    Returns:
+        float: Non-null numeric config value.
+
+    Raises:
+        RuntimeError: If configuration parsing produced an unexpected ``None`` value.
+    """
+    if value is None:
+        raise RuntimeError(f"Missing required sensor config field: {field_name}")
+    return value

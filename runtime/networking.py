@@ -10,6 +10,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Callable, List, Tuple
 
+from protocol.contracts import MembershipField, NetworkConstant
 from protocol.message import Message
 from protocol.message_types import MessageType
 from protocol.setup import setup_protocol
@@ -54,9 +55,9 @@ def make_join_request(self_node_id: str, host: str, port: int) -> Message:
 		msg_type=MessageType.JOIN_REQUEST,
 		sender_id=self_node_id,
 		payload={
-			"node_id": self_node_id,
-			"host": host,
-			"port": port,
+			MembershipField.NODE_ID.value: self_node_id,
+			MembershipField.HOST.value: host,
+			MembershipField.PORT.value: port,
 		},
 	)
 
@@ -116,7 +117,7 @@ def resolve_peer_host(node_id: str, advertised_host: str) -> str:
 	remote destination. When that occurs, the node ID is treated as the
 	connectable address contract for peer-to-peer traffic.
 	"""
-	if advertised_host == "0.0.0.0":
+	if advertised_host == NetworkConstant.WILDCARD_HOST.value:
 		return node_id
 
 	return advertised_host

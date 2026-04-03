@@ -5,11 +5,12 @@ Responsibilities:
     - Reject missing or malformed environment input deterministically.
 """
 
+import os
 from typing import Any
 
 import pytest
 
-from utils.config import _parse_peers, load_config
+from utils.config import Config, LogLevel, _parse_peers
 
 
 def _set_base_env(monkeypatch: Any) -> None:
@@ -43,17 +44,20 @@ def test_load_config_success(monkeypatch: Any) -> None:
         "127.0.0.1:9001,127.0.0.1:9002",
     )
 
-    config = load_config()
+    config = Config.from_env(dict(os.environ))
 
     assert config.node_id == "node-1"
     assert config.host == "127.0.0.1"
     assert config.port == 9000
-    assert config.bootstrap_peers == [
+    assert config.bootstrap_peers == (
         ("127.0.0.1", 9001),
         ("127.0.0.1", 9002),
-    ]
-    assert config.log_level == "INFO"
+    )
+    assert config.log_level == LogLevel.INFO
+    assert config.log_level_name == "INFO"
     assert config.log_file == "logs/test.log"
+    assert config.web_api_port == 10000
+    assert config.sensors == ()
 
 
 def test_missing_required_env(monkeypatch: Any) -> None:
@@ -69,7 +73,7 @@ def test_missing_required_env(monkeypatch: Any) -> None:
     monkeypatch.delenv("NODE_ID")
 
     with pytest.raises(RuntimeError):
-        load_config()
+        Config.from_env(dict(os.environ))
 
 
 def test_empty_bootstrap_peers(monkeypatch: Any) -> None:
@@ -84,8 +88,8 @@ def test_empty_bootstrap_peers(monkeypatch: Any) -> None:
     _set_base_env(monkeypatch)
     monkeypatch.setenv("BOOTSTRAP_PEERS", "")
 
-    config = load_config()
-    assert config.bootstrap_peers == []
+    config = Config.from_env(dict(os.environ))
+    assert config.bootstrap_peers == ()
 
 
 def test_invalid_peer_format() -> None:

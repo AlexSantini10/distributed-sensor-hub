@@ -10,6 +10,7 @@ import pytest
 
 from sensors.numeric_sensor import NumericSensor
 from sensors.sensor_manager import SensorManager
+from utils.config import load_config
 
 
 @pytest.mark.sensors
@@ -28,9 +29,14 @@ def test_sensor_manager_load_from_env(monkeypatch: Any) -> None:
     monkeypatch.setenv("SENSOR_0_MIN", "0")
     monkeypatch.setenv("SENSOR_0_MAX", "100")
     monkeypatch.setenv("SENSOR_0_PERIOD_MS", "500")
+    monkeypatch.setenv("NODE_ID", "node-1")
+    monkeypatch.setenv("HOST", "127.0.0.1")
+    monkeypatch.setenv("PORT", "9000")
+    monkeypatch.setenv("LOG_LEVEL", "INFO")
+    monkeypatch.setenv("LOG_FILE", "logs/test.log")
 
     mgr = SensorManager(callback=lambda *_: None)
-    mgr.load_from_env()
+    mgr.load(load_config().sensors)
 
     assert len(mgr.sensors) == 1
     assert isinstance(mgr.sensors[0], NumericSensor)

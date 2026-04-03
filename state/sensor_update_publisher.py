@@ -10,6 +10,7 @@ Responsibilities:
 import threading
 from typing import Any
 
+from protocol.contracts import SensorUpdateField
 from protocol.message import Message
 from protocol.message_types import MessageType
 
@@ -110,11 +111,11 @@ class SensorUpdatePublisher(threading.Thread):
                 msg_type=MessageType.SENSOR_UPDATE,
                 sender_id=self._self_node_id,
                 payload={
-                    "sensor_id": sensor_id,
-                    "value": update.get("value"),
-                    "ts_ms": update.get("ts_ms"),
-                    "origin": origin,
-                    "meta": update.get("meta", {}),
+                    SensorUpdateField.SENSOR_ID.value: sensor_id,
+                    SensorUpdateField.VALUE.value: update.get("value"),
+                    SensorUpdateField.TS_MS.value: update.get("ts_ms"),
+                    SensorUpdateField.ORIGIN.value: origin,
+                    SensorUpdateField.META.value: update.get("meta", {}),
                 },
             )
 

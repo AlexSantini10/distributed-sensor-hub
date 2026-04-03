@@ -7,13 +7,10 @@ Responsibilities:
 """
 
 import logging
-import os
 import sys
 import threading
 from types import TracebackType
 from typing import Optional
-
-from dotenv import load_dotenv
 
 
 def setup_bootstrap_logging() -> None:
@@ -67,24 +64,24 @@ def _thread_exception_hook(args: threading.ExceptHookArgs) -> None:
 
 
 def install_global_exception_hooks() -> None:
-	"""Install process-wide exception hooks and load environment variables.
+	"""Install process-wide exception hooks.
 
 	This should run before subsystem construction so all threads inherit the
 	bootstrap failure-reporting behavior.
 
 	Returns:
-		None: This function installs exception hooks and loads environment variables.
+		None: This function installs exception hooks for main and worker threads.
 	"""
-	load_dotenv()
 	sys.excepthook = _global_exception_hook
 	threading.excepthook = _thread_exception_hook
 
 
-def clear_log_file_if_requested(log_file: Optional[str]) -> None:
-	"""Truncate the configured log file when `CLEAR_LOG=true`.
+def clear_log_file_if_requested(log_file: Optional[str], clear_log: bool) -> None:
+	"""Truncate the configured log file when requested by configuration.
 
 	Args:
 		log_file (Optional[str]): Path to the log file to clear, if file logging is enabled.
+		clear_log (bool): Whether startup should truncate the configured log file.
 
 	Returns:
 		None: This function truncates the configured log file when requested.
@@ -92,7 +89,6 @@ def clear_log_file_if_requested(log_file: Optional[str]) -> None:
 	Raises:
 		OSError: File-system failures are caught internally, logged, and not propagated.
 	"""
-	clear_log = os.getenv("CLEAR_LOG", "false").lower() == "true"
 	if not clear_log or not log_file:
 		return
 
