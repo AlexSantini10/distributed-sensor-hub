@@ -164,22 +164,11 @@ class StateWorkerLike(Protocol):
 class PeerTableLike(Protocol):
     """Define the membership-table behavior consumed outside the package."""
 
-    def add_peer(self, peer: MembershipPeer) -> bool:
-        """Insert a peer if it is not already known.
-
-        Args:
-            peer (MembershipPeer): Peer descriptor to insert.
-
-        Returns:
-            bool: ``True`` when the peer is newly inserted.
-        """
-        ...
-
-    def list_peers(self) -> list[MembershipPeer]:
+    def snapshot(self) -> tuple[MembershipPeer, ...]:
         """Return a snapshot of known peers.
 
         Returns:
-            list[MembershipPeer]: Current peer snapshot.
+            tuple[MembershipPeer, ...]: Current peer snapshot.
         """
         ...
 

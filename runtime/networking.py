@@ -234,12 +234,10 @@ def seed_peer_table(
     """
     for peer in bootstrap_peers:
         try:
-            peer_table.add_peer(
-                MembershipPeer.new(
-                    node_id=peer.node_id,
-                    host=peer.host,
-                    port=peer.port,
-                )
+            peer_table.upsert_peer(
+                node_id=peer.node_id,
+                host=peer.host,
+                port=peer.port,
             )
         except Exception:
             log.warning("Failed to seed bootstrap peer into PeerTable", exc_info=True)

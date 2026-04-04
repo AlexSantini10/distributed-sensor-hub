@@ -46,7 +46,7 @@ class SensorUpdatePublisher(threading.Thread):
 
         Args:
             self_node_id (str): Local node identifier used to filter local-origin winners.
-            peer_table (PeerTableLike): Peer table exposing ``list_peers()``.
+            peer_table (PeerTableLike): Peer table exposing ``snapshot()``.
             tcp_client (TcpClientLike): Client exposing ``send_json()`` and ``add_peer()``.
             state_worker (StateWorkerLike): Worker exposing ``pop_replication_updates()``.
             log (LoggerLike): Logger-like object used for warnings and errors.
@@ -104,7 +104,7 @@ class SensorUpdatePublisher(threading.Thread):
         if not updates:
             return
 
-        peers = self._peer_table.list_peers()
+        peers = self._peer_table.snapshot()
         if not peers:
             return
 

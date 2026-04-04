@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 from membership.peer import Peer
 from membership.peer_table import PeerTable
+from membership.results import UpsertPeerOutcome
 from protocol.contracts import MembershipField
 from protocol.message import Message
 from protocol.message_types import MessageType
@@ -97,12 +98,17 @@ def make_membership_handlers(
         if join_payload[MembershipField.NODE_ID.value] == self_node_id:
             return
 
-        peer = Peer.new(node_id=node_id, host=host, port=port)
-        added = peer_table.add_peer(peer)
+        upsert_result = peer_table.upsert_peer(
+            node_id=node_id,
+            host=host,
+            port=port,
+        )
 
-        if added:
-            log.info(f"New peer joined: {node_id} {host}:{port}")
-            _notify_discovered(peer)
+        if upsert_result.outcome is UpsertPeerOutcome.INSERTED:
+            discovered_peer = upsert_result.peer
+            if discovered_peer is not None:
+                log.info(f"New peer joined: {node_id} {host}:{port}")
+                _notify_discovered(discovered_peer)
         else:
             log.info(f"JOIN_REQUEST from known peer: {node_id}")
 
@@ -112,7 +118,7 @@ def make_membership_handlers(
                 MembershipField.HOST.value: p.host,
                 MembershipField.PORT.value: p.port,
             }
-            for p in peer_table.list_peers()
+            for p in peer_table.snapshot()
         ]
         reply_payload: JsonObject = {MembershipField.PEERS.value: peers_payload}
 
@@ -139,7 +145,7 @@ def make_membership_handlers(
             log.warning("Invalid PEER_LIST payload")
             return
 
-        added_count = 0
+        validated_peers: list[Peer] = []
         for entry in peers:
             if not isinstance(entry, dict):
                 continue
@@ -154,15 +160,14 @@ def make_membership_handlers(
                 continue
             if not isinstance(port, int):
                 continue
-            if node_id == self_node_id:
-                continue
 
-            peer = Peer.new(node_id=node_id, host=host, port=port)
-            if peer_table.add_peer(peer):
-                added_count += 1
-                _notify_discovered(peer)
+            validated_peers.append(Peer.new(node_id=node_id, host=host, port=port))
 
-        if added_count > 0:
-            log.info(f"Integrated {added_count} new peers from PEER_LIST")
+        merge_result = peer_table.merge_membership_view(validated_peers)
+        for discovered_peer in merge_result.added:
+            _notify_discovered(discovered_peer)
+
+        if merge_result.added:
+            log.info(f"Integrated {len(merge_result.added)} new peers from PEER_LIST")
 
     return handle_join_request, handle_peer_list

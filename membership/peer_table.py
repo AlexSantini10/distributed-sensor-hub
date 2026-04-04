@@ -1,17 +1,28 @@
 """Maintain the local membership view for discovered peers.
 
 Responsibilities:
-    - Store the node's current peer set with thread-safe access.
-    - Enforce additive, idempotent insertion for repeated join or gossip input.
-    - Expose snapshot reads used by membership replies and replication senders.
-    - Track liveness metadata without defining suspicion or eviction policy.
+    - Own the single lock protecting all membership state mutations.
+    - Expose atomic membership operations with typed outcomes.
+    - Return snapshots rather than live mutable peer objects to callers.
+    - Avoid leaking synchronization requirements into handlers or callbacks.
 """
 
 from __future__ import annotations
 
 import threading
-from typing import Dict, List, Optional
+from collections.abc import Iterable
+from typing import Dict
+
 from membership.peer import Peer
+from membership.results import (
+    MergeMembershipResult,
+    PeerStatusOutcome,
+    PeerStatusResult,
+    RemovePeerOutcome,
+    RemovePeerResult,
+    UpsertPeerOutcome,
+    UpsertPeerResult,
+)
 from membership.status import NodeStatus
 
 
@@ -20,7 +31,7 @@ class PeerTable:
 
     Attributes:
         _self_node_id (str): Logical identifier of the local node.
-        _lock (threading.Lock): Mutex protecting peer-table mutations and reads.
+        _lock (threading.Lock): Mutex protecting all membership mutations and reads.
         _peers (Dict[str, Peer]): Mapping from peer node ID to the latest known peer record.
     """
 
@@ -38,71 +49,166 @@ class PeerTable:
         self._lock = threading.Lock()
         self._peers: Dict[str, Peer] = {}
 
-    def add_peer(self, peer: Peer) -> bool:
-        """Insert a peer if it is new and not the local node.
+    def upsert_peer(self, *, node_id: str, host: str, port: int) -> UpsertPeerResult:
+        """Insert a peer or refresh its advertised endpoint atomically."""
+        if node_id == self._self_node_id:
+            return UpsertPeerResult(
+                outcome=UpsertPeerOutcome.IGNORED_SELF,
+                peer=None,
+            )
 
-        Args:
-            peer (Peer): Candidate peer record derived from bootstrap or gossip input.
-
-        Returns:
-            bool: True if the peer was inserted, or False if the peer already
-            existed or refers to the local node.
-        """
-        if peer.node_id == self._self_node_id:
-            return False
-
-        with self._lock:
-            if peer.node_id in self._peers:
-                return False
-
-            self._peers[peer.node_id] = peer
-            return True
-
-    def get_peer(self, node_id: str) -> Optional[Peer]:
-        """Return the current peer record for a node ID.
-
-        Args:
-            node_id (str): Logical identifier of the peer to look up.
-
-        Returns:
-            Optional[Peer]: The stored peer record, or None when the peer is unknown.
-        """
-        with self._lock:
-            return self._peers.get(node_id)
-
-    def update_heartbeat(self, node_id: str, timestamp: float) -> None:
-        """Record a liveness update for an existing peer.
-
-        Args:
-            node_id (str): Logical identifier of the peer to refresh.
-            timestamp (float): Accepted heartbeat timestamp in Unix seconds.
-
-        Returns:
-            None: This method updates state in place.
-        """
         with self._lock:
             peer = self._peers.get(node_id)
             if peer is None:
-                return
-
-            peer.last_heartbeat = timestamp
-            peer.status = NodeStatus.ALIVE
-
-    def list_peers(self) -> List[Peer]:
-        """Return a snapshot of the current membership view.
-
-        Returns:
-            List[Peer]: Shallow snapshot of peer records known at call time.
-        """
-        with self._lock:
-            return [
-                Peer(
-                    node_id=peer.node_id,
-                    host=peer.host,
-                    port=peer.port,
-                    last_heartbeat=peer.last_heartbeat,
-                    phi=peer.phi,
-                    status=peer.status,
+                created = Peer.new(node_id=node_id, host=host, port=port)
+                self._peers[node_id] = created
+                return UpsertPeerResult(
+                    outcome=UpsertPeerOutcome.INSERTED,
+                    peer=self._clone_peer(created),
                 )
-                for peer in self._peers.values()
-            ]
+
+            if peer.host == host and peer.port == port:
+                return UpsertPeerResult(
+                    outcome=UpsertPeerOutcome.UNCHANGED,
+                    peer=self._clone_peer(peer),
+                )
+
+            peer.host = host
+            peer.port = port
+            return UpsertPeerResult(
+                outcome=UpsertPeerOutcome.UPDATED,
+                peer=self._clone_peer(peer),
+            )
+
+    def mark_suspected(self, node_id: str, *, phi: float | None = None) -> PeerStatusResult:
+        """Mark an existing peer as suspected without exposing live state."""
+        with self._lock:
+            peer = self._peers.get(node_id)
+            if peer is None:
+                return PeerStatusResult(
+                    outcome=PeerStatusOutcome.NOT_FOUND,
+                    peer=None,
+                )
+
+            changed = peer.status is not NodeStatus.SUSPECTED
+            if phi is not None:
+                changed = changed or peer.phi != phi
+                peer.phi = phi
+            peer.status = NodeStatus.SUSPECTED
+            return PeerStatusResult(
+                outcome=PeerStatusOutcome.UPDATED if changed else PeerStatusOutcome.UNCHANGED,
+                peer=self._clone_peer(peer),
+            )
+
+    def mark_alive(
+        self,
+        node_id: str,
+        *,
+        heartbeat_at: float,
+        phi: float | None = None,
+    ) -> PeerStatusResult:
+        """Mark an existing peer alive and advance heartbeat metadata atomically."""
+        with self._lock:
+            peer = self._peers.get(node_id)
+            if peer is None:
+                return PeerStatusResult(
+                    outcome=PeerStatusOutcome.NOT_FOUND,
+                    peer=None,
+                )
+
+            new_heartbeat = max(peer.last_heartbeat, heartbeat_at)
+            new_phi = 0.0 if phi is None else phi
+            changed = (
+                peer.status is not NodeStatus.ALIVE
+                or peer.last_heartbeat != new_heartbeat
+                or peer.phi != new_phi
+            )
+            peer.last_heartbeat = new_heartbeat
+            peer.phi = new_phi
+            peer.status = NodeStatus.ALIVE
+            return PeerStatusResult(
+                outcome=PeerStatusOutcome.UPDATED if changed else PeerStatusOutcome.UNCHANGED,
+                peer=self._clone_peer(peer),
+            )
+
+    def remove_peer(self, node_id: str) -> RemovePeerResult:
+        """Remove a peer atomically if it exists."""
+        with self._lock:
+            peer = self._peers.pop(node_id, None)
+            if peer is None:
+                return RemovePeerResult(
+                    outcome=RemovePeerOutcome.NOT_FOUND,
+                    peer=None,
+                )
+            return RemovePeerResult(
+                outcome=RemovePeerOutcome.REMOVED,
+                peer=self._clone_peer(peer),
+            )
+
+    def merge_membership_view(self, peers: Iterable[Peer]) -> MergeMembershipResult:
+        """Merge an inbound membership view under a single lock."""
+        added: list[Peer] = []
+        updated: list[Peer] = []
+        unchanged: list[str] = []
+        ignored_self: list[str] = []
+
+        with self._lock:
+            for candidate in peers:
+                if candidate.node_id == self._self_node_id:
+                    ignored_self.append(candidate.node_id)
+                    continue
+
+                existing = self._peers.get(candidate.node_id)
+                if existing is None:
+                    created = Peer.new(
+                        node_id=candidate.node_id,
+                        host=candidate.host,
+                        port=candidate.port,
+                    )
+                    self._peers[candidate.node_id] = created
+                    added.append(self._clone_peer(created))
+                    continue
+
+                if existing.host == candidate.host and existing.port == candidate.port:
+                    unchanged.append(candidate.node_id)
+                    continue
+
+                existing.host = candidate.host
+                existing.port = candidate.port
+                updated.append(self._clone_peer(existing))
+
+        return MergeMembershipResult(
+            added=tuple(added),
+            updated=tuple(updated),
+            unchanged=tuple(unchanged),
+            ignored_self=tuple(ignored_self),
+        )
+
+    def get_peer(self, node_id: str) -> Peer | None:
+        """Return a snapshot of one peer record for a node ID."""
+        with self._lock:
+            peer = self._peers.get(node_id)
+            if peer is None:
+                return None
+            return self._clone_peer(peer)
+
+    def snapshot(self) -> tuple[Peer, ...]:
+        """Return a full snapshot of the current membership view."""
+        with self._lock:
+            return tuple(self._clone_peer(peer) for peer in self._peers.values())
+
+    def list_peers(self) -> list[Peer]:
+        """Return a list snapshot for existing read-only call sites."""
+        return list(self.snapshot())
+
+    @staticmethod
+    def _clone_peer(peer: Peer) -> Peer:
+        """Copy a peer record before exposing it outside the lock owner."""
+        return Peer(
+            node_id=peer.node_id,
+            host=peer.host,
+            port=peer.port,
+            last_heartbeat=peer.last_heartbeat,
+            phi=peer.phi,
+            status=peer.status,
+        )

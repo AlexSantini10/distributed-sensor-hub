@@ -1,53 +1,24 @@
-"""Validate membership message handling contracts.
-
-Responsibilities:
-    - Assert join requests add peers and return a peer list.
-    - Verify idempotent handling and self-join suppression.
-    - Confirm peer-list merges add only previously unknown peers.
-"""
+"""Validate membership handler orchestration contracts."""
 
 from protocol.message import Message
 from protocol.message_types import MessageType
 
 from membership.handlers import make_membership_handlers
-from membership.peer import Peer
 from membership.peer_table import PeerTable
 
 
 class FakeSender:
-    """Capture outbound membership messages for assertions.
-
-    Attributes:
-        sent (list): Ordered list of ``(peer_id, msg)`` tuples emitted by handlers.
-    """
+    """Capture outbound membership messages for assertions."""
 
     def __init__(self) -> None:
-        """Initialize an empty outbound message capture buffer.
-
-        Returns:
-            None: This constructor does not return a value.
-        """
-        self.sent = []
+        self.sent: list[tuple[str, Message]] = []
 
     def send(self, peer_id: str, msg: Message) -> None:
-        """Record one outbound membership message.
-
-        Args:
-            peer_id (str): Transport peer identifier selected by the handler.
-            msg (Message): Membership message emitted by the handler.
-
-        Returns:
-            None: This method appends to the capture buffer.
-        """
         self.sent.append((peer_id, msg))
 
 
 def test_join_request_adds_peer_and_replies_with_peer_list() -> None:
-    """Assert that a join request mutates membership and returns the peer list.
-
-    Returns:
-        None: This test asserts join-request handling.
-    """
+    """Assert that a join request mutates membership and returns the peer list."""
     table = PeerTable(self_node_id="node-1")
     sender = FakeSender()
 
@@ -87,11 +58,7 @@ def test_join_request_adds_peer_and_replies_with_peer_list() -> None:
 
 
 def test_join_request_idempotent() -> None:
-    """Assert that duplicate join requests do not duplicate peers.
-
-    Returns:
-        None: This test asserts idempotent membership updates.
-    """
+    """Assert that duplicate join requests do not duplicate peers."""
     table = PeerTable(self_node_id="node-1")
     sender = FakeSender()
 
@@ -114,18 +81,14 @@ def test_join_request_idempotent() -> None:
     handle_join(msg)
     handle_join(msg)
 
-    peers = table.list_peers()
+    peers = table.snapshot()
     assert len(peers) == 1
     assert peers[0].node_id == "node-2"
     assert len(sender.sent) == 2
 
 
 def test_join_request_self_ignored() -> None:
-    """Assert that a node ignores join requests that advertise itself.
-
-    Returns:
-        None: This test asserts self-join suppression.
-    """
+    """Assert that a node ignores join requests that advertise itself."""
     table = PeerTable(self_node_id="node-1")
     sender = FakeSender()
 
@@ -147,16 +110,12 @@ def test_join_request_self_ignored() -> None:
 
     handle_join(msg)
 
-    assert table.list_peers() == []
+    assert table.snapshot() == ()
     assert sender.sent == []
 
 
 def test_peer_list_integrates_new_peers_only() -> None:
-    """Assert that peer-list handling adds only previously unknown peers.
-
-    Returns:
-        None: This test asserts peer-list merge semantics.
-    """
+    """Assert that peer-list handling adds only previously unknown peers."""
     table = PeerTable(self_node_id="node-1")
     sender = FakeSender()
 
@@ -166,7 +125,7 @@ def test_peer_list_integrates_new_peers_only() -> None:
         self_node_id="node-1",
     )
 
-    table.add_peer(Peer.new("node-2", "127.0.0.1", 9001))
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
 
     peer_list_msg = Message(
         msg_type=MessageType.PEER_LIST,
@@ -181,7 +140,66 @@ def test_peer_list_integrates_new_peers_only() -> None:
 
     handle_peer_list(peer_list_msg)
 
-    peers = table.list_peers()
-    ids = {p.node_id for p in peers}
-
+    ids = {p.node_id for p in table.snapshot()}
     assert ids == {"node-2", "node-3"}
+
+
+def test_peer_list_notifies_only_newly_discovered_peers() -> None:
+    """Assert that handler callbacks run only for freshly added peers."""
+    table = PeerTable(self_node_id="node-1")
+    discovered: list[str] = []
+    sender = FakeSender()
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+
+    _handle_join, handle_peer_list = make_membership_handlers(
+        peer_table=table,
+        send=sender.send,
+        self_node_id="node-1",
+        on_peer_discovered=lambda peer: discovered.append(peer.node_id),
+    )
+
+    handle_peer_list(
+        Message(
+            msg_type=MessageType.PEER_LIST,
+            sender_id="peer-x",
+            payload={
+                "peers": [
+                    {"node_id": "node-2", "host": "127.0.0.1", "port": 9001},
+                    {"node_id": "node-3", "host": "127.0.0.1", "port": 9002},
+                ]
+            },
+        )
+    )
+
+    assert discovered == ["node-3"]
+
+
+def test_join_handler_replies_from_snapshot_not_live_peer_object() -> None:
+    """Assert that handler replies are built from immutable snapshots."""
+    table = PeerTable(self_node_id="node-1")
+    sender = FakeSender()
+    handle_join, _ = make_membership_handlers(
+        peer_table=table,
+        send=sender.send,
+        self_node_id="node-1",
+    )
+
+    handle_join(
+        Message(
+            msg_type=MessageType.JOIN_REQUEST,
+            sender_id="transport-peer",
+            payload={
+                "node_id": "node-2",
+                "host": "127.0.0.1",
+                "port": 9001,
+            },
+        )
+    )
+
+    snapshot_peer = table.get_peer("node-2")
+    assert snapshot_peer is not None
+    snapshot_peer.host = "mutated"
+
+    stored = table.get_peer("node-2")
+    assert stored is not None
+    assert stored.host == "127.0.0.1"
