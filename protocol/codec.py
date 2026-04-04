@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import TypeVar
 
 from protocol.contracts import MessageField, TextEncoding
 from protocol.message_types import MessageType
@@ -15,7 +16,10 @@ from protocol.messages import (
 from utils.typing import JsonObject, JsonValue
 
 
-def message_to_dict(message: Message[PayloadModel]) -> JsonObject:
+PayloadT = TypeVar("PayloadT", bound=PayloadModel)
+
+
+def message_to_dict(message: Message[PayloadT]) -> JsonObject:
     """Convert a typed message into the canonical wire dictionary."""
     return {
         MessageField.TYPE.value: message.msg_type.value,
@@ -25,12 +29,12 @@ def message_to_dict(message: Message[PayloadModel]) -> JsonObject:
     }
 
 
-def encode_json(message: Message[PayloadModel]) -> str:
+def encode_json(message: Message[PayloadT]) -> str:
     """Serialize a typed message into JSON text."""
     return json.dumps(message_to_dict(message))
 
 
-def encode_message(message: Message[PayloadModel]) -> bytes:
+def encode_message(message: Message[PayloadT]) -> bytes:
     """Serialize a typed message into UTF-8 JSON bytes."""
     return encode_json(message).encode(TextEncoding.UTF8.value)
 
