@@ -1,10 +1,14 @@
 """Validate membership handler orchestration contracts."""
 
+import json
+
+import pytest
+
 from membership.handlers import make_membership_handlers
 from membership.peer_table import PeerTable
-from protocol.factory import build_join_request, build_peer_list
+from protocol.factory import build_join_request, build_peer_list, build_ping
 from protocol.message import Message
-from protocol.messages import PeerDescriptor, PeerListPayload
+from protocol.messages import PeerDescriptor, PeerListPayload, ProtocolValidationError
 
 
 class FakeSender:
@@ -79,6 +83,32 @@ def test_join_request_idempotent() -> None:
     assert len(sender.sent) == 2
 
 
+def test_duplicate_join_request_notifies_discovery_once() -> None:
+    """Assert duplicate join requests do not retrigger discovery side effects."""
+    table = PeerTable(self_node_id="node-1")
+    sender = FakeSender()
+    discovered: list[str] = []
+
+    handle_join, _ = make_membership_handlers(
+        peer_table=table,
+        send=sender.send,
+        self_node_id="node-1",
+        on_peer_discovered=lambda peer: discovered.append(peer.node_id),
+    )
+
+    msg = build_join_request(
+        sender_id="peer-x",
+        node_id="node-2",
+        host="127.0.0.1",
+        port=9001,
+    )
+
+    handle_join(msg)
+    handle_join(msg)
+
+    assert discovered == ["node-2"]
+
+
 def test_join_request_self_ignored() -> None:
     """Assert that a node ignores join requests that advertise itself."""
     table = PeerTable(self_node_id="node-1")
@@ -101,6 +131,24 @@ def test_join_request_self_ignored() -> None:
 
     assert table.snapshot() == ()
     assert sender.sent == []
+
+
+def test_join_handler_rejects_non_join_message_consistently(caplog: pytest.LogCaptureFixture) -> None:
+    """Assert the join handler ignores typed messages for another contract."""
+    table = PeerTable(self_node_id="node-1")
+    sender = FakeSender()
+    handle_join, _ = make_membership_handlers(
+        peer_table=table,
+        send=sender.send,
+        self_node_id="node-1",
+    )
+
+    with caplog.at_level("WARNING"):
+        handle_join(build_ping(sender_id="peer-x"))
+
+    assert table.snapshot() == ()
+    assert sender.sent == []
+    assert "Rejected invalid membership message" in caplog.text
 
 
 def test_peer_list_integrates_new_peers_only() -> None:
@@ -130,6 +178,26 @@ def test_peer_list_integrates_new_peers_only() -> None:
     assert ids == {"node-2", "node-3"}
 
 
+def test_peer_list_handler_rejects_non_peer_list_message_consistently(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Assert the peer-list handler ignores typed messages for another contract."""
+    table = PeerTable(self_node_id="node-1")
+    sender = FakeSender()
+    _handle_join, handle_peer_list = make_membership_handlers(
+        peer_table=table,
+        send=sender.send,
+        self_node_id="node-1",
+    )
+
+    with caplog.at_level("WARNING"):
+        handle_peer_list(build_ping(sender_id="peer-x"))
+
+    assert table.snapshot() == ()
+    assert sender.sent == []
+    assert "Rejected invalid membership message" in caplog.text
+
+
 def test_peer_list_notifies_only_newly_discovered_peers() -> None:
     """Assert that handler callbacks run only for freshly added peers."""
     table = PeerTable(self_node_id="node-1")
@@ -155,6 +223,33 @@ def test_peer_list_notifies_only_newly_discovered_peers() -> None:
     )
 
     assert discovered == ["node-3"]
+
+
+def test_duplicate_peer_list_is_idempotent() -> None:
+    """Assert repeated peer lists do not duplicate peers or notifications."""
+    table = PeerTable(self_node_id="node-1")
+    discovered: list[str] = []
+    sender = FakeSender()
+
+    _handle_join, handle_peer_list = make_membership_handlers(
+        peer_table=table,
+        send=sender.send,
+        self_node_id="node-1",
+        on_peer_discovered=lambda peer: discovered.append(peer.node_id),
+    )
+
+    msg = build_peer_list(
+        sender_id="peer-x",
+        peers=[PeerDescriptor(node_id="node-2", host="127.0.0.1", port=9001)],
+    )
+
+    handle_peer_list(msg)
+    handle_peer_list(msg)
+
+    peers = table.snapshot()
+    assert len(peers) == 1
+    assert peers[0].node_id == "node-2"
+    assert discovered == ["node-2"]
 
 
 def test_join_handler_replies_from_snapshot_not_live_peer_object() -> None:
@@ -183,3 +278,43 @@ def test_join_handler_replies_from_snapshot_not_live_peer_object() -> None:
     stored = table.get_peer("node-2")
     assert stored is not None
     assert stored.host == "127.0.0.1"
+
+
+def test_malformed_join_request_is_rejected_at_decode_boundary() -> None:
+    """Assert malformed join payloads never reach membership handlers."""
+    raw = json.dumps(
+        {
+            "type": "JOIN_REQUEST",
+            "sender_id": "peer-x",
+            "timestamp": 1,
+            "payload": {
+                "node_id": "node-2",
+                "host": "127.0.0.1",
+            },
+        }
+    ).encode()
+
+    with pytest.raises(ProtocolValidationError):
+        Message.decode(raw)
+
+
+def test_malformed_peer_list_is_rejected_at_decode_boundary() -> None:
+    """Assert malformed peer-list payloads never reach membership handlers."""
+    raw = json.dumps(
+        {
+            "type": "PEER_LIST",
+            "sender_id": "peer-x",
+            "timestamp": 1,
+            "payload": {
+                "peers": [
+                    {
+                        "node_id": "node-2",
+                        "host": "127.0.0.1",
+                    }
+                ]
+            },
+        }
+    ).encode()
+
+    with pytest.raises(ProtocolValidationError):
+        Message.decode(raw)
