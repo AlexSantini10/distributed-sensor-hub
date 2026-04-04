@@ -5,11 +5,6 @@ import time
 
 from membership.peer import Peer
 from membership.peer_table import PeerTable
-from membership.results import (
-    PeerStatusOutcome,
-    RemovePeerOutcome,
-    UpsertPeerOutcome,
-)
 from membership.status import NodeStatus
 
 
@@ -19,7 +14,13 @@ def test_upsert_peer_success() -> None:
 
     result = table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
 
-    assert result.outcome is UpsertPeerOutcome.INSERTED
+    assert result.peer_id == "node-2"
+    assert result.changed is True
+    assert result.inserted is True
+    assert result.previous_status is None
+    assert result.new_status is NodeStatus.ALIVE
+    assert result.should_gossip is True
+    assert result.reason == "inserted"
     stored = table.get_peer("node-2")
     assert stored is not None
     assert stored.host == "127.0.0.1"
@@ -33,8 +34,13 @@ def test_upsert_peer_idempotent() -> None:
     first = table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
     second = table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
 
-    assert first.outcome is UpsertPeerOutcome.INSERTED
-    assert second.outcome is UpsertPeerOutcome.UNCHANGED
+    assert first.inserted is True
+    assert second.changed is False
+    assert second.inserted is False
+    assert second.previous_status is NodeStatus.ALIVE
+    assert second.new_status is NodeStatus.ALIVE
+    assert second.should_gossip is False
+    assert second.reason == "unchanged"
     peers = table.snapshot()
     assert len(peers) == 1
     assert peers[0].node_id == "node-2"
@@ -46,7 +52,12 @@ def test_upsert_self_peer_ignored() -> None:
 
     result = table.upsert_peer(node_id="node-1", host="127.0.0.1", port=9000)
 
-    assert result.outcome is UpsertPeerOutcome.IGNORED_SELF
+    assert result.changed is False
+    assert result.inserted is False
+    assert result.previous_status is None
+    assert result.new_status is None
+    assert result.should_gossip is False
+    assert result.reason == "ignored_self"
     assert table.get_peer("node-1") is None
     assert table.snapshot() == ()
 
@@ -64,12 +75,36 @@ def test_mark_alive_existing_peer() -> None:
 
     result = table.mark_alive("node-2", heartbeat_at=new_ts)
 
-    assert result.outcome is PeerStatusOutcome.UPDATED
+    assert result.peer_id == "node-2"
+    assert result.changed is True
+    assert result.heartbeat_advanced is True
+    assert result.phi_updated is True
+    assert result.should_gossip is True
+    assert result.status.changed is True
+    assert result.status.previous_status is NodeStatus.SUSPECTED
+    assert result.status.new_status is NodeStatus.ALIVE
     updated = table.get_peer("node-2")
     assert updated is not None
     assert updated.last_heartbeat == new_ts
     assert updated.status is NodeStatus.ALIVE
     assert updated.phi == 0.0
+
+
+def test_mark_suspected_exposes_status_transition() -> None:
+    """Assert that suspicion updates describe the liveness transition explicitly."""
+    table = PeerTable(self_node_id="node-1")
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+
+    result = table.mark_suspected("node-2", phi=7.5)
+
+    assert result.changed is True
+    assert result.heartbeat_advanced is False
+    assert result.phi_updated is True
+    assert result.should_gossip is True
+    assert result.status.changed is True
+    assert result.status.previous_status is NodeStatus.ALIVE
+    assert result.status.new_status is NodeStatus.SUSPECTED
+    assert result.reason == "marked_suspected"
 
 
 def test_mark_alive_unknown_peer_noop() -> None:
@@ -78,7 +113,11 @@ def test_mark_alive_unknown_peer_noop() -> None:
 
     result = table.mark_alive("node-unknown", heartbeat_at=time.time())
 
-    assert result.outcome is PeerStatusOutcome.NOT_FOUND
+    assert result.changed is False
+    assert result.status.changed is False
+    assert result.status.previous_status is None
+    assert result.status.new_status is None
+    assert result.reason == "peer_not_found"
     assert table.get_peer("node-unknown") is None
     assert table.snapshot() == ()
 
@@ -113,10 +152,12 @@ def test_merge_membership_view_integrates_new_peers_only() -> None:
 
     ids = {p.node_id for p in table.snapshot()}
     assert ids == {"node-2", "node-3"}
-    assert [p.node_id for p in merge.added] == ["node-3"]
-    assert merge.updated == ()
-    assert merge.unchanged == ("node-2",)
-    assert merge.ignored_self == ("node-1",)
+    assert merge.changed is True
+    assert merge.merged_entries == 1
+    assert merge.ignored_entries == 1
+    assert [p.node_id for p in merge.new_peers] == ["node-3"]
+    assert merge.updated_peers == ()
+    assert merge.should_gossip is True
 
 
 def test_merge_membership_view_preserves_liveness_state() -> None:
@@ -125,7 +166,7 @@ def test_merge_membership_view_preserves_liveness_state() -> None:
     table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
     table.mark_suspected("node-2", phi=12.0)
 
-    table.merge_membership_view([Peer.new("node-2", "10.0.0.2", 9002)])
+    result = table.merge_membership_view([Peer.new("node-2", "10.0.0.2", 9002)])
 
     stored = table.get_peer("node-2")
     assert stored is not None
@@ -133,6 +174,11 @@ def test_merge_membership_view_preserves_liveness_state() -> None:
     assert stored.port == 9002
     assert stored.status is NodeStatus.SUSPECTED
     assert stored.phi == 12.0
+    assert result.changed is True
+    assert result.merged_entries == 1
+    assert result.ignored_entries == 0
+    assert result.new_peers == ()
+    assert [peer.node_id for peer in result.updated_peers] == ["node-2"]
 
 
 def test_remove_peer_returns_typed_result() -> None:
@@ -142,29 +188,37 @@ def test_remove_peer_returns_typed_result() -> None:
 
     result = table.remove_peer("node-2")
 
-    assert result.outcome is RemovePeerOutcome.REMOVED
+    assert result.peer_id == "node-2"
+    assert result.changed is True
+    assert result.should_gossip is True
+    assert result.reason == "removed"
     assert table.snapshot() == ()
 
 
 def test_concurrent_updates_to_same_peer_preserve_single_entry() -> None:
     """Assert repeated concurrent updates to one peer never create duplicates."""
     table = PeerTable(self_node_id="node-1")
-    outcomes: list[UpsertPeerOutcome] = []
+    inserted_results = 0
+    changed_results = 0
     outcome_lock = threading.Lock()
     barrier = threading.Barrier(9)
 
     def worker() -> None:
+        nonlocal inserted_results, changed_results
         barrier.wait()
-        local_outcomes: list[UpsertPeerOutcome] = []
+        local_inserted_results = 0
+        local_changed_results = 0
         for _ in range(100):
             result = table.upsert_peer(
                 node_id="node-2",
                 host="127.0.0.1",
                 port=9001,
             )
-            local_outcomes.append(result.outcome)
+            local_inserted_results += int(result.inserted)
+            local_changed_results += int(result.changed)
         with outcome_lock:
-            outcomes.extend(local_outcomes)
+            inserted_results += local_inserted_results
+            changed_results += local_changed_results
 
     threads = [threading.Thread(target=worker) for _ in range(8)]
     for thread in threads:
@@ -178,8 +232,8 @@ def test_concurrent_updates_to_same_peer_preserve_single_entry() -> None:
     peers = table.snapshot()
     assert len(peers) == 1
     assert peers[0].node_id == "node-2"
-    assert outcomes.count(UpsertPeerOutcome.INSERTED) == 1
-    assert set(outcomes).issubset({UpsertPeerOutcome.INSERTED, UpsertPeerOutcome.UNCHANGED})
+    assert inserted_results == 1
+    assert changed_results == 1
 
 
 def test_concurrent_merge_and_heartbeat_leave_peer_alive() -> None:

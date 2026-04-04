@@ -15,13 +15,11 @@ from typing import Dict
 
 from membership.peer import Peer
 from membership.results import (
-    MergeMembershipResult,
-    PeerStatusOutcome,
-    PeerStatusResult,
-    RemovePeerOutcome,
-    RemovePeerResult,
-    UpsertPeerOutcome,
-    UpsertPeerResult,
+    FailureDetectionUpdateResult,
+    MembershipMergeResult,
+    PeerRemovalResult,
+    PeerStatusTransitionResult,
+    PeerUpsertResult,
 )
 from membership.status import NodeStatus
 
@@ -49,12 +47,18 @@ class PeerTable:
         self._lock = threading.Lock()
         self._peers: Dict[str, Peer] = {}
 
-    def upsert_peer(self, *, node_id: str, host: str, port: int) -> UpsertPeerResult:
+    def upsert_peer(self, *, node_id: str, host: str, port: int) -> PeerUpsertResult:
         """Insert a peer or refresh its advertised endpoint atomically."""
         if node_id == self._self_node_id:
-            return UpsertPeerResult(
-                outcome=UpsertPeerOutcome.IGNORED_SELF,
+            return PeerUpsertResult(
+                peer_id=node_id,
+                changed=False,
+                inserted=False,
+                previous_status=None,
+                new_status=None,
                 peer=None,
+                should_gossip=False,
+                reason="ignored_self",
             )
 
         with self._lock:
@@ -62,42 +66,95 @@ class PeerTable:
             if peer is None:
                 created = Peer.new(node_id=node_id, host=host, port=port)
                 self._peers[node_id] = created
-                return UpsertPeerResult(
-                    outcome=UpsertPeerOutcome.INSERTED,
+                return PeerUpsertResult(
+                    peer_id=node_id,
+                    changed=True,
+                    inserted=True,
+                    previous_status=None,
+                    new_status=created.status,
                     peer=self._clone_peer(created),
+                    should_gossip=True,
+                    reason="inserted",
                 )
 
             if peer.host == host and peer.port == port:
-                return UpsertPeerResult(
-                    outcome=UpsertPeerOutcome.UNCHANGED,
+                return PeerUpsertResult(
+                    peer_id=node_id,
+                    changed=False,
+                    inserted=False,
+                    previous_status=peer.status,
+                    new_status=peer.status,
                     peer=self._clone_peer(peer),
+                    should_gossip=False,
+                    reason="unchanged",
                 )
 
             peer.host = host
             peer.port = port
-            return UpsertPeerResult(
-                outcome=UpsertPeerOutcome.UPDATED,
+            return PeerUpsertResult(
+                peer_id=node_id,
+                changed=True,
+                inserted=False,
+                previous_status=peer.status,
+                new_status=peer.status,
                 peer=self._clone_peer(peer),
+                should_gossip=True,
+                reason="endpoint_updated",
             )
 
-    def mark_suspected(self, node_id: str, *, phi: float | None = None) -> PeerStatusResult:
+    def mark_suspected(
+        self,
+        node_id: str,
+        *,
+        phi: float | None = None,
+    ) -> FailureDetectionUpdateResult:
         """Mark an existing peer as suspected without exposing live state."""
         with self._lock:
             peer = self._peers.get(node_id)
             if peer is None:
-                return PeerStatusResult(
-                    outcome=PeerStatusOutcome.NOT_FOUND,
+                status_result = PeerStatusTransitionResult(
+                    peer_id=node_id,
+                    changed=False,
+                    previous_status=None,
+                    new_status=None,
+                    should_gossip=False,
+                    reason="peer_not_found",
+                )
+                return FailureDetectionUpdateResult(
+                    peer_id=node_id,
+                    changed=False,
+                    heartbeat_advanced=False,
+                    phi_updated=False,
                     peer=None,
+                    status=status_result,
+                    should_gossip=False,
+                    reason="peer_not_found",
                 )
 
-            changed = peer.status is not NodeStatus.SUSPECTED
+            previous_status = peer.status
+            status_changed = previous_status is not NodeStatus.SUSPECTED
+            phi_updated = False
             if phi is not None:
-                changed = changed or peer.phi != phi
+                phi_updated = peer.phi != phi
                 peer.phi = phi
             peer.status = NodeStatus.SUSPECTED
-            return PeerStatusResult(
-                outcome=PeerStatusOutcome.UPDATED if changed else PeerStatusOutcome.UNCHANGED,
+            status_result = PeerStatusTransitionResult(
+                peer_id=node_id,
+                changed=status_changed,
+                previous_status=previous_status,
+                new_status=peer.status,
+                should_gossip=status_changed,
+                reason="marked_suspected" if status_changed else "phi_refreshed" if phi_updated else "unchanged",
+            )
+            return FailureDetectionUpdateResult(
+                peer_id=node_id,
+                changed=status_changed or phi_updated,
+                heartbeat_advanced=False,
+                phi_updated=phi_updated,
                 peer=self._clone_peer(peer),
+                status=status_result,
+                should_gossip=status_result.should_gossip,
+                reason=status_result.reason,
             )
 
     def mark_alive(
@@ -106,56 +163,96 @@ class PeerTable:
         *,
         heartbeat_at: float,
         phi: float | None = None,
-    ) -> PeerStatusResult:
+    ) -> FailureDetectionUpdateResult:
         """Mark an existing peer alive and advance heartbeat metadata atomically."""
         with self._lock:
             peer = self._peers.get(node_id)
             if peer is None:
-                return PeerStatusResult(
-                    outcome=PeerStatusOutcome.NOT_FOUND,
+                status_result = PeerStatusTransitionResult(
+                    peer_id=node_id,
+                    changed=False,
+                    previous_status=None,
+                    new_status=None,
+                    should_gossip=False,
+                    reason="peer_not_found",
+                )
+                return FailureDetectionUpdateResult(
+                    peer_id=node_id,
+                    changed=False,
+                    heartbeat_advanced=False,
+                    phi_updated=False,
                     peer=None,
+                    status=status_result,
+                    should_gossip=False,
+                    reason="peer_not_found",
                 )
 
+            previous_status = peer.status
             new_heartbeat = max(peer.last_heartbeat, heartbeat_at)
             new_phi = 0.0 if phi is None else phi
-            changed = (
-                peer.status is not NodeStatus.ALIVE
-                or peer.last_heartbeat != new_heartbeat
-                or peer.phi != new_phi
-            )
+            heartbeat_advanced = peer.last_heartbeat != new_heartbeat
+            phi_updated = peer.phi != new_phi
+            status_changed = previous_status is not NodeStatus.ALIVE
             peer.last_heartbeat = new_heartbeat
             peer.phi = new_phi
             peer.status = NodeStatus.ALIVE
-            return PeerStatusResult(
-                outcome=PeerStatusOutcome.UPDATED if changed else PeerStatusOutcome.UNCHANGED,
+            status_result = PeerStatusTransitionResult(
+                peer_id=node_id,
+                changed=status_changed,
+                previous_status=previous_status,
+                new_status=peer.status,
+                should_gossip=status_changed,
+                reason=(
+                    "marked_alive"
+                    if status_changed
+                    else "heartbeat_advanced"
+                    if heartbeat_advanced
+                    else "phi_reset"
+                    if phi_updated
+                    else "unchanged"
+                ),
+            )
+            return FailureDetectionUpdateResult(
+                peer_id=node_id,
+                changed=status_changed or heartbeat_advanced or phi_updated,
+                heartbeat_advanced=heartbeat_advanced,
+                phi_updated=phi_updated,
                 peer=self._clone_peer(peer),
+                status=status_result,
+                should_gossip=status_result.should_gossip,
+                reason=status_result.reason,
             )
 
-    def remove_peer(self, node_id: str) -> RemovePeerResult:
+    def remove_peer(self, node_id: str) -> PeerRemovalResult:
         """Remove a peer atomically if it exists."""
         with self._lock:
             peer = self._peers.pop(node_id, None)
             if peer is None:
-                return RemovePeerResult(
-                    outcome=RemovePeerOutcome.NOT_FOUND,
+                return PeerRemovalResult(
+                    peer_id=node_id,
+                    changed=False,
                     peer=None,
+                    should_gossip=False,
+                    reason="peer_not_found",
                 )
-            return RemovePeerResult(
-                outcome=RemovePeerOutcome.REMOVED,
+            return PeerRemovalResult(
+                peer_id=node_id,
+                changed=True,
                 peer=self._clone_peer(peer),
+                should_gossip=True,
+                reason="removed",
             )
 
-    def merge_membership_view(self, peers: Iterable[Peer]) -> MergeMembershipResult:
+    def merge_membership_view(self, peers: Iterable[Peer]) -> MembershipMergeResult:
         """Merge an inbound membership view under a single lock."""
         added: list[Peer] = []
         updated: list[Peer] = []
-        unchanged: list[str] = []
-        ignored_self: list[str] = []
+        ignored_entries = 0
 
         with self._lock:
             for candidate in peers:
                 if candidate.node_id == self._self_node_id:
-                    ignored_self.append(candidate.node_id)
+                    ignored_entries += 1
                     continue
 
                 existing = self._peers.get(candidate.node_id)
@@ -170,18 +267,20 @@ class PeerTable:
                     continue
 
                 if existing.host == candidate.host and existing.port == candidate.port:
-                    unchanged.append(candidate.node_id)
                     continue
 
                 existing.host = candidate.host
                 existing.port = candidate.port
                 updated.append(self._clone_peer(existing))
 
-        return MergeMembershipResult(
-            added=tuple(added),
-            updated=tuple(updated),
-            unchanged=tuple(unchanged),
-            ignored_self=tuple(ignored_self),
+        return MembershipMergeResult(
+            changed=bool(added or updated),
+            merged_entries=len(added) + len(updated),
+            ignored_entries=ignored_entries,
+            new_peers=tuple(added),
+            updated_peers=tuple(updated),
+            should_gossip=bool(added or updated),
+            reason="membership_view_changed" if added or updated else "unchanged",
         )
 
     def get_peer(self, node_id: str) -> Peer | None:

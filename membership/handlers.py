@@ -11,7 +11,6 @@ from collections.abc import Callable
 
 from membership.peer import Peer
 from membership.peer_table import PeerTable
-from membership.results import UpsertPeerOutcome
 from protocol.contracts import MembershipField
 from protocol.message import Message
 from protocol.message_types import MessageType
@@ -104,13 +103,16 @@ def make_membership_handlers(
             port=port,
         )
 
-        if upsert_result.outcome is UpsertPeerOutcome.INSERTED:
+        if upsert_result.inserted:
             discovered_peer = upsert_result.peer
             if discovered_peer is not None:
                 log.info(f"New peer joined: {node_id} {host}:{port}")
                 _notify_discovered(discovered_peer)
         else:
-            log.info(f"JOIN_REQUEST from known peer: {node_id}")
+            log.info(
+                "JOIN_REQUEST from known peer: "
+                f"{node_id} changed={upsert_result.changed} reason={upsert_result.reason}"
+            )
 
         peers_payload: list[JsonValue] = [
             {
@@ -164,10 +166,16 @@ def make_membership_handlers(
             validated_peers.append(Peer.new(node_id=node_id, host=host, port=port))
 
         merge_result = peer_table.merge_membership_view(validated_peers)
-        for discovered_peer in merge_result.added:
+        for discovered_peer in merge_result.new_peers:
             _notify_discovered(discovered_peer)
 
-        if merge_result.added:
-            log.info(f"Integrated {len(merge_result.added)} new peers from PEER_LIST")
+        if merge_result.changed:
+            log.info(
+                "Integrated PEER_LIST updates: "
+                f"merged={merge_result.merged_entries} "
+                f"new={len(merge_result.new_peers)} "
+                f"updated={len(merge_result.updated_peers)} "
+                f"ignored={merge_result.ignored_entries}"
+            )
 
     return handle_join_request, handle_peer_list

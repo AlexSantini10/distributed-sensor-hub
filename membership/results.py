@@ -1,66 +1,72 @@
-"""Define typed outcomes for thread-safe membership operations."""
+"""Define typed result contracts for membership and failure-detection updates."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
 from membership.peer import Peer
+from membership.status import NodeStatus
 
 
-class UpsertPeerOutcome(StrEnum):
-    """Enumerate outcomes for peer insertion or endpoint refresh."""
+@dataclass(frozen=True, slots=True)
+class PeerStatusTransitionResult:
+    """Describe whether a peer changed liveness state."""
 
-    INSERTED = "inserted"
-    UPDATED = "updated"
-    UNCHANGED = "unchanged"
-    IGNORED_SELF = "ignored_self"
+    peer_id: str
+    changed: bool
+    previous_status: NodeStatus | None
+    new_status: NodeStatus | None
+    should_gossip: bool
+    reason: str | None = None
 
 
-@dataclass(frozen=True)
-class UpsertPeerResult:
-    """Describe the result of inserting or refreshing a peer entry."""
+@dataclass(frozen=True, slots=True)
+class PeerUpsertResult:
+    """Describe whether a peer record was inserted or refreshed."""
 
-    outcome: UpsertPeerOutcome
+    peer_id: str
+    changed: bool
+    inserted: bool
+    previous_status: NodeStatus | None
+    new_status: NodeStatus | None
     peer: Peer | None
+    should_gossip: bool
+    reason: str | None = None
 
 
-class PeerStatusOutcome(StrEnum):
-    """Enumerate outcomes for liveness transitions."""
+@dataclass(frozen=True, slots=True)
+class MembershipMergeResult:
+    """Describe what changed while merging an inbound membership view."""
 
-    UPDATED = "updated"
-    UNCHANGED = "unchanged"
-    NOT_FOUND = "not_found"
+    changed: bool
+    merged_entries: int
+    ignored_entries: int
+    new_peers: tuple[Peer, ...]
+    updated_peers: tuple[Peer, ...]
+    should_gossip: bool
+    reason: str | None = None
 
 
-@dataclass(frozen=True)
-class PeerStatusResult:
-    """Describe the result of a liveness mutation."""
+@dataclass(frozen=True, slots=True)
+class FailureDetectionUpdateResult:
+    """Describe one failure-detection driven update for a peer."""
 
-    outcome: PeerStatusOutcome
+    peer_id: str
+    changed: bool
+    heartbeat_advanced: bool
+    phi_updated: bool
     peer: Peer | None
+    status: PeerStatusTransitionResult
+    should_gossip: bool
+    reason: str | None = None
 
 
-class RemovePeerOutcome(StrEnum):
-    """Enumerate outcomes for peer removal."""
+@dataclass(frozen=True, slots=True)
+class PeerRemovalResult:
+    """Describe whether a peer was removed from membership."""
 
-    REMOVED = "removed"
-    NOT_FOUND = "not_found"
-
-
-@dataclass(frozen=True)
-class RemovePeerResult:
-    """Describe the result of removing a peer."""
-
-    outcome: RemovePeerOutcome
+    peer_id: str
+    changed: bool
     peer: Peer | None
-
-
-@dataclass(frozen=True)
-class MergeMembershipResult:
-    """Describe the result of merging an inbound membership view."""
-
-    added: tuple[Peer, ...]
-    updated: tuple[Peer, ...]
-    unchanged: tuple[str, ...]
-    ignored_self: tuple[str, ...]
+    should_gossip: bool
+    reason: str | None = None
