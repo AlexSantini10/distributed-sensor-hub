@@ -2,6 +2,7 @@
 
 Responsibilities:
     - Define the peer record exchanged by membership and gossip flows.
+    - Define the typed node status used by membership and failure detection.
     - Maintain the local peer table with thread-safe additive updates.
     - Expose handlers for join requests and peer-list convergence messages.
 """

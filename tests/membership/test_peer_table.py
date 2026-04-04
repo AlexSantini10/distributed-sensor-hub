@@ -10,6 +10,7 @@ import time
 
 from membership.peer import Peer
 from membership.peer_table import PeerTable
+from membership.status import NodeStatus
 
 
 def test_add_peer_success() -> None:
@@ -71,6 +72,7 @@ def test_update_heartbeat_existing_peer() -> None:
 
     peer = Peer.new("node-2", "127.0.0.1", 9001)
     table.add_peer(peer)
+    peer.status = NodeStatus.SUSPECTED
 
     old_ts = peer.last_heartbeat
     new_ts = old_ts + 10.0
@@ -80,7 +82,7 @@ def test_update_heartbeat_existing_peer() -> None:
     updated = table.get_peer("node-2")
     assert updated is not None
     assert updated.last_heartbeat == new_ts
-    assert updated.status == "alive"
+    assert updated.status is NodeStatus.ALIVE
 
 
 def test_update_heartbeat_unknown_peer_noop() -> None:
@@ -118,3 +120,15 @@ def test_list_peers_returns_snapshot() -> None:
 
     peers = table.list_peers()
     assert {p.node_id for p in peers} == {"node-2", "node-3"}
+
+
+def test_new_peer_uses_typed_alive_status() -> None:
+    """Assert that new peers start with the enum-backed alive state.
+
+    Returns:
+        None: This test asserts enum-based status initialization.
+    """
+    peer = Peer.new("node-2", "127.0.0.1", 9001)
+
+    assert peer.status is NodeStatus.ALIVE
+    assert peer.status.to_wire() == "alive"

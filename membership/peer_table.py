@@ -12,6 +12,7 @@ from __future__ import annotations
 import threading
 from typing import Dict, List, Optional
 from membership.peer import Peer
+from membership.status import NodeStatus
 
 
 class PeerTable:
@@ -85,7 +86,7 @@ class PeerTable:
                 return
 
             peer.last_heartbeat = timestamp
-            peer.status = "alive"
+            peer.status = NodeStatus.ALIVE
 
     def list_peers(self) -> List[Peer]:
         """Return a snapshot of the current membership view.

@@ -7,11 +7,9 @@ Responsibilities:
 """
 
 from dataclasses import dataclass
-from typing import Literal
 import time
 
-
-PeerStatus = Literal["alive", "suspected", "dead"]
+from membership.status import NodeStatus
 
 
 @dataclass
@@ -24,7 +22,7 @@ class Peer:
         port (int): TCP port exposed by the peer's protocol server.
         last_heartbeat (float): Unix timestamp of the latest accepted liveness signal.
         phi (float): Failure-detector score associated with the peer.
-        status (PeerStatus): Current liveness classification for membership decisions.
+        status (NodeStatus): Current liveness classification for membership decisions.
     """
 
     node_id: str
@@ -33,7 +31,7 @@ class Peer:
 
     last_heartbeat: float
     phi: float
-    status: PeerStatus
+    status: NodeStatus
 
     @staticmethod
     def new(node_id: str, host: str, port: int) -> "Peer":
@@ -54,5 +52,5 @@ class Peer:
             port=port,
             last_heartbeat=time.time(),
             phi=0.0,
-            status="alive",
+            status=NodeStatus.ALIVE,
         )
