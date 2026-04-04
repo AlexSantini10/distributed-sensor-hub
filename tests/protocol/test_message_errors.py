@@ -8,6 +8,7 @@ import pytest
 
 from protocol.message import Message
 from protocol.contracts import MessageField
+from protocol.messages import ProtocolValidationError
 
 
 @pytest.mark.protocol
@@ -17,7 +18,7 @@ def test_from_json_missing_type() -> None:
     Returns:
         None: This test asserts required-field validation.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(ProtocolValidationError):
         Message.from_json({MessageField.SENDER_ID.value: "n1"})
 
 
@@ -28,7 +29,7 @@ def test_from_json_invalid_type() -> None:
     Returns:
         None: This test asserts message-type validation.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(ProtocolValidationError):
         Message.from_json(
             {
                 MessageField.TYPE.value: "NOPE",
@@ -44,5 +45,5 @@ def test_from_json_missing_sender_id() -> None:
     Returns:
         None: This test asserts sender-id validation.
     """
-    with pytest.raises(ValueError):
+    with pytest.raises(ProtocolValidationError):
         Message.from_json({MessageField.TYPE.value: "PING"})

@@ -8,8 +8,9 @@ Responsibilities:
 import threading
 from networking.tcp_client import Peer, TcpClient
 from networking.tcp_server import TcpServer
+from protocol.factory import build_ping
 from protocol.message import Message
-from protocol.message_types import MessageType
+from protocol.messages import PingPayload
 
 
 class DummyDispatcher:
@@ -92,11 +93,7 @@ def test_server_receives_message_from_tcp_client() -> None:
 
         client.add_peer(peer)
 
-        msg = Message(
-            msg_type=MessageType.PING,
-            sender_id="client-1",
-            payload={"timestamp": 123},
-        )
+        msg = build_ping(sender_id="client-1", ping_timestamp_ms=123)
 
         client.send_json(peer.node_id, msg)
 
@@ -104,9 +101,10 @@ def test_server_receives_message_from_tcp_client() -> None:
         assert len(dispatcher.messages) == 1
 
         received = dispatcher.messages[0]
-        assert received.msg_type == MessageType.PING
+        assert received.msg_type.value == "PING"
         assert received.sender_id == "client-1"
-        assert received.payload["timestamp"] == 123
+        assert isinstance(received.payload, PingPayload)
+        assert received.payload.timestamp_ms == 123
 
     finally:
         client.stop()

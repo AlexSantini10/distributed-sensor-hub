@@ -14,13 +14,13 @@ from membership.peer_table import PeerTable
 from networking.tcp_client import Peer as TcpPeer
 from networking.tcp_client import TcpClient
 from networking.tcp_server import TcpServer
-from protocol.contracts import MembershipField, NetworkConstant
+from protocol.contracts import NetworkConstant
 from protocol.dispatcher import MessageDispatcher
+from protocol.factory import build_join_request
 from protocol.message import Message
-from protocol.message_types import MessageType
 from protocol.setup import setup_protocol
 from utils.config import Config
-from utils.typing import JsonObject, LoggerLike, SenderLike, StateWorkerLike
+from utils.typing import LoggerLike, SenderLike, StateWorkerLike
 
 
 @dataclass(frozen=True)
@@ -53,15 +53,11 @@ def make_join_request(self_node_id: str, host: str, port: int) -> Message:
     Returns:
         Message: Protocol message announcing the local node's reachable endpoint.
     """
-    payload: JsonObject = {
-        MembershipField.NODE_ID.value: self_node_id,
-        MembershipField.HOST.value: host,
-        MembershipField.PORT.value: port,
-    }
-    return Message(
-        msg_type=MessageType.JOIN_REQUEST,
+    return build_join_request(
         sender_id=self_node_id,
-        payload=payload,
+        node_id=self_node_id,
+        host=host,
+        port=port,
     )
 
 

@@ -9,8 +9,7 @@ import json
 import pytest
 
 from protocol.contracts import MessageField
-from protocol.message import Message
-from protocol.message_types import MessageType
+from protocol.factory import build_ping
 
 
 @pytest.mark.protocol
@@ -20,12 +19,13 @@ def test_to_dict_and_json() -> None:
     Returns:
         None: This test asserts serialization consistency.
     """
-    msg = Message(MessageType.PING, "nodeX", {"a": 1})
+    msg = build_ping("nodeX", ping_timestamp_ms=123, timestamp=999)
 
     d = msg.to_dict()
     assert d[MessageField.TYPE.value] == "PING"
     assert d[MessageField.SENDER_ID.value] == "nodeX"
-    assert d[MessageField.PAYLOAD.value] == {"a": 1}
+    assert d[MessageField.TIMESTAMP.value] == 999
+    assert d[MessageField.PAYLOAD.value] == {"timestamp": 123}
 
     json_str = msg.to_json()
     assert isinstance(json_str, str)

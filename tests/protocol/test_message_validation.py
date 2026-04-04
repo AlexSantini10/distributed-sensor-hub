@@ -6,7 +6,7 @@ Responsibilities:
 
 import pytest
 
-from protocol.message import Message
+from protocol.messages import Message, PingPayload, ProtocolValidationError
 from protocol.message_types import MessageType
 
 
@@ -20,12 +20,12 @@ def test_valid_message_creation() -> None:
     msg = Message(
         msg_type=MessageType.PING,
         sender_id="node1",
-        payload={"key": "value"},
+        payload=PingPayload(timestamp_ms=123),
     )
 
     assert msg.msg_type == MessageType.PING
     assert msg.sender_id == "node1"
-    assert msg.payload == {"key": "value"}
+    assert msg.payload == PingPayload(timestamp_ms=123)
     assert isinstance(msg.timestamp, int)
 
 
@@ -36,8 +36,8 @@ def test_invalid_msg_type() -> None:
     Returns:
         None: This test asserts message-type validation.
     """
-    with pytest.raises(ValueError):
-        Message(msg_type="PING", sender_id="n1", payload={})
+    with pytest.raises(ProtocolValidationError):
+        Message(msg_type="PING", sender_id="n1", payload=PingPayload())  # type: ignore[arg-type]
 
 
 @pytest.mark.protocol
@@ -47,8 +47,8 @@ def test_invalid_payload_type() -> None:
     Returns:
         None: This test asserts payload-type validation.
     """
-    with pytest.raises(ValueError):
-        Message(MessageType.PING, "n1", payload="not a dict")
+    with pytest.raises(ProtocolValidationError):
+        Message(MessageType.PING, "n1", payload="not a payload")  # type: ignore[arg-type]
 
 
 @pytest.mark.protocol
@@ -58,5 +58,5 @@ def test_invalid_timestamp() -> None:
     Returns:
         None: This test asserts timestamp-type validation.
     """
-    with pytest.raises(ValueError):
-        Message(MessageType.PING, "n1", {}, timestamp="bad")
+    with pytest.raises(ProtocolValidationError):
+        Message(MessageType.PING, "n1", PingPayload(), timestamp="bad")  # type: ignore[arg-type]

@@ -9,6 +9,7 @@ Responsibilities:
 import pytest
 
 from protocol.dispatcher import MessageDispatcher, ProtocolError
+from protocol.factory import build_ping
 from protocol.message import Message
 from protocol.message_types import MessageType
 
@@ -35,11 +36,7 @@ def test_dispatch_calls_correct_handler() -> None:
 
     dispatcher.register(MessageType.PING, handler)
 
-    msg = Message(
-        msg_type=MessageType.PING,
-        sender_id="node-1",
-        payload={},
-    )
+    msg = build_ping(sender_id="node-1")
 
     dispatcher.dispatch(msg)
 
@@ -54,11 +51,7 @@ def test_dispatch_unknown_message_does_not_crash() -> None:
     """
     dispatcher = MessageDispatcher()
 
-    msg = Message(
-        msg_type=MessageType.PING,
-        sender_id="node-1",
-        payload={},
-    )
+    msg = build_ping(sender_id="node-1")
 
     dispatcher.dispatch(msg)
 
@@ -87,11 +80,7 @@ def test_handler_exception_is_propagated() -> None:
 
     dispatcher.register(MessageType.PING, handler)
 
-    msg = Message(
-        msg_type=MessageType.PING,
-        sender_id="node-1",
-        payload={},
-    )
+    msg = build_ping(sender_id="node-1")
 
     with pytest.raises(RuntimeError):
         dispatcher.dispatch(msg)

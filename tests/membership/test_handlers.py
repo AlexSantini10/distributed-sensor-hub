@@ -1,10 +1,10 @@
 """Validate membership handler orchestration contracts."""
 
-from protocol.message import Message
-from protocol.message_types import MessageType
-
 from membership.handlers import make_membership_handlers
 from membership.peer_table import PeerTable
+from protocol.factory import build_join_request, build_peer_list
+from protocol.message import Message
+from protocol.messages import PeerDescriptor, PeerListPayload
 
 
 class FakeSender:
@@ -28,14 +28,11 @@ def test_join_request_adds_peer_and_replies_with_peer_list() -> None:
         self_node_id="node-1",
     )
 
-    join_msg = Message(
-        msg_type=MessageType.JOIN_REQUEST,
+    join_msg = build_join_request(
         sender_id="transport-peer",
-        payload={
-            "node_id": "node-2",
-            "host": "127.0.0.1",
-            "port": 9001,
-        },
+        node_id="node-2",
+        host="127.0.0.1",
+        port=9001,
     )
 
     handle_join(join_msg)
@@ -49,12 +46,10 @@ def test_join_request_adds_peer_and_replies_with_peer_list() -> None:
     sent_peer_id, reply = sender.sent[0]
 
     assert sent_peer_id == "transport-peer"
-    assert reply.msg_type == MessageType.PEER_LIST
-
-    peers = reply.payload["peers"]
-    assert isinstance(peers, list)
-    assert len(peers) == 1
-    assert peers[0]["node_id"] == "node-2"
+    assert reply.msg_type.value == "PEER_LIST"
+    assert isinstance(reply.payload, PeerListPayload)
+    assert len(reply.payload.peers) == 1
+    assert reply.payload.peers[0].node_id == "node-2"
 
 
 def test_join_request_idempotent() -> None:
@@ -68,14 +63,11 @@ def test_join_request_idempotent() -> None:
         self_node_id="node-1",
     )
 
-    msg = Message(
-        msg_type=MessageType.JOIN_REQUEST,
+    msg = build_join_request(
         sender_id="peer-x",
-        payload={
-            "node_id": "node-2",
-            "host": "127.0.0.1",
-            "port": 9001,
-        },
+        node_id="node-2",
+        host="127.0.0.1",
+        port=9001,
     )
 
     handle_join(msg)
@@ -98,14 +90,11 @@ def test_join_request_self_ignored() -> None:
         self_node_id="node-1",
     )
 
-    msg = Message(
-        msg_type=MessageType.JOIN_REQUEST,
+    msg = build_join_request(
         sender_id="loopback",
-        payload={
-            "node_id": "node-1",
-            "host": "127.0.0.1",
-            "port": 9000,
-        },
+        node_id="node-1",
+        host="127.0.0.1",
+        port=9000,
     )
 
     handle_join(msg)
@@ -127,15 +116,12 @@ def test_peer_list_integrates_new_peers_only() -> None:
 
     table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
 
-    peer_list_msg = Message(
-        msg_type=MessageType.PEER_LIST,
+    peer_list_msg = build_peer_list(
         sender_id="peer-x",
-        payload={
-            "peers": [
-                {"node_id": "node-2", "host": "127.0.0.1", "port": 9001},
-                {"node_id": "node-3", "host": "127.0.0.1", "port": 9002},
-            ]
-        },
+        peers=[
+            PeerDescriptor(node_id="node-2", host="127.0.0.1", port=9001),
+            PeerDescriptor(node_id="node-3", host="127.0.0.1", port=9002),
+        ],
     )
 
     handle_peer_list(peer_list_msg)
@@ -159,15 +145,12 @@ def test_peer_list_notifies_only_newly_discovered_peers() -> None:
     )
 
     handle_peer_list(
-        Message(
-            msg_type=MessageType.PEER_LIST,
+        build_peer_list(
             sender_id="peer-x",
-            payload={
-                "peers": [
-                    {"node_id": "node-2", "host": "127.0.0.1", "port": 9001},
-                    {"node_id": "node-3", "host": "127.0.0.1", "port": 9002},
-                ]
-            },
+            peers=[
+                PeerDescriptor(node_id="node-2", host="127.0.0.1", port=9001),
+                PeerDescriptor(node_id="node-3", host="127.0.0.1", port=9002),
+            ],
         )
     )
 
@@ -185,14 +168,11 @@ def test_join_handler_replies_from_snapshot_not_live_peer_object() -> None:
     )
 
     handle_join(
-        Message(
-            msg_type=MessageType.JOIN_REQUEST,
+        build_join_request(
             sender_id="transport-peer",
-            payload={
-                "node_id": "node-2",
-                "host": "127.0.0.1",
-                "port": 9001,
-            },
+            node_id="node-2",
+            host="127.0.0.1",
+            port=9001,
         )
     )
 

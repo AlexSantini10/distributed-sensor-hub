@@ -10,8 +10,8 @@ import struct
 import threading
 
 from networking.tcp_server import TcpServer
+from protocol.factory import build_ping
 from protocol.message import Message
-from protocol.message_types import MessageType
 
 
 class DummyDispatcher:
@@ -98,16 +98,12 @@ def test_tcp_server_dispatches_message() -> None:
         assert server._server_sock is not None
         bound_port = server._server_sock.getsockname()[1]
 
-        msg = Message(
-            msg_type=MessageType.PING,
-            sender_id="node-1",
-            payload={"timestamp": 123},
-        )
+        msg = build_ping(sender_id="node-1", ping_timestamp_ms=123)
 
         _send_frame(host, bound_port, msg.to_bytes())
 
         assert dispatcher.wait(2.0) is True
         assert len(dispatcher.messages) == 1
-        assert dispatcher.messages[0].msg_type == MessageType.PING
+        assert dispatcher.messages[0].msg_type.value == "PING"
     finally:
         server.stop()

@@ -8,10 +8,10 @@ Responsibilities:
 
 from collections.abc import Callable
 
-from protocol.contracts import SensorUpdateField
 from protocol.message import Message
+from protocol.messages import PingPayload, SensorUpdatePayload
 from utils.logging import get_logger
-from utils.typing import JsonObject, LoggerLike, SensorMetaDict, StateWorkerLike
+from utils.typing import LoggerLike, StateWorkerLike
 
 
 def handle_join_request(msg: Message) -> None:
@@ -57,7 +57,10 @@ def handle_ping(msg: Message) -> None:
 		NotImplementedError: Always, because ping handling is not implemented yet.
 	"""
 	log = get_logger(__name__, msg.sender_id)
-	log.info(f"Received PING with payload={msg.payload}")
+	payload = msg.payload
+	if not isinstance(payload, PingPayload):
+		raise ValueError("Expected PingPayload")
+	log.info(f"Received PING with payload={payload.to_mapping()}")
 	raise NotImplementedError("PING not implemented yet")
 
 
@@ -114,40 +117,17 @@ def make_sensor_update_handler(
             None: This handler validates the payload and attempts a local merge.
         """
         payload = msg.payload
-
-        sensor_id = payload.get(SensorUpdateField.SENSOR_ID.value)
-        value = payload.get(SensorUpdateField.VALUE.value)
-        ts_ms = payload.get(SensorUpdateField.TS_MS.value)
-
-        origin_value = payload.get(SensorUpdateField.ORIGIN.value)
-        origin = origin_value if isinstance(origin_value, str) and origin_value != "" else msg.sender_id
-
-        meta_value = payload.get(SensorUpdateField.META.value, {})
-        meta: JsonObject | SensorMetaDict
-        if isinstance(meta_value, dict):
-            meta = meta_value
-        else:
-            meta = {}
-
-        if not isinstance(sensor_id, str) or sensor_id == "":
-            log.warning("Invalid SENSOR_UPDATE: missing/invalid sensor_id")
-            return
-
-        if origin == "":
-            log.warning("Invalid SENSOR_UPDATE: missing/invalid origin")
-            return
-
-        if not isinstance(ts_ms, int):
-            log.warning("Invalid SENSOR_UPDATE: missing/invalid ts_ms")
+        if not isinstance(payload, SensorUpdatePayload):
+            log.warning("Invalid SENSOR_UPDATE payload")
             return
 
         try:
             applied = state_worker.merge_update(
-                sensor_id=sensor_id,
-                value=value,
-                ts_ms=ts_ms,
-                origin=origin,
-                meta=meta,
+                sensor_id=payload.sensor_id,
+                value=payload.value,
+                ts_ms=payload.ts_ms,
+                origin=payload.origin,
+                meta=payload.meta.to_mapping(),
             )
         except Exception:
             log.error("Failed to merge SENSOR_UPDATE", exc_info=True)
@@ -155,7 +135,7 @@ def make_sensor_update_handler(
 
         if applied:
             log.info(
-                f"SENSOR_UPDATE applied: sensor={sensor_id} origin={origin} ts={ts_ms}"
+                f"SENSOR_UPDATE applied: sensor={payload.sensor_id} origin={payload.origin} ts={payload.ts_ms}"
             )
 
     return handle_sensor_update

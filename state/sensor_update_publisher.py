@@ -11,11 +11,11 @@ import threading
 
 from membership.peer import Peer
 from networking.tcp_client import Peer as TcpPeer
-from protocol.contracts import SensorUpdateField
+from protocol.factory import build_sensor_update
 from protocol.message import Message
-from protocol.message_types import MessageType
+from protocol.messages import SensorMeta
 from typing import Protocol
-from utils.typing import JsonObject, LoggerLike, NodeSnapshot, PeerTableLike, StateWorkerLike
+from utils.typing import LoggerLike, NodeSnapshot, PeerTableLike, StateWorkerLike
 
 
 class SensorUpdatePublisher(threading.Thread):
@@ -118,27 +118,22 @@ class SensorUpdatePublisher(threading.Thread):
                 sensor_id = global_sensor_id.split(":", 1)[1]
 
             meta_value = update.get("meta", {})
-            meta: JsonObject
+            meta: SensorMeta
             if isinstance(meta_value, dict):
-                meta = {
-                    "unit": meta_value.get("unit"),
-                    "period_ms": meta_value.get("period_ms"),
-                }
+                meta = SensorMeta(
+                    unit=meta_value.get("unit"),
+                    period_ms=meta_value.get("period_ms"),
+                )
             else:
-                meta = {"unit": None, "period_ms": None}
+                meta = SensorMeta()
 
-            payload: JsonObject = {
-                SensorUpdateField.SENSOR_ID.value: sensor_id,
-                SensorUpdateField.VALUE.value: update.get("value"),
-                SensorUpdateField.TS_MS.value: update.get("ts_ms"),
-                SensorUpdateField.ORIGIN.value: origin,
-                SensorUpdateField.META.value: meta,
-            }
-
-            msg = Message(
-                msg_type=MessageType.SENSOR_UPDATE,
+            msg = build_sensor_update(
                 sender_id=self._self_node_id,
-                payload=payload,
+                sensor_id=sensor_id,
+                value=update.get("value"),
+                ts_ms=update.get("ts_ms"),
+                origin=origin,
+                meta=meta,
             )
 
             for p in peers:

@@ -11,11 +11,11 @@ from collections.abc import Callable
 
 from membership.peer import Peer
 from membership.peer_table import PeerTable
-from protocol.contracts import MembershipField
+from protocol.factory import build_peer_list
 from protocol.message import Message
-from protocol.message_types import MessageType
+from protocol.messages import JoinRequestPayload, PeerDescriptor, PeerListPayload
 from utils.logging import get_logger
-from utils.typing import JsonObject, JsonValue, JoinRequestPayload, LoggerLike, SenderLike
+from utils.typing import LoggerLike, SenderLike
 
 
 OnPeerDiscovered = Callable[[Peer], None]
@@ -73,62 +73,37 @@ def make_membership_handlers(
             None: The handler updates membership state and may emit a reply.
         """
         payload = msg.payload
-
-        node_id = payload.get(MembershipField.NODE_ID.value)
-        host = payload.get(MembershipField.HOST.value)
-        port = payload.get(MembershipField.PORT.value)
-
-        if not isinstance(node_id, str) or node_id == "":
-            log.warning("Invalid JOIN_REQUEST payload")
-            return
-        if not isinstance(host, str) or host == "":
-            log.warning("Invalid JOIN_REQUEST payload")
-            return
-        if not isinstance(port, int):
+        if not isinstance(payload, JoinRequestPayload):
             log.warning("Invalid JOIN_REQUEST payload")
             return
 
-        join_payload: JoinRequestPayload = {
-            MembershipField.NODE_ID.value: node_id,
-            MembershipField.HOST.value: host,
-            MembershipField.PORT.value: port,
-        }
-
-        if join_payload[MembershipField.NODE_ID.value] == self_node_id:
+        if payload.node_id == self_node_id:
             return
 
         upsert_result = peer_table.upsert_peer(
-            node_id=node_id,
-            host=host,
-            port=port,
+            node_id=payload.node_id,
+            host=payload.host,
+            port=payload.port,
         )
 
         if upsert_result.inserted:
             discovered_peer = upsert_result.peer
             if discovered_peer is not None:
-                log.info(f"New peer joined: {node_id} {host}:{port}")
+                log.info(
+                    f"New peer joined: {payload.node_id} {payload.host}:{payload.port}"
+                )
                 _notify_discovered(discovered_peer)
         else:
             log.info(
                 "JOIN_REQUEST from known peer: "
-                f"{node_id} changed={upsert_result.changed} reason={upsert_result.reason}"
+                f"{payload.node_id} changed={upsert_result.changed} reason={upsert_result.reason}"
             )
 
-        peers_payload: list[JsonValue] = [
-            {
-                MembershipField.NODE_ID.value: p.node_id,
-                MembershipField.HOST.value: p.host,
-                MembershipField.PORT.value: p.port,
-            }
+        peers_payload = [
+            PeerDescriptor(node_id=p.node_id, host=p.host, port=p.port)
             for p in peer_table.snapshot()
         ]
-        reply_payload: JsonObject = {MembershipField.PEERS.value: peers_payload}
-
-        reply = Message(
-            msg_type=MessageType.PEER_LIST,
-            sender_id=self_node_id,
-            payload=reply_payload,
-        )
+        reply = build_peer_list(sender_id=self_node_id, peers=peers_payload)
         send(msg.sender_id, reply)
 
     def handle_peer_list(msg: Message) -> None:
@@ -142,28 +117,15 @@ def make_membership_handlers(
         Returns:
             None: The handler updates membership state in place.
         """
-        peers = msg.payload.get(MembershipField.PEERS.value)
-        if not isinstance(peers, list):
+        payload = msg.payload
+        if not isinstance(payload, PeerListPayload):
             log.warning("Invalid PEER_LIST payload")
             return
 
-        validated_peers: list[Peer] = []
-        for entry in peers:
-            if not isinstance(entry, dict):
-                continue
-
-            node_id = entry.get(MembershipField.NODE_ID.value)
-            host = entry.get(MembershipField.HOST.value)
-            port = entry.get(MembershipField.PORT.value)
-
-            if not isinstance(node_id, str) or node_id == "":
-                continue
-            if not isinstance(host, str) or host == "":
-                continue
-            if not isinstance(port, int):
-                continue
-
-            validated_peers.append(Peer.new(node_id=node_id, host=host, port=port))
+        validated_peers: list[Peer] = [
+            Peer.new(node_id=entry.node_id, host=entry.host, port=entry.port)
+            for entry in payload.peers
+        ]
 
         merge_result = peer_table.merge_membership_view(validated_peers)
         for discovered_peer in merge_result.new_peers:
