@@ -6,9 +6,9 @@ from dataclasses import dataclass, field
 import time
 from typing import ClassVar, Generic, TypeVar
 
-from protocol.contracts import MembershipField, MessageField, SensorUpdateField
+from protocol.contracts import FullSyncField, MembershipField, MessageField, SensorUpdateField
 from protocol.message_types import MessageType
-from utils.typing import JsonObject, JsonValue
+from utils.typing import JsonObject, JsonValue, NodeSnapshot, SensorMetaDict, SensorRecordDict
 
 
 class ProtocolValidationError(ValueError):
@@ -31,6 +31,70 @@ def _require_mapping(value: object, field_name: str) -> JsonObject:
     if not isinstance(value, dict):
         raise ProtocolValidationError(f"{field_name} must be a JSON object")
     return dict(value)
+
+
+def _require_sensor_meta_mapping(raw: object, field_name: str) -> SensorMetaDict:
+    """Validate and normalize one sensor metadata mapping."""
+    data = _require_mapping(raw, field_name)
+    return {
+        "unit": data.get("unit"),
+        "period_ms": data.get("period_ms"),
+    }
+
+
+def _require_sensor_record_mapping(raw: object, field_name: str) -> SensorRecordDict:
+    """Validate and normalize one full-sync sensor record mapping."""
+    data = _require_mapping(raw, field_name)
+    if SensorUpdateField.VALUE.value not in data:
+        raise ProtocolValidationError(
+            f"{field_name}.{SensorUpdateField.VALUE.value} is required"
+        )
+
+    origin_value = data.get(SensorUpdateField.ORIGIN.value)
+    if not isinstance(origin_value, str) or origin_value == "":
+        raise ProtocolValidationError(
+            f"{field_name}.{SensorUpdateField.ORIGIN.value} must be a non-empty string"
+        )
+
+    return {
+        "value": data.get(SensorUpdateField.VALUE.value),
+        "ts_ms": _require_int(
+            data.get(SensorUpdateField.TS_MS.value),
+            f"{field_name}.{SensorUpdateField.TS_MS.value}",
+        ),
+        "origin": origin_value,
+        "meta": _require_sensor_meta_mapping(
+            data.get(SensorUpdateField.META.value, {}),
+            f"{field_name}.{SensorUpdateField.META.value}",
+        ),
+    }
+
+
+def _require_node_snapshot(raw: object, field_name: str) -> NodeSnapshot:
+    """Validate and normalize one full-state snapshot mapping."""
+    data = _require_mapping(raw, field_name)
+    normalized: NodeSnapshot = {}
+
+    for node_id, node_records in data.items():
+        if not isinstance(node_id, str) or node_id == "":
+            raise ProtocolValidationError(f"{field_name} node_id must be a non-empty string")
+
+        per_node_raw = _require_mapping(node_records, f"{field_name}.{node_id}")
+        per_node: dict[str, SensorRecordDict] = {}
+        for global_sensor_id, record in per_node_raw.items():
+            if not isinstance(global_sensor_id, str) or global_sensor_id == "":
+                raise ProtocolValidationError(
+                    f"{field_name}.{node_id} global_sensor_id must be a non-empty string"
+                )
+
+            per_node[global_sensor_id] = _require_sensor_record_mapping(
+                record,
+                f"{field_name}.{node_id}.{global_sensor_id}",
+            )
+
+        normalized[node_id] = per_node
+
+    return normalized
 
 
 @dataclass(frozen=True)
@@ -356,21 +420,65 @@ class FullSyncResponsePayload(PayloadModel):
 
     message_type: ClassVar[MessageType] = MessageType.FULL_SYNC_RESPONSE
 
-    state: JsonObject = field(default_factory=dict)
+    state: NodeSnapshot = field(default_factory=dict)
+    membership: tuple[PeerDescriptor, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
-        """Validate that full-sync state is a JSON mapping."""
-        _require_mapping(self.state, "state")
+        """Validate that full-sync response contains valid state and membership."""
+        _require_node_snapshot(self.state, FullSyncField.STATE.value)
 
     def to_mapping(self) -> JsonObject:
-        """Serialize full-sync response state mapping."""
-        return {"state": dict(self.state)}
+        """Serialize full-sync response state and membership mappings."""
+        state_mapping: JsonObject = {}
+        for node_id, per_node in self.state.items():
+            per_node_mapping: JsonObject = {}
+            for global_sensor_id, record in per_node.items():
+                meta_mapping: JsonObject = {
+                    "unit": record["meta"]["unit"],
+                    "period_ms": record["meta"]["period_ms"],
+                }
+                record_mapping: JsonObject = {
+                    "value": record["value"],
+                    "ts_ms": record["ts_ms"],
+                    "origin": record["origin"],
+                    "meta": meta_mapping,
+                }
+                per_node_mapping[global_sensor_id] = record_mapping
+            state_mapping[node_id] = per_node_mapping
+
+        return {
+            FullSyncField.STATE.value: state_mapping,
+            FullSyncField.MEMBERSHIP.value: {
+                MembershipField.PEERS.value: [
+                    peer.to_mapping() for peer in self.membership
+                ]
+            },
+        }
 
     @classmethod
     def from_mapping(cls, raw: object) -> "FullSyncResponsePayload":
         """Build and validate full-sync response payload from raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
-        return cls(state=_require_mapping(data.get("state", {}), "state"))
+        if FullSyncField.STATE.value not in data:
+            raise ProtocolValidationError(f"{FullSyncField.STATE.value} is required")
+        if FullSyncField.MEMBERSHIP.value not in data:
+            raise ProtocolValidationError(f"{FullSyncField.MEMBERSHIP.value} is required")
+
+        membership_raw = _require_mapping(
+            data.get(FullSyncField.MEMBERSHIP.value),
+            FullSyncField.MEMBERSHIP.value,
+        )
+        peers_raw = membership_raw.get(MembershipField.PEERS.value)
+        if not isinstance(peers_raw, list):
+            raise ProtocolValidationError(f"{MembershipField.PEERS.value} must be a list")
+
+        return cls(
+            state=_require_node_snapshot(
+                data.get(FullSyncField.STATE.value),
+                FullSyncField.STATE.value,
+            ),
+            membership=tuple(PeerDescriptor.from_mapping(peer) for peer in peers_raw),
+        )
 
 
 @dataclass(frozen=True)

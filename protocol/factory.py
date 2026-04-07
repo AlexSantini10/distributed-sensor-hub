@@ -21,7 +21,7 @@ from protocol.messages import (
     SensorMeta,
     SensorUpdatePayload,
 )
-from utils.typing import JsonObject, JsonValue
+from utils.typing import JsonObject, JsonValue, NodeSnapshot
 
 
 def build_join_request(
@@ -143,7 +143,8 @@ def build_full_sync_request(
 
 def build_full_sync_response(
     sender_id: str,
-    state: JsonObject,
+    state: NodeSnapshot,
+    membership: list[PeerDescriptor] | tuple[PeerDescriptor, ...],
     *,
     timestamp: int | None = None,
 ) -> Message[FullSyncResponsePayload]:
@@ -151,7 +152,10 @@ def build_full_sync_response(
     return Message(
         msg_type=MessageType.FULL_SYNC_RESPONSE,
         sender_id=sender_id,
-        payload=FullSyncResponsePayload(state=state),
+        payload=FullSyncResponsePayload(
+            state=state,
+            membership=tuple(membership),
+        ),
         timestamp=timestamp,
     )
 

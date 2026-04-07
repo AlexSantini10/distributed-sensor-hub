@@ -128,6 +128,22 @@ class StateWorkerLike(Protocol):
         """
         ...
 
+    def merge_state(
+        self,
+        remote_full_state: JsonObject | NodeSnapshot,
+        reject_partial: bool = False,
+    ) -> int:
+        """Merge a full-state payload into local LWW state.
+
+        Args:
+            remote_full_state (JsonObject): Full-state snapshot received from a peer.
+            reject_partial (bool): Whether malformed entries should reject the full merge.
+
+        Returns:
+            int: Number of sensor winners updated locally.
+        """
+        ...
+
     def get_updates_snapshot(self) -> NodeSnapshot:
         """Return incremental UI updates.
 

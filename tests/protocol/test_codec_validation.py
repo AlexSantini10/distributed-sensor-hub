@@ -50,6 +50,12 @@ from protocol.messages import ProtocolValidationError
             "timestamp": 1,
             "payload": {"unexpected": True},
         },
+        {
+            "type": "FULL_SYNC_RESPONSE",
+            "sender_id": "node-1",
+            "timestamp": 1,
+            "payload": {"state": {}},
+        },
     ],
 )
 def test_message_from_dict_rejects_invalid_payloads(raw: dict[str, object]) -> None:

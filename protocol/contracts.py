@@ -43,6 +43,13 @@ class SensorUpdateField(StrEnum):
     META = "meta"
 
 
+class FullSyncField(StrEnum):
+    """Enumerate payload keys used by full-state synchronization messages."""
+
+    STATE = "state"
+    MEMBERSHIP = "membership"
+
+
 class NetworkConstant(StrEnum):
     """Enumerate network-related string constants used by the runtime."""
 

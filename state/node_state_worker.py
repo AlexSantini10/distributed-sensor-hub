@@ -13,7 +13,14 @@ from queue import Empty
 
 from state.events import SensorEvent
 from state.node_state_store import NodeStateStore, SensorMeta, SensorRecord
-from utils.typing import JsonObject, JsonValue, LoggerLike, NodeSnapshot, SensorEventSource, SensorMetaDict
+from utils.typing import (
+    JsonObject,
+    JsonValue,
+    LoggerLike,
+    NodeSnapshot,
+    SensorEventSource,
+    SensorMetaDict,
+)
 
 
 class NodeStateWorker(threading.Thread):
@@ -314,16 +321,25 @@ class NodeStateWorker(threading.Thread):
             meta={},
         )
 
-    def merge_state(self, remote_full_state: JsonObject) -> int:
+    def merge_state(
+        self,
+        remote_full_state: JsonObject | NodeSnapshot,
+        reject_partial: bool = False,
+    ) -> int:
         """Bulk-merge a remote full-state payload into local LWW state.
 
         Args:
             remote_full_state (JsonObject): Full-state payload received from another node.
+            reject_partial (bool): When ``True``, reject payloads containing malformed
+                entries and apply no local changes.
 
         Returns:
             int: Number of winning records applied locally.
         """
-        applied = self._store.merge_state(remote_full_state=remote_full_state)
+        applied = self._store.merge_state(
+            remote_full_state=remote_full_state,
+            reject_partial=reject_partial,
+        )
         if applied > 0:
             self._log_msg("info", f"FULL_SYNC merge applied_updates={applied}")
         else:

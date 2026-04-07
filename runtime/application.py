@@ -14,6 +14,7 @@ import time
 from networking.tcp_client import Peer as TcpPeer
 from networking.tcp_client import TcpClient
 from networking.tcp_server import TcpServer
+from protocol.factory import build_full_sync_request
 from runtime.networking import (
     bootstrap_membership,
     seed_peer_table,
@@ -240,6 +241,27 @@ class NodeApplication:
             send=self.client.send_json,
             log=self.log,
         )
+        self._request_full_sync_from_bootstrap_peers()
+
+    def _request_full_sync_from_bootstrap_peers(self) -> None:
+        """Request full-state transfer from bootstrap peers after startup join."""
+        assert self.client is not None
+
+        request = build_full_sync_request(
+            sender_id=self.config.node_id,
+            requester_id=self.config.node_id,
+        )
+        for peer in self.bootstrap_peers:
+            try:
+                self.client.send_json(peer.node_id, request)
+                self.log.info(
+                    f"Sent FULL_SYNC_REQUEST to {peer.node_id} {peer.host}:{peer.port}"
+                )
+            except Exception:
+                self.log.warning(
+                    f"FULL_SYNC_REQUEST failed to {peer.node_id} {peer.host}:{peer.port}",
+                    exc_info=True,
+                )
 
     def _start_sensors(self) -> None:
         """Start local sensors and publish their updates to the cluster.

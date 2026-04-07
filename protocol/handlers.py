@@ -3,119 +3,60 @@
 Responsibilities:
     - Define placeholder handlers for message types owned by other subsystems.
     - Bind node-local dependencies into message handlers during node startup.
-    - Enforce sensor-update payload contracts before local state merges occur.
+    - Enforce payload contracts before local state and membership merges occur.
 """
 
 from collections.abc import Callable
 
+from membership.peer import Peer
+from membership.peer_table import PeerTable
+from protocol.factory import build_full_sync_request, build_full_sync_response
 from protocol.message import Message
-from protocol.messages import PingPayload, SensorUpdatePayload
+from protocol.messages import (
+    DeltaUnavailablePayload,
+    FullSyncRequestPayload,
+    FullSyncResponsePayload,
+    PeerDescriptor,
+    PingPayload,
+    SensorUpdatePayload,
+)
 from utils.logging import get_logger
-from utils.typing import LoggerLike, StateWorkerLike
+from utils.typing import LoggerLike, SenderLike, StateWorkerLike
 
 
 def handle_join_request(msg: Message) -> None:
-	"""Reject direct handling of a membership join request in this module.
-
-	Args:
-		msg (Message): Inbound ``JOIN_REQUEST`` message.
-
-	Returns:
-		None.
-
-	Raises:
-		NotImplementedError: Always, because membership owns this message type.
-	"""
-	raise NotImplementedError("JOIN_REQUEST not implemented here (use membership handlers)")
+    """Reject direct handling of a membership join request in this module."""
+    raise NotImplementedError("JOIN_REQUEST not implemented here (use membership handlers)")
 
 
 def handle_peer_list(msg: Message) -> None:
-	"""Reject direct handling of a membership peer list in this module.
-
-	Args:
-		msg (Message): Inbound ``PEER_LIST`` message.
-
-	Returns:
-		None.
-
-	Raises:
-		NotImplementedError: Always, because membership owns this message type.
-	"""
-	raise NotImplementedError("PEER_LIST not implemented here (use membership handlers)")
+    """Reject direct handling of a membership peer list in this module."""
+    raise NotImplementedError("PEER_LIST not implemented here (use membership handlers)")
 
 
 def handle_ping(msg: Message) -> None:
-	"""Log receipt of a liveness probe and reject unsupported processing.
-
-	Args:
-		msg (Message): Inbound ``PING`` message.
-
-	Returns:
-		None.
-
-	Raises:
-		NotImplementedError: Always, because ping handling is not implemented yet.
-	"""
-	log = get_logger(__name__, msg.sender_id)
-	payload = msg.payload
-	if not isinstance(payload, PingPayload):
-		raise ValueError("Expected PingPayload")
-	log.info(f"Received PING with payload={payload.to_mapping()}")
-	raise NotImplementedError("PING not implemented yet")
+    """Log receipt of a liveness probe and reject unsupported processing."""
+    log = get_logger(__name__, msg.sender_id)
+    payload = msg.payload
+    if not isinstance(payload, PingPayload):
+        raise ValueError("Expected PingPayload")
+    log.info(f"Received PING with payload={payload.to_mapping()}")
+    raise NotImplementedError("PING not implemented yet")
 
 
 def handle_pong(msg: Message) -> None:
-	"""Reject processing of an unimplemented liveness acknowledgement.
-
-	Args:
-		msg (Message): Inbound ``PONG`` message.
-
-	Returns:
-		None.
-
-	Raises:
-		NotImplementedError: Always, because pong handling is not implemented yet.
-	"""
-	raise NotImplementedError("PONG not implemented yet")
+    """Reject processing of an unimplemented liveness acknowledgement."""
+    raise NotImplementedError("PONG not implemented yet")
 
 
 def make_sensor_update_handler(
     state_worker: StateWorkerLike,
     self_node_id: str,
 ) -> Callable[[Message], None]:
-    """Create a handler for replicated sensor updates.
-
-    The returned handler expects a ``SENSOR_UPDATE`` payload with the fields
-    ``sensor_id``, ``value``, ``ts_ms``, optional ``origin``, and optional
-    ``meta``. Updates are merged through ``state_worker.merge_update`` using the
-    message payload as the authoritative replication contract. Merge semantics are
-    delegated to the state worker, which is expected to apply the project's
-    last-writer-wins policy based on ``ts_ms`` and origin metadata.
-
-    Args:
-        state_worker (StateWorkerLike): Local state merge component exposing
-            ``merge_update``.
-        self_node_id (str): Identifier of the local node used for logger scoping.
-
-    Returns:
-        Callable[[Message], None]: Handler that validates and merges
-            ``SENSOR_UPDATE`` messages.
-    """
+    """Create a handler for replicated sensor updates."""
     log: LoggerLike = get_logger(__name__, self_node_id)
 
     def handle_sensor_update(msg: Message) -> None:
-        """Merge a replicated sensor update into local state.
-
-        Invalid payloads are logged and ignored so malformed gossip does not crash
-        the receiving node. A successful merge means the incoming version won the
-        state worker's conflict-resolution policy.
-
-        Args:
-            msg (Message): Inbound ``SENSOR_UPDATE`` message.
-
-        Returns:
-            None: This handler validates the payload and attempts a local merge.
-        """
         payload = msg.payload
         if not isinstance(payload, SensorUpdatePayload):
             log.warning("Invalid SENSOR_UPDATE payload")
@@ -142,89 +83,170 @@ def make_sensor_update_handler(
 
 
 def handle_sensor_update(msg: Message) -> None:
-	"""Warn that sensor-update handling has not been wired for this node.
-
-	Args:
-		msg (Message): Inbound ``SENSOR_UPDATE`` message.
-
-	Returns:
-		None.
-	"""
-	log = get_logger(__name__, msg.sender_id)
-	log.warning("SENSOR_UPDATE received but handler is not wired")
-	return
+    """Warn that sensor-update handling has not been wired for this node."""
+    log = get_logger(__name__, msg.sender_id)
+    log.warning("SENSOR_UPDATE received but handler is not wired")
 
 
 def handle_gossip_state(msg: Message) -> None:
-	"""Reject processing of an unimplemented state gossip message.
+    """Reject processing of an unimplemented state gossip message."""
+    raise NotImplementedError("GOSSIP_STATE not implemented yet")
 
-	Args:
-		msg (Message): Inbound ``GOSSIP_STATE`` message.
 
-	Returns:
-		None.
+def make_full_sync_request_handler(
+    state_worker: StateWorkerLike,
+    peer_table: PeerTable,
+    send: SenderLike,
+    self_node_id: str,
+) -> Callable[[Message], None]:
+    """Create a handler that replies to full-sync requests with state and membership."""
+    log: LoggerLike = get_logger(__name__, self_node_id)
 
-	Raises:
-		NotImplementedError: Always, because gossip-state handling is not implemented yet.
-	"""
-	raise NotImplementedError("GOSSIP_STATE not implemented yet")
+    def handle_full_sync_request(msg: Message) -> None:
+        payload = msg.payload
+        if not isinstance(payload, FullSyncRequestPayload):
+            log.warning("Invalid FULL_SYNC_REQUEST payload")
+            return
+
+        requester_id = payload.requester_id if payload.requester_id is not None else msg.sender_id
+        if requester_id == "":
+            requester_id = msg.sender_id
+
+        state_snapshot = state_worker.get_state_snapshot()
+        membership_snapshot = tuple(
+            PeerDescriptor(node_id=peer.node_id, host=peer.host, port=peer.port)
+            for peer in peer_table.snapshot()
+        )
+
+        response = build_full_sync_response(
+            sender_id=self_node_id,
+            state=state_snapshot,
+            membership=membership_snapshot,
+        )
+
+        try:
+            send(requester_id, response)
+            log.info(
+                f"FULL_SYNC_RESPONSE sent to {requester_id} "
+                f"state_nodes={len(state_snapshot)} "
+                f"membership_peers={len(membership_snapshot)}"
+            )
+        except Exception:
+            log.warning(
+                f"Failed to send FULL_SYNC_RESPONSE to {requester_id}",
+                exc_info=True,
+            )
+
+    return handle_full_sync_request
+
+
+def make_full_sync_response_handler(
+    state_worker: StateWorkerLike,
+    peer_table: PeerTable,
+    self_node_id: str,
+    on_peer_discovered: Callable[[Peer], None] | None = None,
+) -> Callable[[Message], None]:
+    """Create a handler that merges full state and membership snapshots."""
+    log: LoggerLike = get_logger(__name__, self_node_id)
+
+    def _notify_discovered(peer: Peer) -> None:
+        if on_peer_discovered is None:
+            return
+        try:
+            on_peer_discovered(peer)
+        except Exception:
+            log.warning(
+                f"on_peer_discovered failed for peer {peer.node_id} {peer.host}:{peer.port}",
+                exc_info=True,
+            )
+
+    def handle_full_sync_response(msg: Message) -> None:
+        payload = msg.payload
+        if not isinstance(payload, FullSyncResponsePayload):
+            log.warning("Invalid FULL_SYNC_RESPONSE payload")
+            return
+
+        incoming_peers = [
+            Peer.new(node_id=entry.node_id, host=entry.host, port=entry.port)
+            for entry in payload.membership
+        ]
+        merge_result = peer_table.merge_membership_view(incoming_peers)
+        for discovered in merge_result.new_peers:
+            _notify_discovered(discovered)
+
+        applied_updates = state_worker.merge_state(
+            remote_full_state=payload.state,
+            reject_partial=True,
+        )
+
+        log.info(
+            "FULL_SYNC_RESPONSE applied: "
+            f"sender={msg.sender_id} "
+            f"state_updates={applied_updates} "
+            f"membership_merged={merge_result.merged_entries} "
+            f"membership_new={len(merge_result.new_peers)} "
+            f"membership_updated={len(merge_result.updated_peers)} "
+            f"membership_ignored={merge_result.ignored_entries}"
+        )
+
+    return handle_full_sync_response
+
+
+def make_delta_unavailable_handler(
+    send: SenderLike,
+    self_node_id: str,
+) -> Callable[[Message], None]:
+    """Create a handler that falls back to full sync when delta is unavailable."""
+    log: LoggerLike = get_logger(__name__, self_node_id)
+
+    def handle_delta_unavailable(msg: Message) -> None:
+        payload = msg.payload
+        if not isinstance(payload, DeltaUnavailablePayload):
+            log.warning("Invalid DELTA_UNAVAILABLE payload")
+            return
+
+        request = build_full_sync_request(
+            sender_id=self_node_id,
+            requester_id=self_node_id,
+        )
+        try:
+            send(msg.sender_id, request)
+            log.info(
+                "DELTA_UNAVAILABLE received; requested FULL_SYNC "
+                f"from={msg.sender_id} reason={payload.reason}"
+            )
+        except Exception:
+            log.warning(
+                f"Failed to request FULL_SYNC from {msg.sender_id} after DELTA_UNAVAILABLE",
+                exc_info=True,
+            )
+
+    return handle_delta_unavailable
 
 
 def handle_full_sync_request(msg: Message) -> None:
-	"""Reject processing of an unimplemented full-sync request.
-
-	Args:
-		msg (Message): Inbound ``FULL_SYNC_REQUEST`` message.
-
-	Returns:
-		None.
-
-	Raises:
-		NotImplementedError: Always, because full-sync request handling is not implemented yet.
-	"""
-	raise NotImplementedError("FULL_SYNC_REQUEST not implemented yet")
+    """Warn that full-sync request handling has not been wired for this node."""
+    log = get_logger(__name__, msg.sender_id)
+    log.warning("FULL_SYNC_REQUEST received but handler is not wired")
 
 
 def handle_full_sync_response(msg: Message) -> None:
-	"""Reject processing of an unimplemented full-sync response.
+    """Warn that full-sync response handling has not been wired for this node."""
+    log = get_logger(__name__, msg.sender_id)
+    log.warning("FULL_SYNC_RESPONSE received but handler is not wired")
 
-	Args:
-		msg (Message): Inbound ``FULL_SYNC_RESPONSE`` message.
 
-	Returns:
-		None.
-
-	Raises:
-		NotImplementedError: Always, because full-sync response handling is not implemented yet.
-	"""
-	raise NotImplementedError("FULL_SYNC_RESPONSE not implemented yet")
+def handle_delta_unavailable(msg: Message) -> None:
+    """Warn that delta-unavailable handling has not been wired for this node."""
+    log = get_logger(__name__, msg.sender_id)
+    log.warning("DELTA_UNAVAILABLE received but handler is not wired")
 
 
 def handle_error(msg: Message) -> None:
-	"""Reject processing of an unimplemented protocol error message.
-
-	Args:
-		msg (Message): Inbound ``ERROR`` message.
-
-	Returns:
-		None.
-
-	Raises:
-		NotImplementedError: Always, because error-message handling is not implemented yet.
-	"""
-	raise NotImplementedError("ERROR not implemented yet")
+    """Reject processing of an unimplemented protocol error message."""
+    raise NotImplementedError("ERROR not implemented yet")
 
 
 def handle_ack(msg: Message) -> None:
-	"""Reject processing of an unimplemented acknowledgement message.
-
-	Args:
-		msg (Message): Inbound ``ACK`` message.
-
-	Returns:
-		None.
-
-	Raises:
-		NotImplementedError: Always, because acknowledgement handling is not implemented yet.
-	"""
-	raise NotImplementedError("ACK not implemented yet")
+    """Reject processing of an unimplemented acknowledgement message."""
+    raise NotImplementedError("ACK not implemented yet")

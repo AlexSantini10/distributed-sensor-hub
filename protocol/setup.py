@@ -73,8 +73,35 @@ def setup_protocol(
         dispatcher.register(MessageType.SENSOR_UPDATE, handlers.handle_sensor_update)
 
     dispatcher.register(MessageType.GOSSIP_STATE, handlers.handle_gossip_state)
-    dispatcher.register(MessageType.FULL_SYNC_REQUEST, handlers.handle_full_sync_request)
-    dispatcher.register(MessageType.FULL_SYNC_RESPONSE, handlers.handle_full_sync_response)
+    if state_worker is not None:
+        dispatcher.register(
+            MessageType.FULL_SYNC_REQUEST,
+            handlers.make_full_sync_request_handler(
+                state_worker=state_worker,
+                peer_table=peer_table,
+                send=send_function,
+                self_node_id=self_node_id,
+            ),
+        )
+        dispatcher.register(
+            MessageType.FULL_SYNC_RESPONSE,
+            handlers.make_full_sync_response_handler(
+                state_worker=state_worker,
+                peer_table=peer_table,
+                self_node_id=self_node_id,
+                on_peer_discovered=on_peer_discovered,
+            ),
+        )
+    else:
+        dispatcher.register(MessageType.FULL_SYNC_REQUEST, handlers.handle_full_sync_request)
+        dispatcher.register(MessageType.FULL_SYNC_RESPONSE, handlers.handle_full_sync_response)
+    dispatcher.register(
+        MessageType.DELTA_UNAVAILABLE,
+        handlers.make_delta_unavailable_handler(
+            send=send_function,
+            self_node_id=self_node_id,
+        ),
+    )
     dispatcher.register(MessageType.ERROR, handlers.handle_error)
     dispatcher.register(MessageType.ACK, handlers.handle_ack)
     return dispatcher, peer_table

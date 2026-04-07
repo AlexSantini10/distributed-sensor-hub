@@ -201,10 +201,11 @@ class NodeStateStore:
 
     def _collect_merge_candidates(
         self,
-        remote_full_state: JsonObject,
-    ) -> list[tuple[str, SensorRecord]]:
+        remote_full_state: JsonObject | NodeSnapshot,
+    ) -> tuple[list[tuple[str, SensorRecord]], int]:
         """Extract normalized merge candidates from supported full-state payload shapes."""
         candidates: list[tuple[str, SensorRecord]] = []
+        invalid_entries = 0
 
         for key, value in remote_full_state.items():
             flat_candidate = self._candidate_from_flat_entry(sensor_id=key, raw_value=value)
@@ -213,8 +214,10 @@ class NodeStateStore:
                 continue
 
             if not isinstance(value, dict):
+                invalid_entries += 1
                 continue
 
+            grouped_found = False
             for global_sensor_id, record_value in value.items():
                 grouped_candidate = self._candidate_from_grouped_entry(
                     global_sensor_id=global_sensor_id,
@@ -222,8 +225,14 @@ class NodeStateStore:
                 )
                 if grouped_candidate is not None:
                     candidates.append(grouped_candidate)
+                    grouped_found = True
+                else:
+                    invalid_entries += 1
 
-        return candidates
+            if not grouped_found and len(value) == 0:
+                invalid_entries += 1
+
+        return candidates, invalid_entries
 
     def merge_lww(self, sensor_id: str, update: SensorRecord) -> tuple[bool, str, SensorRecord | None]:
         """Merge one candidate update into the LWW register set.
@@ -288,7 +297,9 @@ class NodeStateStore:
         applied, _, _ = self.merge_lww(sensor_id=sensor_id, update=candidate)
         return applied
 
-    def merge_state(self, remote_full_state: JsonObject) -> int:
+    def merge_state(
+        self, remote_full_state: JsonObject | NodeSnapshot, reject_partial: bool = False
+    ) -> int:
         """Bulk-merge a remote full-state payload under LWW semantics.
 
         Supported shapes:
@@ -304,14 +315,26 @@ class NodeStateStore:
         if not isinstance(remote_full_state, dict):
             return 0
 
-        candidates = self._collect_merge_candidates(remote_full_state=remote_full_state)
+        candidates, invalid_entries = self._collect_merge_candidates(
+            remote_full_state=remote_full_state
+        )
+        if reject_partial and invalid_entries > 0:
+            return 0
 
-        applied = 0
-        for sensor_id, candidate in candidates:
-            merged, _, _ = self.merge_lww(sensor_id=sensor_id, update=candidate)
-            if merged:
-                applied += 1
-        return applied
+        with self._lock:
+            applied = 0
+            for sensor_id, candidate in candidates:
+                prev = self._state.get(sensor_id)
+                if prev is None:
+                    self._apply_winner(sensor_id=sensor_id, record=candidate)
+                    applied += 1
+                    continue
+
+                if self._is_newer_or_tie_winner(current=prev, candidate=candidate):
+                    self._apply_winner(sensor_id=sensor_id, record=candidate)
+                    applied += 1
+
+            return applied
 
     def upsert(self, sensor_id: str, record: SensorRecord) -> None:
         """Force one record into state and both incremental buffers.

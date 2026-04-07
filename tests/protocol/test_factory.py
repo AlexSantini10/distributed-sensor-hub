@@ -84,9 +84,39 @@ from protocol.messages import PeerDescriptor, SensorMeta
             {"requester_id": "sender"},
         ),
         (
-            build_full_sync_response("sender", {"state": 1}, timestamp=11),
+            build_full_sync_response(
+                "sender",
+                {
+                    "node-1": {
+                        "node-1:s1": {
+                            "value": 1,
+                            "ts_ms": 1000,
+                            "origin": "node-1",
+                            "meta": {"unit": "C", "period_ms": 1000},
+                        }
+                    }
+                },
+                [PeerDescriptor(node_id="node-2", host="127.0.0.1", port=9001)],
+                timestamp=11,
+            ),
             "FULL_SYNC_RESPONSE",
-            {"state": {"state": 1}},
+            {
+                "state": {
+                    "node-1": {
+                        "node-1:s1": {
+                            "value": 1,
+                            "ts_ms": 1000,
+                            "origin": "node-1",
+                            "meta": {"unit": "C", "period_ms": 1000},
+                        }
+                    }
+                },
+                "membership": {
+                    "peers": [
+                        {"node_id": "node-2", "host": "127.0.0.1", "port": 9001},
+                    ]
+                },
+            },
         ),
         (
             build_get_state("sender", timestamp=12),
