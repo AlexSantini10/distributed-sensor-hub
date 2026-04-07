@@ -32,6 +32,7 @@ def build_join_request(
     *,
     timestamp: int | None = None,
 ) -> Message[JoinRequestPayload]:
+    """Build a ``JOIN_REQUEST`` message."""
     return Message(
         msg_type=MessageType.JOIN_REQUEST,
         sender_id=sender_id,
@@ -46,6 +47,7 @@ def build_peer_list(
     *,
     timestamp: int | None = None,
 ) -> Message[PeerListPayload]:
+    """Build a ``PEER_LIST`` message."""
     return Message(
         msg_type=MessageType.PEER_LIST,
         sender_id=sender_id,
@@ -60,6 +62,7 @@ def build_ping(
     ping_timestamp_ms: int | None = None,
     timestamp: int | None = None,
 ) -> Message[PingPayload]:
+    """Build a ``PING`` message."""
     return Message(
         msg_type=MessageType.PING,
         sender_id=sender_id,
@@ -74,6 +77,7 @@ def build_pong(
     pong_timestamp_ms: int | None = None,
     timestamp: int | None = None,
 ) -> Message[PongPayload]:
+    """Build a ``PONG`` message."""
     return Message(
         msg_type=MessageType.PONG,
         sender_id=sender_id,
@@ -92,6 +96,7 @@ def build_sensor_update(
     meta: SensorMeta | None = None,
     timestamp: int | None = None,
 ) -> Message[SensorUpdatePayload]:
+    """Build a ``SENSOR_UPDATE`` message."""
     return Message(
         msg_type=MessageType.SENSOR_UPDATE,
         sender_id=sender_id,
@@ -112,6 +117,7 @@ def build_gossip_state(
     *,
     timestamp: int | None = None,
 ) -> Message[GossipStatePayload]:
+    """Build a ``GOSSIP_STATE`` message."""
     return Message(
         msg_type=MessageType.GOSSIP_STATE,
         sender_id=sender_id,
@@ -126,6 +132,7 @@ def build_full_sync_request(
     requester_id: str | None = None,
     timestamp: int | None = None,
 ) -> Message[FullSyncRequestPayload]:
+    """Build a ``FULL_SYNC_REQUEST`` message."""
     return Message(
         msg_type=MessageType.FULL_SYNC_REQUEST,
         sender_id=sender_id,
@@ -140,6 +147,7 @@ def build_full_sync_response(
     *,
     timestamp: int | None = None,
 ) -> Message[FullSyncResponsePayload]:
+    """Build a ``FULL_SYNC_RESPONSE`` message."""
     return Message(
         msg_type=MessageType.FULL_SYNC_RESPONSE,
         sender_id=sender_id,
@@ -153,6 +161,7 @@ def build_get_state(
     *,
     timestamp: int | None = None,
 ) -> Message[GetStatePayload]:
+    """Build a ``GET_STATE`` message."""
     return Message(
         msg_type=MessageType.GET_STATE,
         sender_id=sender_id,
@@ -167,6 +176,7 @@ def build_get_delta(
     *,
     timestamp: int | None = None,
 ) -> Message[GetDeltaPayload]:
+    """Build a ``GET_DELTA`` message."""
     return Message(
         msg_type=MessageType.GET_DELTA,
         sender_id=sender_id,
@@ -181,6 +191,7 @@ def build_delta_unavailable(
     *,
     timestamp: int | None = None,
 ) -> Message[DeltaUnavailablePayload]:
+    """Build a ``DELTA_UNAVAILABLE`` message."""
     return Message(
         msg_type=MessageType.DELTA_UNAVAILABLE,
         sender_id=sender_id,
@@ -195,6 +206,7 @@ def build_error(
     *,
     timestamp: int | None = None,
 ) -> Message[ErrorPayload]:
+    """Build an ``ERROR`` message."""
     return Message(
         msg_type=MessageType.ERROR,
         sender_id=sender_id,
@@ -209,6 +221,7 @@ def build_ack(
     acked_type: str | None = None,
     timestamp: int | None = None,
 ) -> Message[AckPayload]:
+    """Build an ``ACK`` message."""
     return Message(
         msg_type=MessageType.ACK,
         sender_id=sender_id,

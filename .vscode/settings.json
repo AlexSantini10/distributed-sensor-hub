@@ -7,6 +7,7 @@
         "web",
         "types",
         "concurrency",
-        "state"
+        "state",
+        "docs"
     ]
 }

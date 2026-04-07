@@ -40,10 +40,12 @@ class PayloadModel:
     message_type: ClassVar[MessageType]
 
     def to_mapping(self) -> JsonObject:
+        """Serialize the payload into the canonical JSON mapping."""
         raise NotImplementedError
 
     @classmethod
     def from_mapping(cls, raw: object) -> "PayloadModel":
+        """Build a validated payload instance from a raw mapping."""
         raise NotImplementedError
 
 
@@ -54,10 +56,12 @@ class EmptyPayload(PayloadModel):
     message_type: ClassVar[MessageType]
 
     def to_mapping(self) -> JsonObject:
+        """Return the canonical empty payload mapping."""
         return {}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "EmptyPayload":
+        """Validate that a payload mapping is empty."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         if data:
             raise ProtocolValidationError(
@@ -75,11 +79,13 @@ class PeerDescriptor:
     port: int
 
     def __post_init__(self) -> None:
+        """Validate peer descriptor fields at construction time."""
         _require_non_empty_string(self.node_id, MembershipField.NODE_ID.value)
         _require_non_empty_string(self.host, MembershipField.HOST.value)
         _require_int(self.port, MembershipField.PORT.value)
 
     def to_mapping(self) -> JsonObject:
+        """Serialize the peer descriptor into protocol payload shape."""
         return {
             MembershipField.NODE_ID.value: self.node_id,
             MembershipField.HOST.value: self.host,
@@ -88,6 +94,7 @@ class PeerDescriptor:
 
     @classmethod
     def from_mapping(cls, raw: object) -> "PeerDescriptor":
+        """Build and validate one peer descriptor from a raw mapping."""
         data = _require_mapping(raw, "peer")
         return cls(
             node_id=_require_non_empty_string(
@@ -116,11 +123,13 @@ class JoinRequestPayload(PayloadModel):
     port: int
 
     def __post_init__(self) -> None:
+        """Validate join-request payload fields."""
         _require_non_empty_string(self.node_id, MembershipField.NODE_ID.value)
         _require_non_empty_string(self.host, MembershipField.HOST.value)
         _require_int(self.port, MembershipField.PORT.value)
 
     def to_mapping(self) -> JsonObject:
+        """Serialize the payload into join-request mapping format."""
         return PeerDescriptor(
             node_id=self.node_id,
             host=self.host,
@@ -129,6 +138,7 @@ class JoinRequestPayload(PayloadModel):
 
     @classmethod
     def from_mapping(cls, raw: object) -> "JoinRequestPayload":
+        """Build a join-request payload from a peer descriptor mapping."""
         peer = PeerDescriptor.from_mapping(raw)
         return cls(node_id=peer.node_id, host=peer.host, port=peer.port)
 
@@ -142,12 +152,14 @@ class PeerListPayload(PayloadModel):
     peers: tuple[PeerDescriptor, ...]
 
     def to_mapping(self) -> JsonObject:
+        """Serialize the payload as a list of peer descriptor mappings."""
         return {
             MembershipField.PEERS.value: [peer.to_mapping() for peer in self.peers]
         }
 
     @classmethod
     def from_mapping(cls, raw: object) -> "PeerListPayload":
+        """Build and validate a peer-list payload from a raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         peers_value = data.get(MembershipField.PEERS.value)
         if not isinstance(peers_value, list):
@@ -166,16 +178,19 @@ class PingPayload(PayloadModel):
     timestamp_ms: int | None = None
 
     def __post_init__(self) -> None:
+        """Validate optional ping timestamp when provided."""
         if self.timestamp_ms is not None:
             _require_int(self.timestamp_ms, "timestamp")
 
     def to_mapping(self) -> JsonObject:
+        """Serialize the ping payload into its protocol mapping."""
         if self.timestamp_ms is None:
             return {}
         return {"timestamp": self.timestamp_ms}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "PingPayload":
+        """Build and validate a ping payload from a raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         timestamp_value = data.get("timestamp")
         if timestamp_value is None:
@@ -192,16 +207,19 @@ class PongPayload(PayloadModel):
     timestamp_ms: int | None = None
 
     def __post_init__(self) -> None:
+        """Validate optional pong timestamp when provided."""
         if self.timestamp_ms is not None:
             _require_int(self.timestamp_ms, "timestamp")
 
     def to_mapping(self) -> JsonObject:
+        """Serialize the pong payload into its protocol mapping."""
         if self.timestamp_ms is None:
             return {}
         return {"timestamp": self.timestamp_ms}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "PongPayload":
+        """Build and validate a pong payload from a raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         timestamp_value = data.get("timestamp")
         if timestamp_value is None:
@@ -217,10 +235,12 @@ class SensorMeta:
     period_ms: JsonValue = None
 
     def to_mapping(self) -> JsonObject:
+        """Serialize sensor metadata into protocol mapping format."""
         return {"unit": self.unit, "period_ms": self.period_ms}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "SensorMeta":
+        """Build and validate sensor metadata from a raw mapping."""
         data = _require_mapping(raw, SensorUpdateField.META.value)
         return cls(unit=data.get("unit"), period_ms=data.get("period_ms"))
 
@@ -238,11 +258,13 @@ class SensorUpdatePayload(PayloadModel):
     meta: SensorMeta = field(default_factory=SensorMeta)
 
     def __post_init__(self) -> None:
+        """Validate required sensor-update fields."""
         _require_non_empty_string(self.sensor_id, SensorUpdateField.SENSOR_ID.value)
         _require_int(self.ts_ms, SensorUpdateField.TS_MS.value)
         _require_non_empty_string(self.origin, SensorUpdateField.ORIGIN.value)
 
     def to_mapping(self) -> JsonObject:
+        """Serialize the sensor update into protocol payload mapping."""
         return {
             SensorUpdateField.SENSOR_ID.value: self.sensor_id,
             SensorUpdateField.VALUE.value: self.value,
@@ -253,6 +275,7 @@ class SensorUpdatePayload(PayloadModel):
 
     @classmethod
     def from_mapping(cls, raw: object) -> "SensorUpdatePayload":
+        """Build and validate a sensor-update payload from raw input."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         meta_value = data.get(SensorUpdateField.META.value, {})
         return cls(
@@ -282,13 +305,16 @@ class GossipStatePayload(PayloadModel):
     state: JsonObject = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        """Validate that gossip state is a JSON mapping."""
         _require_mapping(self.state, "state")
 
     def to_mapping(self) -> JsonObject:
+        """Serialize gossip state into protocol payload mapping."""
         return {"state": dict(self.state)}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "GossipStatePayload":
+        """Build and validate a gossip-state payload from a raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         return cls(state=_require_mapping(data.get("state", {}), "state"))
 
@@ -302,16 +328,19 @@ class FullSyncRequestPayload(PayloadModel):
     requester_id: str | None = None
 
     def __post_init__(self) -> None:
+        """Validate optional requester identifier when present."""
         if self.requester_id is not None:
             _require_non_empty_string(self.requester_id, "requester_id")
 
     def to_mapping(self) -> JsonObject:
+        """Serialize the full-sync request payload."""
         if self.requester_id is None:
             return {}
         return {"requester_id": self.requester_id}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "FullSyncRequestPayload":
+        """Build and validate a full-sync request payload from raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         requester_id = data.get("requester_id")
         if requester_id is None:
@@ -330,13 +359,16 @@ class FullSyncResponsePayload(PayloadModel):
     state: JsonObject = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        """Validate that full-sync state is a JSON mapping."""
         _require_mapping(self.state, "state")
 
     def to_mapping(self) -> JsonObject:
+        """Serialize full-sync response state mapping."""
         return {"state": dict(self.state)}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "FullSyncResponsePayload":
+        """Build and validate full-sync response payload from raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         return cls(state=_require_mapping(data.get("state", {}), "state"))
 
@@ -357,13 +389,16 @@ class GetDeltaPayload(PayloadModel):
     since_ts_ms: int
 
     def __post_init__(self) -> None:
+        """Validate required delta cursor timestamp."""
         _require_int(self.since_ts_ms, "since_ts_ms")
 
     def to_mapping(self) -> JsonObject:
+        """Serialize delta request payload into protocol mapping."""
         return {"since_ts_ms": self.since_ts_ms}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "GetDeltaPayload":
+        """Build and validate delta request payload from raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         return cls(since_ts_ms=_require_int(data.get("since_ts_ms"), "since_ts_ms"))
 
@@ -377,13 +412,16 @@ class DeltaUnavailablePayload(PayloadModel):
     reason: str
 
     def __post_init__(self) -> None:
+        """Validate the delta-unavailable reason string."""
         _require_non_empty_string(self.reason, "reason")
 
     def to_mapping(self) -> JsonObject:
+        """Serialize delta-unavailable payload into protocol mapping."""
         return {"reason": self.reason}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "DeltaUnavailablePayload":
+        """Build and validate delta-unavailable payload from raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         return cls(reason=_require_non_empty_string(data.get("reason"), "reason"))
 
@@ -397,13 +435,16 @@ class ErrorPayload(PayloadModel):
     reason: str
 
     def __post_init__(self) -> None:
+        """Validate the protocol error reason string."""
         _require_non_empty_string(self.reason, "reason")
 
     def to_mapping(self) -> JsonObject:
+        """Serialize protocol error payload into mapping form."""
         return {"reason": self.reason}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "ErrorPayload":
+        """Build and validate protocol error payload from raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         return cls(reason=_require_non_empty_string(data.get("reason"), "reason"))
 
@@ -417,16 +458,19 @@ class AckPayload(PayloadModel):
     acked_type: str | None = None
 
     def __post_init__(self) -> None:
+        """Validate optional acknowledgement target type."""
         if self.acked_type is not None:
             _require_non_empty_string(self.acked_type, "acked_type")
 
     def to_mapping(self) -> JsonObject:
+        """Serialize acknowledgement payload into protocol mapping."""
         if self.acked_type is None:
             return {}
         return {"acked_type": self.acked_type}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "AckPayload":
+        """Build and validate acknowledgement payload from raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
         acked_type = data.get("acked_type")
         if acked_type is None:
@@ -447,6 +491,7 @@ class Message(Generic[PayloadT]):
     timestamp: int | None = field(default_factory=lambda: int(time.time() * 1000))
 
     def __post_init__(self) -> None:
+        """Validate message envelope and payload consistency."""
         if not isinstance(self.msg_type, MessageType):
             raise ProtocolValidationError("msg_type must be MessageType")
         _require_non_empty_string(self.sender_id, MessageField.SENDER_ID.value)
@@ -459,34 +504,40 @@ class Message(Generic[PayloadT]):
         _require_int(self.timestamp, MessageField.TIMESTAMP.value)
 
     def to_dict(self) -> JsonObject:
+        """Serialize the message into a validated dictionary envelope."""
         from protocol.codec import message_to_dict
 
         return message_to_dict(self)
 
     def to_json(self) -> str:
+        """Serialize the message into JSON text."""
         from protocol.codec import encode_json
 
         return encode_json(self)
 
     def to_bytes(self) -> bytes:
+        """Serialize the message into transport-ready bytes."""
         from protocol.codec import encode_message
 
         return encode_message(self)
 
     @classmethod
     def from_json(cls, raw: object) -> "Message[PayloadModel]":
+        """Decode a message instance from a raw JSON-like object."""
         from protocol.codec import message_from_dict
 
         return message_from_dict(raw)
 
     @staticmethod
     def encode(msg: "Message[PayloadModel]") -> bytes:
+        """Encode a message object to bytes via protocol codec."""
         from protocol.codec import encode_message
 
         return encode_message(msg)
 
     @staticmethod
     def decode(json_bytes: bytes) -> "Message[PayloadModel]":
+        """Decode a message object from protocol-encoded bytes."""
         from protocol.codec import decode_message
 
         return decode_message(json_bytes)
