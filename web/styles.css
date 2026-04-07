@@ -111,7 +111,7 @@ main {
 
 #nodes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 16px;
 }
 
@@ -152,7 +152,7 @@ main {
 
 .sensor {
   display: grid;
-  grid-template-columns: 1.3fr 1fr auto;
+  grid-template-columns: minmax(140px, 1.6fr) minmax(120px, 1.2fr) auto;
   gap: 8px;
   align-items: center;
   padding: 8px;
@@ -177,13 +177,20 @@ main {
 .sensor .id,
 .sensor .val,
 .sensor .ts {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .sensor .val {
   font-family: var(--mono);
+  text-align: right;
+}
+
+.sensor .val-main {
+  color: var(--text);
+}
+
+.sensor .val-unit {
+  color: #8fa0b6;
 }
 
 .sensor .ts {

@@ -42,8 +42,40 @@ function formatNumber(value) {
   return Number(value.toFixed(2));
 }
 
+function prettifySensorName(sensorId) {
+  if (typeof sensorId !== "string" || sensorId.length === 0) {
+    return String(sensorId);
+  }
+
+  const withoutIndex = sensorId.replace(/@\d+$/g, "");
+  const normalized = withoutIndex
+    .replace(/_/g, " ")
+    .replace(/@/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (normalized.length === 0) {
+    return sensorId;
+  }
+
+  return normalized
+    .split(" ")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function formatValue(data) {
-  const unit = data && data.meta && data.meta.unit ? " " + data.meta.unit : "";
+  const unit = data && data.meta && data.meta.unit ? String(data.meta.unit) : "";
+  const rawValue = data ? data.value : null;
+  const main = String(formatNumber(rawValue));
+  if (!unit) {
+    return `<span class="val-main">${main}</span>`;
+  }
+  return `<span class="val-main">${main}</span> <span class="val-unit">${unit}</span>`;
+}
+
+function plainValue(data) {
+  const unit = data && data.meta && data.meta.unit ? " " + String(data.meta.unit) : "";
   const rawValue = data ? data.value : null;
   return String(formatNumber(rawValue)) + unit;
 }
@@ -181,8 +213,8 @@ function pushLog(nodeId, sensorId, data) {
   logBuffer.unshift({
     ts: data.ts_ms,
     nodeId,
-    sensorId,
-    value: formatValue(data),
+    sensorId: prettifySensorName(sensorId),
+    value: plainValue(data),
   });
 
   while (logBuffer.length > LOG_MAX) {
@@ -225,8 +257,8 @@ function renderState(rawState) {
 
       previousSensorState.set(key, signature);
 
-      row.querySelector(".id").textContent = sensorId;
-      row.querySelector(".val").textContent = formatValue(data);
+      row.querySelector(".id").textContent = prettifySensorName(sensorId);
+      row.querySelector(".val").innerHTML = formatValue(data);
       row.querySelector(".ts").textContent = fmtTs(data.ts_ms);
       row.classList.toggle("updated", isUpdated);
 
