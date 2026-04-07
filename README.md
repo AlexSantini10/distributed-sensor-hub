@@ -124,6 +124,69 @@ python tests/integration/verify_cluster.py --timeout 60 --interval 2
 docker compose -f docker/docker-compose-base.yml down
 ```
 
+### Timed crash/recovery with Docker Compose
+
+You can simulate periodic node failures with:
+
+Prerequisite: start this compose stack first:
+`docker compose -f docker/docker-compose-6-nodes.yml up --build -d`.
+The script only performs `docker compose stop/start` on an existing service.
+
+```bash
+python manual_tests/compose_chaos.py \
+  --compose-file docker/docker-compose-6-nodes.yml \
+  --service node3 \
+  --down-seconds 20 \
+  --up-seconds 40 \
+  --cycles 5
+```
+
+PowerShell equivalent:
+
+```powershell
+python manual_tests/compose_chaos.py --compose-file docker/docker-compose-6-nodes.yml --service node3 --down-seconds 20 --up-seconds 40 --cycles 5
+```
+
+```powershell
+python manual_tests/compose_chaos.py `
+  --compose-file docker/docker-compose-6-nodes.yml `
+  --service node3 `
+  --down-seconds 20 `
+  --up-seconds 40 `
+  --cycles 5
+```
+
+Notes:
+- `--service` is the Compose service name (`node1`, `node2`, ...), not `container_name`.
+- Use `--cycles 0` for an infinite loop.
+- Add `--initial-delay-seconds N` to wait before the first stop.
+
+Quick test flow:
+
+```bash
+# 1) Start the cluster
+docker compose -f docker/docker-compose-6-nodes.yml up --build -d
+
+# 2) Run chaos on one node (example: node3)
+python manual_tests/compose_chaos.py \
+  --compose-file docker/docker-compose-6-nodes.yml \
+  --service node3 \
+  --down-seconds 20 \
+  --up-seconds 40 \
+  --cycles 5
+
+# 3) While chaos is running, inspect node state
+curl http://localhost:10000/api/state
+curl http://localhost:10001/api/state
+curl http://localhost:10002/api/state
+
+# 4) Optional convergence check
+python tests/integration/verify_cluster.py --timeout 120 --interval 2
+
+# 5) Cleanup
+docker compose -f docker/docker-compose-6-nodes.yml down
+```
+
 CI workflows live in:
 
 - [.github/workflows/pytest.yml](.github/workflows/pytest.yml)
