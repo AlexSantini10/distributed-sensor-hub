@@ -107,6 +107,124 @@ class NodeStateStore:
         self._updates_ui: dict[str, SensorRecord] = {}
         self._updates_replication: dict[str, SensorRecord] = {}
 
+    def _apply_winner(self, sensor_id: str, record: SensorRecord) -> None:
+        """Store one winning record across state and incremental buffers."""
+        self._state[sensor_id] = record
+        self._updates_ui[sensor_id] = record
+        self._updates_replication[sensor_id] = record
+
+    def _is_newer_or_tie_winner(self, current: SensorRecord, candidate: SensorRecord) -> bool:
+        """Return whether a candidate wins over the current LWW record."""
+        if candidate.ts_ms > current.ts_ms:
+            return True
+        if candidate.ts_ms == current.ts_ms and candidate.origin > current.origin:
+            return True
+        return False
+
+    def _parse_timestamp(self, value: object) -> int | None:
+        """Normalize a timestamp candidate into an integer when valid."""
+        if not isinstance(value, int):
+            return None
+        return value
+
+    def _candidate_from_flat_entry(
+        self,
+        sensor_id: object,
+        raw_value: object,
+    ) -> tuple[str, SensorRecord] | None:
+        """Build one merge candidate from flat full-state shape entries."""
+        if not isinstance(sensor_id, str) or sensor_id == "":
+            return None
+        if not isinstance(raw_value, dict):
+            return None
+        if "value" not in raw_value:
+            return None
+        if "timestamp" not in raw_value and "ts_ms" not in raw_value:
+            return None
+
+        ts_value = self._parse_timestamp(raw_value.get("timestamp", raw_value.get("ts_ms")))
+        if ts_value is None:
+            return None
+
+        origin_value = raw_value.get("origin")
+        if not isinstance(origin_value, str):
+            origin_value = ""
+
+        return (
+            sensor_id,
+            SensorRecord(
+                value=raw_value.get("value"),
+                ts_ms=ts_value,
+                origin=origin_value,
+                meta=SensorMeta.from_dict(raw_value.get("meta", {})),
+            ),
+        )
+
+    def _candidate_from_grouped_entry(
+        self,
+        global_sensor_id: object,
+        raw_record: object,
+    ) -> tuple[str, SensorRecord] | None:
+        """Build one merge candidate from grouped full-state shape entries."""
+        if not isinstance(raw_record, dict):
+            return None
+        if "value" not in raw_record:
+            return None
+        if "timestamp" not in raw_record and "ts_ms" not in raw_record:
+            return None
+
+        ts_value = self._parse_timestamp(raw_record.get("timestamp", raw_record.get("ts_ms")))
+        if ts_value is None:
+            return None
+
+        sensor_id = global_sensor_id
+        inferred_origin = ""
+        if isinstance(global_sensor_id, str) and ":" in global_sensor_id:
+            inferred_origin, sensor_id = global_sensor_id.split(":", 1)
+
+        if not isinstance(sensor_id, str) or sensor_id == "":
+            return None
+
+        origin_value = raw_record.get("origin")
+        if not isinstance(origin_value, str):
+            origin_value = inferred_origin if isinstance(inferred_origin, str) else ""
+
+        return (
+            sensor_id,
+            SensorRecord(
+                value=raw_record.get("value"),
+                ts_ms=ts_value,
+                origin=origin_value,
+                meta=SensorMeta.from_dict(raw_record.get("meta", {})),
+            ),
+        )
+
+    def _collect_merge_candidates(
+        self,
+        remote_full_state: JsonObject,
+    ) -> list[tuple[str, SensorRecord]]:
+        """Extract normalized merge candidates from supported full-state payload shapes."""
+        candidates: list[tuple[str, SensorRecord]] = []
+
+        for key, value in remote_full_state.items():
+            flat_candidate = self._candidate_from_flat_entry(sensor_id=key, raw_value=value)
+            if flat_candidate is not None:
+                candidates.append(flat_candidate)
+                continue
+
+            if not isinstance(value, dict):
+                continue
+
+            for global_sensor_id, record_value in value.items():
+                grouped_candidate = self._candidate_from_grouped_entry(
+                    global_sensor_id=global_sensor_id,
+                    raw_record=record_value,
+                )
+                if grouped_candidate is not None:
+                    candidates.append(grouped_candidate)
+
+        return candidates
+
     def merge_lww(self, sensor_id: str, update: SensorRecord) -> tuple[bool, str, SensorRecord | None]:
         """Merge one candidate update into the LWW register set.
 
@@ -121,24 +239,79 @@ class NodeStateStore:
         with self._lock:
             prev = self._state.get(sensor_id)
             if prev is None:
-                self._state[sensor_id] = update
-                self._updates_ui[sensor_id] = update
-                self._updates_replication[sensor_id] = update
+                self._apply_winner(sensor_id=sensor_id, record=update)
                 return True, "insert", None
 
-            if update.ts_ms > prev.ts_ms:
-                self._state[sensor_id] = update
-                self._updates_ui[sensor_id] = update
-                self._updates_replication[sensor_id] = update
-                return True, "newer_ts", prev
-
-            if update.ts_ms == prev.ts_ms and update.origin > prev.origin:
-                self._state[sensor_id] = update
-                self._updates_ui[sensor_id] = update
-                self._updates_replication[sensor_id] = update
-                return True, "tie_break", prev
+            if self._is_newer_or_tie_winner(current=prev, candidate=update):
+                reason = "newer_ts" if update.ts_ms > prev.ts_ms else "tie_break"
+                self._apply_winner(sensor_id=sensor_id, record=update)
+                return True, reason, prev
 
             return False, "stale", prev
+
+    def apply_update(
+        self,
+        sensor_id: str,
+        value: JsonValue,
+        timestamp: int,
+        origin: str = "",
+        meta: JsonObject | SensorMetaDict | None = None,
+    ) -> bool:
+        """Apply one update under LWW semantics.
+
+        Args:
+            sensor_id (str): Logical sensor identifier.
+            value (JsonValue): Candidate sensor value.
+            timestamp (int): Candidate timestamp in milliseconds.
+            origin (str): Optional update origin used as deterministic tie-break key.
+            meta (JsonObject | SensorMetaDict | None): Optional metadata carried with
+                the sensor value.
+
+        Returns:
+            bool: ``True`` if the candidate becomes the current winner.
+        """
+        if not isinstance(sensor_id, str) or sensor_id == "":
+            return False
+        if not isinstance(timestamp, int):
+            return False
+        if not isinstance(origin, str):
+            origin = ""
+        if meta is None:
+            meta = {}
+
+        candidate = SensorRecord(
+            value=value,
+            ts_ms=timestamp,
+            origin=origin,
+            meta=SensorMeta.from_dict(meta),
+        )
+        applied, _, _ = self.merge_lww(sensor_id=sensor_id, update=candidate)
+        return applied
+
+    def merge_state(self, remote_full_state: JsonObject) -> int:
+        """Bulk-merge a remote full-state payload under LWW semantics.
+
+        Supported shapes:
+            1) ``{sensor_id: {"value": ..., "timestamp": ...}}``
+            2) ``{node_id: {origin:sensor_id: {"value": ..., "ts_ms": ..., ...}}}``
+
+        Args:
+            remote_full_state (JsonObject): Full-state payload received from a peer.
+
+        Returns:
+            int: Number of updates that became winners locally.
+        """
+        if not isinstance(remote_full_state, dict):
+            return 0
+
+        candidates = self._collect_merge_candidates(remote_full_state=remote_full_state)
+
+        applied = 0
+        for sensor_id, candidate in candidates:
+            merged, _, _ = self.merge_lww(sensor_id=sensor_id, update=candidate)
+            if merged:
+                applied += 1
+        return applied
 
     def upsert(self, sensor_id: str, record: SensorRecord) -> None:
         """Force one record into state and both incremental buffers.
@@ -151,9 +324,7 @@ class NodeStateStore:
             None: This method mutates the store in place.
         """
         with self._lock:
-            self._state[sensor_id] = record
-            self._updates_ui[sensor_id] = record
-            self._updates_replication[sensor_id] = record
+            self._apply_winner(sensor_id=sensor_id, record=record)
 
     def remove(self, sensor_id: str) -> bool:
         """Delete one logical sensor from state and pending buffers.

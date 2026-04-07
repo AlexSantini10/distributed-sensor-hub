@@ -138,6 +138,79 @@ class NodeStateWorker(threading.Thread):
             f"period_ms={rec.meta.period_ms}"
         )
 
+    def _is_valid_merge_input(self, sensor_id: str, origin: str) -> bool:
+        """Validate required merge-update identifiers."""
+        if sensor_id == "":
+            return False
+        if origin == "":
+            return False
+        return True
+
+    def _build_sensor_record(
+        self,
+        value: JsonValue,
+        ts_ms: int,
+        origin: str,
+        meta: JsonObject | SensorMetaDict | None,
+    ) -> SensorRecord:
+        """Normalize merge input into the internal sensor-record model."""
+        if meta is None:
+            meta = {}
+        return SensorRecord(
+            value=value,
+            ts_ms=ts_ms,
+            origin=origin,
+            meta=SensorMeta.from_dict(meta),
+        )
+
+    def _log_merge_outcome(
+        self,
+        sensor_id: str,
+        value: JsonValue,
+        ts_ms: int,
+        origin: str,
+        update: SensorRecord,
+        applied: bool,
+        reason: str,
+        previous: SensorRecord | None,
+    ) -> None:
+        """Emit deterministic logs for one LWW merge outcome."""
+        if applied and reason == "insert":
+            self._log_msg(
+                "info",
+                f"LWW applied (insert): sensor={sensor_id} origin={origin} "
+                f"ts={ts_ms} value={value} unit={update.meta.unit} "
+                f"period_ms={update.meta.period_ms}",
+            )
+            self._log_msg("info", self._format_record_line(sensor_id, update))
+            return
+
+        if applied and reason == "newer_ts" and previous is not None:
+            self._log_msg(
+                "info",
+                f"LWW applied (newer_ts): sensor={sensor_id} origin={origin} "
+                f"ts={ts_ms} value={value} prev_origin={previous.origin} prev_ts={previous.ts_ms}",
+            )
+            self._log_msg("info", self._format_record_line(sensor_id, update))
+            return
+
+        if applied and reason == "tie_break" and previous is not None:
+            self._log_msg(
+                "info",
+                f"LWW applied (tie_break): sensor={sensor_id} origin={origin} "
+                f"ts={ts_ms} value={value} prev_origin={previous.origin} prev_ts={previous.ts_ms}",
+            )
+            self._log_msg("info", self._format_record_line(sensor_id, update))
+            return
+
+        if previous is not None:
+            self._log_msg(
+                "debug",
+                f"LWW ignored (stale): sensor={sensor_id} origin={origin} "
+                f"ts={ts_ms} value={value} prev_origin={previous.origin} prev_ts={previous.ts_ms}",
+            )
+            self._log_msg("debug", self._format_record_line(sensor_id, previous))
+
     def dump_full_state(self) -> JsonObject:
         """Expose a deterministic inspection view of the full register set.
 
@@ -199,59 +272,63 @@ class NodeStateWorker(threading.Thread):
         Returns:
             bool: ``True`` if the candidate becomes the new winner, else ``False``.
         """
-        if meta is None:
-            meta = {}
-
-        if sensor_id == "":
-            return False
-        if origin == "":
+        if not self._is_valid_merge_input(sensor_id=sensor_id, origin=origin):
             return False
 
-        update = SensorRecord(
+        update = self._build_sensor_record(
             value=value,
             ts_ms=ts_ms,
             origin=origin,
-            meta=SensorMeta.from_dict(meta),
+            meta=meta,
         )
 
         applied, reason, previous = self._store.merge_lww(sensor_id=sensor_id, update=update)
+        self._log_merge_outcome(
+            sensor_id=sensor_id,
+            value=value,
+            ts_ms=ts_ms,
+            origin=origin,
+            update=update,
+            applied=applied,
+            reason=reason,
+            previous=previous,
+        )
+        return applied
 
-        if applied and reason == "insert":
-            self._log_msg(
-                "info",
-                f"LWW applied (insert): sensor={sensor_id} origin={origin} "
-                f"ts={ts_ms} value={value} unit={update.meta.unit} "
-                f"period_ms={update.meta.period_ms}",
-            )
-            self._log_msg("info", self._format_record_line(sensor_id, update))
-            return True
+    def apply_update(self, sensor_id: str, value: JsonValue, timestamp: int) -> bool:
+        """Apply one local update using the worker node id as origin.
 
-        if applied and reason == "newer_ts" and previous is not None:
-            self._log_msg(
-                "info",
-                f"LWW applied (newer_ts): sensor={sensor_id} origin={origin} "
-                f"ts={ts_ms} value={value} prev_origin={previous.origin} prev_ts={previous.ts_ms}",
-            )
-            self._log_msg("info", self._format_record_line(sensor_id, update))
-            return True
+        Args:
+            sensor_id (str): Logical sensor identifier.
+            value (JsonValue): Candidate sensor value.
+            timestamp (int): Candidate timestamp in milliseconds.
 
-        if applied and reason == "tie_break" and previous is not None:
-            self._log_msg(
-                "info",
-                f"LWW applied (tie_break): sensor={sensor_id} origin={origin} "
-                f"ts={ts_ms} value={value} prev_origin={previous.origin} prev_ts={previous.ts_ms}",
-            )
-            self._log_msg("info", self._format_record_line(sensor_id, update))
-            return True
+        Returns:
+            bool: ``True`` if the candidate becomes the winning record.
+        """
+        return self.merge_update(
+            sensor_id=sensor_id,
+            value=value,
+            ts_ms=timestamp,
+            origin=self.node_id,
+            meta={},
+        )
 
-        if previous is not None:
-            self._log_msg(
-                "debug",
-                f"LWW ignored (stale): sensor={sensor_id} origin={origin} "
-                f"ts={ts_ms} value={value} prev_origin={previous.origin} prev_ts={previous.ts_ms}",
-            )
-            self._log_msg("debug", self._format_record_line(sensor_id, previous))
-        return False
+    def merge_state(self, remote_full_state: JsonObject) -> int:
+        """Bulk-merge a remote full-state payload into local LWW state.
+
+        Args:
+            remote_full_state (JsonObject): Full-state payload received from another node.
+
+        Returns:
+            int: Number of winning records applied locally.
+        """
+        applied = self._store.merge_state(remote_full_state=remote_full_state)
+        if applied > 0:
+            self._log_msg("info", f"FULL_SYNC merge applied_updates={applied}")
+        else:
+            self._log_msg("debug", "FULL_SYNC merge applied_updates=0")
+        return applied
 
     def remove_sensor(self, sensor_id: str) -> bool:
         """Delete one logical sensor from the underlying register set.

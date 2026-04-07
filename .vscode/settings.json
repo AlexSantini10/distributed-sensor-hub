@@ -6,6 +6,7 @@
         "membership",
         "web",
         "types",
-        "concurrency"
+        "concurrency",
+        "state"
     ]
 }

@@ -136,3 +136,58 @@ def test_tie_break_origin_lower_loses() -> None:
     state = w.get_state_snapshot()["A"]
     assert state["B:s1"]["value"] == 10
     assert state["B:s1"]["origin"] == "B"
+
+
+def test_apply_update_uses_local_origin() -> None:
+    """Assert ``apply_update`` stores values with local worker origin."""
+    w = make_worker(node_id="A")
+
+    applied = w.apply_update(sensor_id="s2", value=99, timestamp=1234)
+    assert applied is True
+
+    state = w.get_state_snapshot()["A"]
+    assert state["A:s2"]["value"] == 99
+    assert state["A:s2"]["ts_ms"] == 1234
+    assert state["A:s2"]["origin"] == "A"
+
+
+def test_merge_state_full_sync_flat_shape() -> None:
+    """Assert bulk merge supports flat ``{sensor_id: {value, timestamp}}`` shape."""
+    w = make_worker(node_id="A")
+    w.merge_update("s1", 10, 1000, "A")
+
+    merged = w.merge_state(
+        {
+            "s1": {"value": 50, "timestamp": 900, "origin": "B"},
+            "s2": {"value": 20, "timestamp": 2000, "origin": "B"},
+        }
+    )
+
+    assert merged == 1
+    state = w.get_state_snapshot()["A"]
+    assert state["A:s1"]["value"] == 10
+    assert state["B:s2"]["value"] == 20
+
+
+def test_merge_state_full_sync_snapshot_shape() -> None:
+    """Assert bulk merge supports grouped node snapshot shape."""
+    w = make_worker(node_id="A")
+
+    merged = w.merge_state(
+        {
+            "B": {
+                "B:s3": {
+                    "value": 31,
+                    "ts_ms": 3000,
+                    "origin": "B",
+                    "meta": {"unit": "C", "period_ms": 1000},
+                }
+            }
+        }
+    )
+
+    assert merged == 1
+    state = w.get_state_snapshot()["A"]
+    assert state["B:s3"]["value"] == 31
+    assert state["B:s3"]["ts_ms"] == 3000
+    assert state["B:s3"]["origin"] == "B"
