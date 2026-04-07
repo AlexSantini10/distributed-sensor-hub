@@ -71,6 +71,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Run the chaos stop/start loop and return a process exit code."""
     args = _parse_args()
     compose_file = args.compose_file.resolve()
     if not compose_file.exists():
