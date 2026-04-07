@@ -27,6 +27,7 @@ class EnvKey(StrEnum):
     LOG_FILE = "LOG_FILE"
     CLEAR_LOG = "CLEAR_LOG"
     WEB_API_PORT = "WEB_API_PORT"
+    HEARTBEAT_INTERVAL_MS = "HEARTBEAT_INTERVAL_MS"
     SENSORS = "SENSORS"
 
 
@@ -145,6 +146,7 @@ class Config:
         log_file (str): Path to the process log file.
         clear_log (bool): Whether startup should truncate the configured log file.
         web_api_port (int): TCP port exposed by the HTTP monitoring API.
+        heartbeat_interval_ms (int): Heartbeat period used for periodic liveness probes.
         sensors (tuple[SensorConfig, ...]): Local sensors declared for this node.
     """
 
@@ -156,6 +158,7 @@ class Config:
     log_file: str
     clear_log: bool
     web_api_port: int
+    heartbeat_interval_ms: int
     sensors: tuple[SensorConfig, ...]
 
     @classmethod
@@ -204,6 +207,10 @@ class Config:
             _get_optional_env(env, EnvKey.WEB_API_PORT, default=str(port + 1000)),
             EnvKey.WEB_API_PORT.value,
         )
+        heartbeat_interval_ms = _parse_positive_int(
+            _get_optional_env(env, EnvKey.HEARTBEAT_INTERVAL_MS, default="1000"),
+            EnvKey.HEARTBEAT_INTERVAL_MS.value,
+        )
         sensors = tuple(_parse_sensors(env))
 
         return cls(
@@ -215,6 +222,7 @@ class Config:
             log_file=log_file,
             clear_log=clear_log,
             web_api_port=web_api_port,
+            heartbeat_interval_ms=heartbeat_interval_ms,
             sensors=sensors,
         )
 
@@ -311,6 +319,17 @@ def _parse_bool(raw: str) -> bool:
         bool: ``True`` when the value is ``"true"`` case-insensitively.
     """
     return raw.lower() == "true"
+
+
+def _parse_positive_int(raw: str, env_name: str) -> int:
+    """Parse a strictly positive integer from configuration text."""
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{env_name} must be an integer, got: {raw}") from exc
+    if value <= 0:
+        raise RuntimeError(f"{env_name} must be > 0, got: {value}")
+    return value
 
 
 def _parse_peers(raw: str) -> list[tuple[str, int]]:

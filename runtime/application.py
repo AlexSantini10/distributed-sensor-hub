@@ -15,6 +15,7 @@ from networking.tcp_client import Peer as TcpPeer
 from networking.tcp_client import TcpClient
 from networking.tcp_server import TcpServer
 from protocol.factory import build_full_sync_request
+from runtime.heartbeat import HeartbeatSender
 from runtime.networking import (
     bootstrap_membership,
     seed_peer_table,
@@ -72,6 +73,7 @@ class NodeApplication:
         self.peer_table: PeerTable | None = None
         self.sensor_manager: SensorManager | None = None
         self.publisher: SensorUpdatePublisher | None = None
+        self.heartbeat_sender: HeartbeatSender | None = None
         self.web_api: WebAPIServer | None = None
         self.bootstrap_peers: list[TcpPeer] = []
         self._lifecycle_lock = threading.Lock()
@@ -91,6 +93,7 @@ class NodeApplication:
             self._start_state()
             self._start_networking()
             self._bootstrap_membership()
+            self._start_heartbeats()
             self._start_sensors()
             self._start_web_api()
         except Exception:
@@ -128,6 +131,12 @@ class NodeApplication:
             self._stopped = True
 
         self.log.info("Node cleanup started")
+
+        if self.heartbeat_sender is not None:
+            try:
+                self.heartbeat_sender.stop()
+            except Exception:
+                self.log.error("Error while stopping heartbeat sender", exc_info=True)
 
         if self.publisher is not None:
             try:
@@ -296,6 +305,23 @@ class NodeApplication:
         except Exception:
             self.log.critical("Failed to initialize sensors", exc_info=True)
             raise
+
+    def _start_heartbeats(self) -> None:
+        """Start periodic heartbeats to all peers without blocking the main loop."""
+        assert self.peer_table is not None
+        assert self.client is not None
+
+        self.heartbeat_sender = HeartbeatSender(
+            self_node_id=self.config.node_id,
+            peer_table=self.peer_table,
+            send=self.client.send_json,
+            interval_ms=self.config.heartbeat_interval_ms,
+            log=self.log,
+        )
+        self.heartbeat_sender.start()
+        self.log.info(
+            f"Heartbeat sender started (interval_ms={self.config.heartbeat_interval_ms})"
+        )
 
     def _start_web_api(self) -> None:
         """Start the HTTP monitoring API backed by state snapshots.

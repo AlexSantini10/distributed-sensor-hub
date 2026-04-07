@@ -9,6 +9,7 @@ Responsibilities:
 import threading
 from dataclasses import dataclass
 
+from fd.heartbeat import HeartbeatMonitor
 from membership.peer import Peer as MembershipPeer
 from membership.peer_table import PeerTable
 from networking.tcp_client import Peer as TcpPeer
@@ -32,6 +33,7 @@ class NetworkingContext:
         server (TcpServer): Inbound server that accepts and dispatches protocol messages.
         dispatcher (MessageDispatcher): Protocol dispatcher that routes decoded messages to handlers.
         peer_table (PeerTable): Membership view updated by protocol handlers and gossip.
+        heartbeat_monitor (HeartbeatMonitor): Heartbeat sample tracker used by liveness handlers.
         bootstrap_peers (list[TcpPeer]): Configured peers available for initial cluster contact.
     """
 
@@ -39,6 +41,7 @@ class NetworkingContext:
     server: TcpServer
     dispatcher: MessageDispatcher
     peer_table: PeerTable
+    heartbeat_monitor: HeartbeatMonitor
     bootstrap_peers: list[TcpPeer]
 
 
@@ -296,7 +299,7 @@ def setup_node_networking(
         client=client,
     )
 
-    dispatcher, peer_table = setup_protocol(
+    dispatcher, peer_table, heartbeat_monitor = setup_protocol(
         self_node_id=config.node_id,
         send_function=client.send_json,
         state_worker=state_worker,
@@ -314,5 +317,6 @@ def setup_node_networking(
         server=server,
         dispatcher=dispatcher,
         peer_table=peer_table,
+        heartbeat_monitor=heartbeat_monitor,
         bootstrap_peers=bootstrap_peers,
     )

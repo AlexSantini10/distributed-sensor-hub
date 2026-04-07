@@ -7,10 +7,12 @@ Responsibilities:
 """
 
 from collections.abc import Callable
+import time
 
+from fd.heartbeat import HeartbeatMonitor
 from membership.peer import Peer
 from membership.peer_table import PeerTable
-from protocol.factory import build_full_sync_request, build_full_sync_response
+from protocol.factory import build_full_sync_request, build_full_sync_response, build_pong
 from protocol.message import Message
 from protocol.messages import (
     DeltaUnavailablePayload,
@@ -18,6 +20,7 @@ from protocol.messages import (
     FullSyncResponsePayload,
     PeerDescriptor,
     PingPayload,
+    PongPayload,
     SensorUpdatePayload,
 )
 from utils.logging import get_logger
@@ -35,18 +38,77 @@ def handle_peer_list(msg: Message) -> None:
 
 
 def handle_ping(msg: Message) -> None:
-    """Log receipt of a liveness probe and reject unsupported processing."""
+    """Warn that ping handling has not been wired for this node."""
     log = get_logger(__name__, msg.sender_id)
-    payload = msg.payload
-    if not isinstance(payload, PingPayload):
-        raise ValueError("Expected PingPayload")
-    log.info(f"Received PING with payload={payload.to_mapping()}")
-    raise NotImplementedError("PING not implemented yet")
+    log.warning("PING received but handler is not wired")
 
 
 def handle_pong(msg: Message) -> None:
-    """Reject processing of an unimplemented liveness acknowledgement."""
-    raise NotImplementedError("PONG not implemented yet")
+    """Warn that pong handling has not been wired for this node."""
+    log = get_logger(__name__, msg.sender_id)
+    log.warning("PONG received but handler is not wired")
+
+
+def make_heartbeat_handlers(
+    *,
+    peer_table: PeerTable,
+    send: SenderLike,
+    self_node_id: str,
+    heartbeat_monitor: HeartbeatMonitor,
+) -> tuple[Callable[[Message], None], Callable[[Message], None]]:
+    """Create handlers for ``PING`` and ``PONG`` liveness traffic."""
+    log: LoggerLike = get_logger(__name__, self_node_id)
+
+    def _mark_alive_and_record(
+        *,
+        peer_id: str,
+        sender_timestamp_ms: int | None,
+    ) -> None:
+        observation = heartbeat_monitor.record_heartbeat(
+            peer_id,
+            sender_timestamp_ms=sender_timestamp_ms,
+        )
+        update = peer_table.mark_alive(peer_id, heartbeat_at=time.time())
+        if update.reason == "peer_not_found":
+            log.debug(f"Heartbeat received from unknown peer {peer_id}")
+            return
+        if observation.interval_s is not None:
+            log.debug(
+                f"Heartbeat interval: peer={peer_id} interval_s={observation.interval_s:.3f}"
+            )
+
+    def handle_ping(msg: Message) -> None:
+        payload = msg.payload
+        if not isinstance(payload, PingPayload):
+            log.warning("Invalid PING payload")
+            return
+
+        _mark_alive_and_record(
+            peer_id=msg.sender_id,
+            sender_timestamp_ms=payload.timestamp_ms,
+        )
+
+        pong = build_pong(
+            sender_id=self_node_id,
+            pong_timestamp_ms=int(time.time() * 1000),
+        )
+        try:
+            send(msg.sender_id, pong)
+        except Exception:
+            log.warning(f"Failed to send PONG to {msg.sender_id}", exc_info=True)
+
+    def handle_pong(msg: Message) -> None:
+        payload = msg.payload
+        if not isinstance(payload, PongPayload):
+            log.warning("Invalid PONG payload")
+            return
+
+        _mark_alive_and_record(
+            peer_id=msg.sender_id,
+            sender_timestamp_ms=payload.timestamp_ms,
+        )
+
+    return handle_ping, handle_pong
 
 
 def make_sensor_update_handler(
