@@ -5,13 +5,20 @@ from __future__ import annotations
 import json
 from urllib.request import urlopen
 
+from utils.typing import MembershipSnapshotDict, NodeSnapshot
 from webapi.http_api import WebAPIServer
 
 
 class DummyLog:
     """Provide the minimal logger interface used by the Web API server."""
 
+    def debug(self, *args: object, **kwargs: object) -> None:
+        pass
+
     def info(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    def warning(self, *args: object, **kwargs: object) -> None:
         pass
 
     def error(self, *args: object, **kwargs: object) -> None:
@@ -29,9 +36,18 @@ def _fetch_json(url: str) -> dict[str, object]:
 
 def test_http_api_serves_membership_snapshot() -> None:
     """Assert that `/api/membership` returns the provided membership payload."""
-    state_snapshot = {"node-a": {"node-a:sensor": {"value": 1, "ts_ms": 1, "origin": "node-a", "meta": {}}}}
-    updates_snapshot = {"node-a": {}}
-    membership_snapshot = {
+    state_snapshot: NodeSnapshot = {
+        "node-a": {
+            "node-a:sensor": {
+                "value": 1,
+                "ts_ms": 1,
+                "origin": "node-a",
+                "meta": {"unit": None, "period_ms": None},
+            }
+        }
+    }
+    updates_snapshot: NodeSnapshot = {"node-a": {}}
+    membership_snapshot: MembershipSnapshotDict = {
         "local_node_id": "node-a",
         "peers": [
             {
@@ -65,4 +81,3 @@ def test_http_api_serves_membership_snapshot() -> None:
         assert _fetch_json(f"{base}/api/membership") == membership_snapshot
     finally:
         server.stop()
-

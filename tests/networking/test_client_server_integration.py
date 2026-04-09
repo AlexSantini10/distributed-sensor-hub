@@ -73,6 +73,7 @@ def test_server_receives_message_from_tcp_client() -> None:
         accept_timeout_s=0.2,
     )
 
+    client: TcpClient | None = None
     server.start()
     try:
         assert server._server_sock is not None
@@ -107,5 +108,6 @@ def test_server_receives_message_from_tcp_client() -> None:
         assert received.payload.timestamp_ms == 123
 
     finally:
-        client.stop()
+        if client is not None:
+            client.stop()
         server.stop()

@@ -35,7 +35,12 @@ from protocol.messages import (
     SensorUpdatePayload,
 )
 from utils.logging import get_logger
-from utils.typing import LoggerLike, SenderLike, StateWorkerLike
+from utils.typing import (
+    LoggerLike,
+    ReplicationDeltaSourceLike,
+    SenderLike,
+    StateWorkerLike,
+)
 
 
 def handle_join_request(msg: Message) -> None:
@@ -323,7 +328,7 @@ def make_delta_unavailable_handler(
 
 def make_get_delta_handler(
     *,
-    state_worker: StateWorkerLike,
+    state_worker: ReplicationDeltaSourceLike,
     send: SenderLike,
     self_node_id: str,
 ) -> Callable[[Message], None]:

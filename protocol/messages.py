@@ -586,7 +586,7 @@ class AckPayload(PayloadModel):
         return cls(acked_type=_require_non_empty_string(acked_type, "acked_type"))
 
 
-PayloadT = TypeVar("PayloadT", bound=PayloadModel)
+PayloadT = TypeVar("PayloadT", bound=PayloadModel, covariant=True)
 
 
 @dataclass(frozen=True)

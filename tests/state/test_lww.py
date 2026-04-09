@@ -8,9 +8,12 @@ Responsibilities:
 from queue import Queue
 import threading
 import time
+from typing import cast
 
+from state.policy import MergeDecision
 from state.node_state_store import SensorRecord
 from state.node_state_worker import NodeStateWorker
+from utils.typing import JsonObject, NodeSnapshot, SensorEventSource
 
 
 class DummyLog:
@@ -19,6 +22,9 @@ class DummyLog:
     Attributes:
         None
     """
+
+    def debug(self, *args: object, **kwargs: object) -> None:
+        pass
 
     def info(self, *args: object, **kwargs: object) -> None:
         """Accept informational logs without recording them.
@@ -44,6 +50,16 @@ class DummyLog:
         """
         pass
 
+    def warning(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    def critical(self, *args: object, **kwargs: object) -> None:
+        pass
+
+
+def _event_queue() -> SensorEventSource:
+    return cast(SensorEventSource, Queue())
+
 
 def make_worker(node_id: str = "A") -> NodeStateWorker:
     """Create a state worker backed by a fresh in-memory queue.
@@ -54,7 +70,7 @@ def make_worker(node_id: str = "A") -> NodeStateWorker:
     Returns:
         NodeStateWorker: Worker configured with a dummy logger and empty queue.
     """
-    q = Queue()
+    q = _event_queue()
     return NodeStateWorker(node_id=node_id, event_queue=q, log=DummyLog())
 
 
@@ -66,7 +82,7 @@ class ReverseTieBreakPolicy:
         *,
         current: SensorRecord,
         candidate: SensorRecord,
-    ) -> str:
+    ) -> MergeDecision:
         if candidate.ts_ms > current.ts_ms:
             return "newer_ts"
         if candidate.ts_ms == current.ts_ms and candidate.origin < current.origin:
@@ -161,7 +177,7 @@ def test_merge_policy_is_injected_via_dependency_inversion() -> None:
     """Assert state conflict policy can be replaced through dependency injection."""
     w = NodeStateWorker(
         node_id="A",
-        event_queue=Queue(),
+        event_queue=_event_queue(),
         log=DummyLog(),
         merge_policy=ReverseTieBreakPolicy(),
     )
@@ -322,7 +338,7 @@ def test_merge_state_is_atomic_against_concurrent_updates() -> None:
         w.merge_update("s-thread", 1, 500, "T")
         update_finished.set()
 
-    payload = {
+    payload: JsonObject | NodeSnapshot = {
         "B": {
             "B:s1": {"value": 1, "ts_ms": 200, "origin": "B", "meta": {}},
             "B:s2": {"value": 2, "ts_ms": 201, "origin": "B", "meta": {}},
@@ -346,7 +362,7 @@ def test_replication_delta_buffer_keeps_last_n_in_order() -> None:
     """Assert replication deltas retain append order and bounded last-N behavior."""
     w = NodeStateWorker(
         node_id="A",
-        event_queue=Queue(),
+        event_queue=_event_queue(),
         log=DummyLog(),
         replication_delta_maxlen=3,
     )
@@ -382,7 +398,7 @@ def test_replication_delta_since_returns_none_when_cursor_is_too_old() -> None:
     """Assert stale delta cursors are rejected when history has rotated."""
     w = NodeStateWorker(
         node_id="A",
-        event_queue=Queue(),
+        event_queue=_event_queue(),
         log=DummyLog(),
         replication_delta_maxlen=2,
     )

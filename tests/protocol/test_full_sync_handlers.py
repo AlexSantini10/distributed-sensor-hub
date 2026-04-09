@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from queue import Queue
+from typing import cast
 
 from membership.peer import Peer
 from membership.peer_table import PeerTable
@@ -21,10 +22,14 @@ from protocol.handlers import (
 from protocol.message_types import MessageType
 from protocol.messages import Message, PeerDescriptor
 from state.node_state_worker import NodeStateWorker
+from utils.typing import ReplicationDeltaBatch, SensorEventSource
 
 
 class DummyLog:
     """Provide the minimal logger interface required by state-worker tests."""
+
+    def debug(self, *args: object, **kwargs: object) -> None:
+        pass
 
     def info(self, *args: object, **kwargs: object) -> None:
         pass
@@ -35,10 +40,17 @@ class DummyLog:
     def error(self, *args: object, **kwargs: object) -> None:
         pass
 
+    def critical(self, *args: object, **kwargs: object) -> None:
+        pass
+
+
+def _event_queue() -> SensorEventSource:
+    return cast(SensorEventSource, Queue())
+
 
 def make_worker(node_id: str = "node-a") -> NodeStateWorker:
     """Create a state worker backed by a fresh in-memory queue."""
-    return NodeStateWorker(node_id=node_id, event_queue=Queue(), log=DummyLog())
+    return NodeStateWorker(node_id=node_id, event_queue=_event_queue(), log=DummyLog())
 
 
 def test_full_sync_request_handler_replies_with_state_and_membership() -> None:
@@ -192,7 +204,7 @@ def test_get_delta_handler_returns_delta_unavailable_for_stale_cursor() -> None:
     """Assert GET_DELTA stale cursors trigger DELTA_UNAVAILABLE fallback."""
     state_worker = NodeStateWorker(
         node_id="node-a",
-        event_queue=Queue(),
+        event_queue=_event_queue(),
         log=DummyLog(),
         replication_delta_maxlen=2,
     )
@@ -222,9 +234,15 @@ def test_get_delta_handler_skips_malformed_entries_and_sends_only_valid_updates(
     """Assert GET_DELTA ignores malformed entries and serves only valid deltas."""
 
     class FakeStateWorker:
-        def get_replication_deltas_since(self, *, since_ts_ms: int):
+        def get_replication_deltas_since(
+            self,
+            *,
+            since_ts_ms: int,
+        ) -> ReplicationDeltaBatch | None:
             assert since_ts_ms == 1000
-            return (
+            return cast(
+                ReplicationDeltaBatch,
+                (
                 {
                     "sensor_id": "s-good",
                     "value": 42,
@@ -253,6 +271,7 @@ def test_get_delta_handler_skips_malformed_entries_and_sends_only_valid_updates(
                     "origin": "node-a",
                     "meta": {},
                 },
+                ),
             )
 
     sent: list[tuple[str, Message]] = []

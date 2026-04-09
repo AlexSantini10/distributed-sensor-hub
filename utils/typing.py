@@ -32,7 +32,15 @@ class SupportsToBytes(Protocol):
         ...
 
 
-type LoggerLike = logging.Logger | logging.LoggerAdapter[logging.Logger]
+@runtime_checkable
+class LoggerLike(Protocol):
+    """Define the logger surface consumed across runtime modules and tests."""
+
+    debug: Callable[..., None]
+    info: Callable[..., None]
+    warning: Callable[..., None]
+    error: Callable[..., None]
+    critical: Callable[..., None]
 
 
 class SensorMetaDict(TypedDict):
@@ -283,6 +291,18 @@ class SensorEventSource(Protocol):
         Returns:
             SensorEvent: Next available sensor event.
         """
+        ...
+
+
+class ReplicationDeltaSourceLike(Protocol):
+    """Define the subset needed by GET_DELTA protocol handler."""
+
+    def get_replication_deltas_since(
+        self,
+        *,
+        since_ts_ms: int,
+    ) -> ReplicationDeltaBatch | None:
+        """Return ordered deltas newer than ``since_ts_ms`` without draining."""
         ...
 
 

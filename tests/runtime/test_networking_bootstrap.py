@@ -8,7 +8,19 @@ from runtime.networking import seed_peer_table
 class DummyLog:
     """Provide the minimal logger interface used by networking helpers."""
 
+    def debug(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    def info(self, *args: object, **kwargs: object) -> None:
+        pass
+
     def warning(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    def error(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    def critical(self, *args: object, **kwargs: object) -> None:
         pass
 
 
@@ -22,4 +34,3 @@ def test_seed_peer_table_ignores_bootstrap_placeholder_ids() -> None:
     seed_peer_table(peer_table=table, bootstrap_peers=peers, log=DummyLog())
 
     assert table.snapshot() == ()
-

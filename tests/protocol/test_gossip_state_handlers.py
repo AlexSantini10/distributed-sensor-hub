@@ -11,6 +11,7 @@ from membership.peer_table import PeerTable
 from membership.status import NodeStatus
 from protocol.factory import build_gossip_state
 from protocol.handlers import make_gossip_state_handler
+from utils.typing import JsonObject
 
 
 def _membership_state(
@@ -20,7 +21,7 @@ def _membership_state(
     port: int,
     status: str,
     status_ts_ms: int,
-) -> dict[str, object]:
+) -> JsonObject:
     return {
         "membership": {
             "peers": [
