@@ -180,10 +180,10 @@ class NodeApplication:
             None: This method creates and starts the local state worker.
         """
         self.state_worker = NodeStateWorker(
-            node_id=self.config.node_id,
-            event_queue=self.sensor_event_queue,
-            log=self.log,
-            replication_delta_maxlen=self.config.replication_delta_maxlen,
+            node_id=self.config.node_id,  # local identity for LWW origin/tie-breaks
+            event_queue=self.sensor_event_queue,  # sensor-to-state worker channel
+            log=self.log,  # logger-like object with info/error/critical methods
+            replication_delta_maxlen=self.config.replication_delta_maxlen,  # delta history bound
         )
         self.state_worker.start()
         self.log.info("State worker started")
@@ -201,10 +201,10 @@ class NodeApplication:
         assert self.state_worker is not None
 
         networking = setup_node_networking(
-            config=self.config,
-            log=self.log,
-            state_worker=self.state_worker,
-            tcp_server_cls=TcpServer,
+            config=self.config,  # node identity, bind address, peers, and timing knobs
+            log=self.log,  # shared runtime logger
+            state_worker=self.state_worker,  # protocol target for merges and sync reads
+            tcp_server_cls=TcpServer,  # injectable server implementation for tests
         )
 
         self.client = networking.client
@@ -244,12 +244,12 @@ class NodeApplication:
             return
 
         bootstrap_membership(
-            self_node_id=self.config.node_id,
-            host=self.config.host,
-            port=self.config.port,
-            peers=self.bootstrap_peers,
-            send=self.client.send_json,
-            log=self.log,
+            self_node_id=self.config.node_id,  # identity advertised in JOIN_REQUEST
+            host=self.config.host,  # host peers should use to reach this node
+            port=self.config.port,  # TCP port peers should use to reach this node
+            peers=self.bootstrap_peers,  # configured initial join targets
+            send=self.client.send_json,  # callable: queues Message by peer_id
+            log=self.log,  # shared runtime logger
         )
         self._request_full_sync_from_bootstrap_peers()
 
@@ -288,18 +288,22 @@ class NodeApplication:
         assert self.state_worker is not None
 
         try:
-            sensor_handler = QueueingSensorHandler(self.sensor_event_queue.put)
-            self.sensor_manager = SensorManager(handler=sensor_handler)
+            sensor_handler = QueueingSensorHandler(
+                self.sensor_event_queue.put  # callback: enqueue raw sensor events
+            )
+            self.sensor_manager = SensorManager(
+                handler=sensor_handler  # adapter used by every configured sensor
+            )
             self.sensor_manager.load(self.config.sensors)
             self.sensor_manager.start_all()
             self.log.info(f"Started {len(self.sensor_manager.sensors)} sensors")
 
             self.publisher = SensorUpdatePublisher(
-                self_node_id=self.config.node_id,
-                peer_table=self.peer_table,
-                tcp_client=self.client,
-                state_worker=self.state_worker,
-                log=self.log,
+                self_node_id=self.config.node_id,  # origin for outbound SENSOR_UPDATE
+                peer_table=self.peer_table,  # current replication targets
+                tcp_client=self.client,  # shared outbound transport manager
+                state_worker=self.state_worker,  # source of local winning deltas
+                log=self.log,  # shared runtime logger
             )
             self.publisher.start()
             self.log.info("Sensor update publisher started")
@@ -313,11 +317,11 @@ class NodeApplication:
         assert self.client is not None
 
         self.heartbeat_sender = HeartbeatSender(
-            self_node_id=self.config.node_id,
-            peer_table=self.peer_table,
-            send=self.client.send_json,
-            interval_ms=self.config.heartbeat_interval_ms,
-            log=self.log,
+            self_node_id=self.config.node_id,  # sender identity in PING/GOSSIP_STATE
+            peer_table=self.peer_table,  # source of known peers and phi state
+            send=self.client.send_json,  # callable: queues Message by peer_id
+            interval_ms=self.config.heartbeat_interval_ms,  # heartbeat period
+            log=self.log,  # shared runtime logger
         )
         self.heartbeat_sender.start()
         self.log.info(
@@ -340,12 +344,16 @@ class NodeApplication:
                 f"Starting WebAPI on {self.config.host}:{self.config.web_api_port}"
             )
             self.web_api = WebAPIServer(
-                host=self.config.host,
-                port=self.config.web_api_port,
-                state_provider=self.state_worker.get_state_snapshot,
-                updates_provider=self.state_worker.get_updates_snapshot,
-                membership_provider=self.peer_table.membership_snapshot if self.peer_table is not None else None,
-                log=self.log,
+                host=self.config.host,  # HTTP bind address
+                port=self.config.web_api_port,  # HTTP monitoring port
+                state_provider=self.state_worker.get_state_snapshot,  # callable snapshot reader
+                updates_provider=self.state_worker.get_updates_snapshot,  # callable update reader
+                membership_provider=(
+                    self.peer_table.membership_snapshot
+                    if self.peer_table is not None
+                    else None
+                ),  # callable membership reader, if membership is initialized
+                log=self.log,  # shared runtime logger
             )
             self.web_api.start()
             self.log.info("WebAPI started")
