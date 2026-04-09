@@ -10,13 +10,15 @@ import logging
 import os
 from collections.abc import MutableMapping
 
+from utils.config import LogLevel
 
-def setup_logging(node_id: str, level: str, log_file: str) -> None:
+
+def setup_logging(node_id: str, level: LogLevel, log_file: str) -> None:
     """Configure root logging for one node process.
 
     Args:
         node_id (str): Local node identifier recorded in every log entry.
-        level (str): Root logging level accepted by ``logging.Logger.setLevel``.
+        level (LogLevel): Root logging level represented by the validated enum.
         log_file (str): File path used for append-only logging output.
 
     Returns:
@@ -35,7 +37,7 @@ def setup_logging(node_id: str, level: str, log_file: str) -> None:
     handler.setFormatter(formatter)
 
     root = logging.getLogger()
-    root.setLevel(level)
+    root.setLevel(level.value)
     root.handlers.clear()
     root.addHandler(handler)
 

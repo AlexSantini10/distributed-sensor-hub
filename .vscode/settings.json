@@ -12,7 +12,8 @@
         "fd",
         "heartbeat",
         "gossip",
-        "simulation"
+        "simulation",
+        "log"
     ],
     "markdown.validate.enabled": true
 }

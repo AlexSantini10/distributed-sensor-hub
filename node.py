@@ -55,7 +55,7 @@ def main() -> None:
 	clear_log_file_if_requested(config.log_file, config.should_clear_log())
 
 	try:
-		setup_logging(config.node_id, config.log_level_name, config.log_file)
+		setup_logging(config.node_id, config.log_level, config.log_file)
 	except Exception:
 		bootstrap_log.critical("Failed to setup logging", exc_info=True)
 		raise
