@@ -11,8 +11,9 @@ from __future__ import annotations
 import threading
 import time
 
+from gossip.publisher import publish_membership_gossip
 from membership.peer_table import PeerTable
-from protocol.factory import build_gossip_state, build_ping
+from protocol.factory import build_ping
 from utils.typing import LoggerLike, SenderLike
 
 
@@ -70,7 +71,7 @@ class HeartbeatSender:
             self._stop_event.wait(self._interval_s)
 
     def _send_heartbeat_round(self) -> None:
-        """Evaluate phi, gossip membership state, then send one PING per peer."""
+        """Evaluate phi, publish gossip, then send one PING per peer."""
         fd_updates = self._peer_table.evaluate_failure_detector(
             observed_at_wall_s=time.time(),
             observed_at_monotonic_s=time.monotonic(),
@@ -91,19 +92,13 @@ class HeartbeatSender:
             ping_timestamp_ms=now_ms,
         )
         peers = self._peer_table.snapshot()
-        gossip = build_gossip_state(
-            sender_id=self._self_node_id,
-            state=self._peer_table.build_gossip_state(),
+        publish_membership_gossip(
+            self_node_id=self._self_node_id,
+            peer_table=self._peer_table,
+            peers=peers,
+            send=self._send,
+            log=self._log,
         )
-
-        for peer in peers:
-            try:
-                self._send(peer.node_id, gossip)
-            except Exception:
-                self._log.debug(
-                    f"GOSSIP_STATE send failed to {peer.node_id} {peer.host}:{peer.port}",
-                    exc_info=True,
-                )
 
         for peer in peers:
             try:
