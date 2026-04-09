@@ -12,6 +12,7 @@ from collections import deque
 from dataclasses import dataclass
 import threading
 
+from state.policy import LwwMergePolicy, MergeDecision, MergePolicy
 from utils.typing import (
     JsonObject,
     JsonValue,
@@ -116,7 +117,11 @@ class NodeStateStore:
         _replication_last_read_seq (int): Sequence cursor for drain operations.
     """
 
-    def __init__(self, replication_delta_maxlen: int = 512) -> None:
+    def __init__(
+        self,
+        replication_delta_maxlen: int = 512,
+        merge_policy: MergePolicy | None = None,
+    ) -> None:
         """Initialize empty state and update buffers.
 
         Returns:
@@ -130,6 +135,7 @@ class NodeStateStore:
         self._replication_deltas: deque[_ReplicationDelta] = deque(maxlen=replication_delta_maxlen)
         self._replication_next_seq = 0
         self._replication_last_read_seq = 0
+        self._merge_policy: MergePolicy = merge_policy or LwwMergePolicy()
 
     def _apply_winner(self, sensor_id: str, record: SensorRecord) -> None:
         """Store one winning record across state and incremental buffers."""
@@ -144,13 +150,9 @@ class NodeStateStore:
         )
         self._replication_next_seq += 1
 
-    def _is_newer_or_tie_winner(self, current: SensorRecord, candidate: SensorRecord) -> bool:
-        """Return whether a candidate wins over the current LWW record."""
-        if candidate.ts_ms > current.ts_ms:
-            return True
-        if candidate.ts_ms == current.ts_ms and candidate.origin > current.origin:
-            return True
-        return False
+    def _decide_merge(self, current: SensorRecord, candidate: SensorRecord) -> MergeDecision:
+        """Delegate merge decision to the configured policy."""
+        return self._merge_policy.decide(current=current, candidate=candidate)
 
     def _parse_timestamp(self, value: object) -> int | None:
         """Normalize a timestamp candidate into an integer when valid."""
@@ -282,10 +284,10 @@ class NodeStateStore:
                 self._apply_winner(sensor_id=sensor_id, record=update)
                 return True, "insert", None
 
-            if self._is_newer_or_tie_winner(current=prev, candidate=update):
-                reason = "newer_ts" if update.ts_ms > prev.ts_ms else "tie_break"
+            decision = self._decide_merge(current=prev, candidate=update)
+            if decision != "stale":
                 self._apply_winner(sensor_id=sensor_id, record=update)
-                return True, reason, prev
+                return True, decision, prev
 
             return False, "stale", prev
 
@@ -361,7 +363,7 @@ class NodeStateStore:
                     applied += 1
                     continue
 
-                if self._is_newer_or_tie_winner(current=prev, candidate=candidate):
+                if self._decide_merge(current=prev, candidate=candidate) != "stale":
                     self._apply_winner(sensor_id=sensor_id, record=candidate)
                     applied += 1
 

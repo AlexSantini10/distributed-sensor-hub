@@ -58,6 +58,22 @@ def make_worker(node_id: str = "A") -> NodeStateWorker:
     return NodeStateWorker(node_id=node_id, event_queue=q, log=DummyLog())
 
 
+class ReverseTieBreakPolicy:
+    """Prefer lexicographically lower origins when timestamps are equal."""
+
+    def decide(
+        self,
+        *,
+        current: SensorRecord,
+        candidate: SensorRecord,
+    ) -> str:
+        if candidate.ts_ms > current.ts_ms:
+            return "newer_ts"
+        if candidate.ts_ms == current.ts_ms and candidate.origin < current.origin:
+            return "tie_break"
+        return "stale"
+
+
 def test_new_insert() -> None:
     """Assert that the first update for a sensor becomes the winner.
 
@@ -139,6 +155,24 @@ def test_tie_break_origin_lower_loses() -> None:
     state = w.get_state_snapshot()["A"]
     assert state["B:s1"]["value"] == 10
     assert state["B:s1"]["origin"] == "B"
+
+
+def test_merge_policy_is_injected_via_dependency_inversion() -> None:
+    """Assert state conflict policy can be replaced through dependency injection."""
+    w = NodeStateWorker(
+        node_id="A",
+        event_queue=Queue(),
+        log=DummyLog(),
+        merge_policy=ReverseTieBreakPolicy(),
+    )
+
+    w.merge_update("s1", 10, 1000, "B")
+    applied = w.merge_update("s1", 20, 1000, "A")
+
+    assert applied is True
+    state = w.get_state_snapshot()["A"]
+    assert state["A:s1"]["value"] == 20
+    assert state["A:s1"]["origin"] == "A"
 
 
 def test_apply_update_uses_local_origin() -> None:

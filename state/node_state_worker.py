@@ -13,6 +13,7 @@ from queue import Empty
 
 from state.events import SensorEvent
 from state.node_state_store import NodeStateStore, SensorMeta, SensorRecord
+from state.policy import MergePolicy
 from utils.typing import (
     JsonObject,
     JsonValue,
@@ -44,6 +45,7 @@ class NodeStateWorker(threading.Thread):
         log: LoggerLike,
         debug_dump_every_s: float | None = None,
         replication_delta_maxlen: int = 512,
+        merge_policy: MergePolicy | None = None,
     ) -> None:
         """Initialize the background worker and its LWW store.
 
@@ -63,7 +65,10 @@ class NodeStateWorker(threading.Thread):
         self.log = log
 
         self._stop_event = threading.Event()
-        self._store = NodeStateStore(replication_delta_maxlen=replication_delta_maxlen)
+        self._store = NodeStateStore(
+            replication_delta_maxlen=replication_delta_maxlen,
+            merge_policy=merge_policy,
+        )
 
         self._debug_dump_every_s = debug_dump_every_s
         self._next_dump_ts = (
