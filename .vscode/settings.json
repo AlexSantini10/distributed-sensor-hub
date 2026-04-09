@@ -15,5 +15,6 @@
         "simulation",
         "log"
     ],
-    "markdown.validate.enabled": true
+    "markdown.validate.enabled": true,
+    "postman.settings.dotenv-detection-notification-visibility": false
 }

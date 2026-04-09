@@ -10,6 +10,8 @@ import threading
 import time
 from typing import cast
 
+from state.contracts import StateStoreLike
+from state.node_state_store import NodeStateStore
 from state.policy import MergeDecision
 from state.node_state_store import SensorRecord
 from state.node_state_worker import NodeStateWorker
@@ -191,6 +193,23 @@ def test_merge_policy_is_injected_via_dependency_inversion() -> None:
     assert state["A:s1"]["origin"] == "A"
 
 
+def test_store_is_injected_via_state_store_contract() -> None:
+    """Assert the worker can collaborate with any store implementing the contract."""
+    store = cast(StateStoreLike, NodeStateStore())
+    w = NodeStateWorker(
+        node_id="A",
+        event_queue=_event_queue(),
+        log=DummyLog(),
+        store=store,
+    )
+
+    applied = w.merge_update("s1", 10, 1000, "A")
+
+    assert applied is True
+    state = w.get_state_snapshot()["A"]
+    assert state["A:s1"]["value"] == 10
+
+
 def test_apply_update_uses_local_origin() -> None:
     """Assert ``apply_update`` stores values with local worker origin."""
     w = make_worker(node_id="A")
@@ -315,7 +334,7 @@ def test_merge_state_converges_after_partition() -> None:
 def test_merge_state_is_atomic_against_concurrent_updates() -> None:
     """Assert full-state merge keeps the store lock for the entire batch merge."""
     w = make_worker(node_id="A")
-    store = w._store
+    store = cast(NodeStateStore, w._store)
     original_apply = store._apply_winner
 
     start_concurrent_update = threading.Event()

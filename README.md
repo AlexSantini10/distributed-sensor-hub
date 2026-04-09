@@ -12,16 +12,60 @@ Distributed Sensor Hub is a peer-to-peer system for aggregating heterogeneous Io
 |------|--------|
 | Alex Santini | [@AlexSantini10](https://github.com/AlexSantini10) |
 
+## Table of contents
+
+- [Documentation map](#documentation-map)
+- [Core capabilities](#core-capabilities)
+- [How a node works](#how-a-node-works)
+- [Project structure](#project-structure)
+- [Setup](#setup)
+  - [Prerequisites](#prerequisites)
+  - [Local installation](#local-installation)
+  - [Environment configuration](#environment-configuration)
+- [Running the project](#running-the-project)
+  - [Single node](#single-node)
+  - [Docker topologies](#docker-topologies)
+  - [Web API](#web-api)
+- [Testing](#testing)
+  - [Local test suite](#local-test-suite)
+  - [Integration and Docker checks](#integration-and-docker-checks)
+  - [Timed crash/recovery with Docker Compose](#timed-crashrecovery-with-docker-compose)
+  - [Simulating latency and unstable networks](#simulating-latency-and-unstable-networks)
+- [Notes](#notes)
+
 ## Documentation map
 
 - [Architecture, technologies, and design choices](docs/architecture.md)
 - [Roadmap and missing pieces](docs/roadmap.md)
+
+## Core capabilities
+
+- Peer-to-peer node architecture with no centralized coordinator
+- Configuration-driven sensor simulation with multiple built-in providers
+- Last-Write-Wins replicated state convergence across nodes
+- Membership discovery through bootstrap peers and peer-list exchange
+- Phi-accrual-based liveness metadata for peer health tracking
+- HTTP endpoints for cluster state and incremental update inspection
+- Docker topologies and automated tests for local validation
+
+## How a node works
+
+At startup, a node loads environment-based configuration, initializes logging, starts the local state worker, brings up TCP networking, contacts bootstrap peers, starts heartbeats, launches sensor producers, and finally exposes the Web API.
+
+The steady-state data flow is:
+
+1. Local sensors emit readings into the shared event queue.
+2. The state worker normalizes events and applies LWW merges.
+3. Replication updates are published to known peers.
+4. Remote messages are dispatched by protocol handlers and merged locally.
+5. The Web API exposes full state and incremental updates for inspection.
 
 ## Project structure
 
 | Path | Purpose |
 |------|---------|
 | `node.py` | Entry point for a node process |
+| `docs/` | Architecture notes and technical documentation |
 | `runtime/` | Runtime orchestration and subsystem bootstrap |
 | `state/` | LWW state worker and outbound update publishing |
 | `membership/` | Peer model, peer table, and membership handlers |
@@ -29,7 +73,9 @@ Distributed Sensor Hub is a peer-to-peer system for aggregating heterogeneous Io
 | `networking/` | TCP client/server transport layer |
 | `sensors/` | Sensor simulators and sensor manager |
 | `webapi/` | HTTP API serving state and update snapshots |
+| `web/` | Static UI assets for monitoring |
 | `docker/` | Dockerfiles and compose topologies |
+| `manual_tests/` | Helper scripts for manual resilience experiments |
 | `tests/` | Unit and integration tests |
 | `.github/workflows/` | CI workflows for pytest and integration checks |
 
@@ -122,8 +168,12 @@ Available pytest markers are defined in [pytest.ini](pytest.ini):
 - `membership`
 - `gossip`
 - `fd`
+- `runtime`
 - `state`
 - `sensors`
+- `webapi`
+- `utils`
+- `integration`
 
 ### Integration and Docker checks
 

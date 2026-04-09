@@ -11,6 +11,7 @@ import threading
 import time
 from queue import Empty
 
+from state.contracts import StateStoreLike
 from state.events import SensorEvent
 from state.node_state_store import NodeStateStore, SensorMeta, SensorRecord
 from state.policy import MergePolicy
@@ -33,7 +34,7 @@ class NodeStateWorker(threading.Thread):
         event_queue (SensorEventSource): Source queue supplying sensor events for local ingestion.
         log (LoggerLike): Logger-like object used for state and failure reporting.
         _stop_event (threading.Event): Shutdown signal checked by the worker loop.
-        _store (NodeStateStore): Thread-safe LWW store and incremental snapshot buffers.
+        _store (StateStoreLike): Thread-safe state store and incremental snapshot buffers.
         _debug_dump_every_s (float | None): Optional periodic dump cadence in seconds.
         _next_dump_ts (float | None): Monotonic deadline for the next periodic state dump.
     """
@@ -46,6 +47,7 @@ class NodeStateWorker(threading.Thread):
         debug_dump_every_s: float | None = None,
         replication_delta_maxlen: int = 512,
         merge_policy: MergePolicy | None = None,
+        store: StateStoreLike | None = None,
     ) -> None:
         """Initialize the background worker and its LWW store.
 
@@ -54,6 +56,7 @@ class NodeStateWorker(threading.Thread):
             event_queue (SensorEventSource): Queue-like object supporting ``get(timeout=...)``.
             log (LoggerLike): Logger-like object supporting standard logging methods.
             debug_dump_every_s (float | None): Optional positive interval for periodic full-state dumps.
+            store (StateStoreLike | None): Optional injected state-store implementation.
 
         Returns:
             None: This constructor does not return a value.
@@ -65,7 +68,7 @@ class NodeStateWorker(threading.Thread):
         self.log = log
 
         self._stop_event = threading.Event()
-        self._store = NodeStateStore(
+        self._store = store or NodeStateStore(
             replication_delta_maxlen=replication_delta_maxlen,
             merge_policy=merge_policy,
         )
@@ -296,7 +299,7 @@ class NodeStateWorker(threading.Thread):
             meta=meta,
         )
 
-        applied, reason, previous = self._store.merge_lww(sensor_id=sensor_id, update=update)
+        applied, reason, previous = self._store.merge_record(sensor_id=sensor_id, update=update)
         self._log_merge_outcome(
             sensor_id=sensor_id,
             value=value,

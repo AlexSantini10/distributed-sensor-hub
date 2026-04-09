@@ -12,6 +12,7 @@ from collections import deque
 from dataclasses import dataclass
 import threading
 
+from state.contracts import StoreMergeOutcome
 from state.policy import LwwMergePolicy, MergeDecision, MergePolicy
 from utils.typing import (
     JsonObject,
@@ -267,8 +268,8 @@ class NodeStateStore:
 
         return candidates, invalid_entries
 
-    def merge_lww(self, sensor_id: str, update: SensorRecord) -> tuple[bool, str, SensorRecord | None]:
-        """Merge one candidate update into the LWW register set.
+    def _merge_lww(self, sensor_id: str, update: SensorRecord) -> StoreMergeOutcome:
+        """Merge one candidate update into the internal LWW register set.
 
         Args:
             sensor_id (str): Logical sensor key shared across competing origins.
@@ -290,6 +291,19 @@ class NodeStateStore:
                 return True, decision, prev
 
             return False, "stale", prev
+
+    def merge_record(self, sensor_id: str, update: SensorRecord) -> StoreMergeOutcome:
+        """Merge one normalized record into the store using the configured policy.
+
+        Args:
+            sensor_id (str): Logical sensor key shared across competing origins.
+            update (SensorRecord): Candidate record to compare against the current winner.
+
+        Returns:
+            StoreMergeOutcome: Merge outcome containing the applied flag, reason, and
+                previous winning record when one existed.
+        """
+        return self._merge_lww(sensor_id=sensor_id, update=update)
 
     def apply_update(
         self,
@@ -327,7 +341,7 @@ class NodeStateStore:
             origin=origin,
             meta=SensorMeta.from_dict(meta),
         )
-        applied, _, _ = self.merge_lww(sensor_id=sensor_id, update=candidate)
+        applied, _, _ = self.merge_record(sensor_id=sensor_id, update=candidate)
         return applied
 
     def merge_state(
