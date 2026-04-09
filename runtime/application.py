@@ -183,6 +183,7 @@ class NodeApplication:
             node_id=self.config.node_id,
             event_queue=self.sensor_event_queue,
             log=self.log,
+            replication_delta_maxlen=self.config.replication_delta_maxlen,
         )
         self.state_worker.start()
         self.log.info("State worker started")

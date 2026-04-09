@@ -28,6 +28,7 @@ class EnvKey(StrEnum):
     CLEAR_LOG = "CLEAR_LOG"
     WEB_API_PORT = "WEB_API_PORT"
     HEARTBEAT_INTERVAL_MS = "HEARTBEAT_INTERVAL_MS"
+    REPLICATION_DELTA_MAXLEN = "REPLICATION_DELTA_MAXLEN"
     SENSORS = "SENSORS"
 
 
@@ -159,6 +160,7 @@ class Config:
     clear_log: bool
     web_api_port: int
     heartbeat_interval_ms: int
+    replication_delta_maxlen: int
     sensors: tuple[SensorConfig, ...]
 
     @classmethod
@@ -211,6 +213,10 @@ class Config:
             _get_optional_env(env, EnvKey.HEARTBEAT_INTERVAL_MS, default="1000"),
             EnvKey.HEARTBEAT_INTERVAL_MS.value,
         )
+        replication_delta_maxlen = _parse_positive_int(
+            _get_optional_env(env, EnvKey.REPLICATION_DELTA_MAXLEN, default="512"),
+            EnvKey.REPLICATION_DELTA_MAXLEN.value,
+        )
         sensors = tuple(_parse_sensors(env))
 
         return cls(
@@ -223,6 +229,7 @@ class Config:
             clear_log=clear_log,
             web_api_port=web_api_port,
             heartbeat_interval_ms=heartbeat_interval_ms,
+            replication_delta_maxlen=replication_delta_maxlen,
             sensors=sensors,
         )
 

@@ -114,6 +114,17 @@ def setup_protocol(
             self_node_id=self_node_id,
         ),
     )
+    if state_worker is not None:
+        dispatcher.register(
+            MessageType.GET_DELTA,
+            handlers.make_get_delta_handler(
+                state_worker=state_worker,
+                send=send_function,
+                self_node_id=self_node_id,
+            ),
+        )
+    else:
+        dispatcher.register(MessageType.GET_DELTA, handlers.handle_get_delta)
     dispatcher.register(MessageType.ERROR, handlers.handle_error)
     dispatcher.register(MessageType.ACK, handlers.handle_ack)
     return dispatcher, peer_table

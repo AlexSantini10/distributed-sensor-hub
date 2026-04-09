@@ -202,6 +202,19 @@ class StateWorkerLike(Protocol):
         """
         ...
 
+    def get_replication_deltas_since(
+        self,
+        *,
+        since_ts_ms: int,
+    ) -> ReplicationDeltaBatch | None:
+        """Return ordered deltas newer than ``since_ts_ms`` without draining.
+
+        Returns:
+            ReplicationDeltaBatch | None: Ordered delta events or ``None`` when
+                the cursor is outside retained bounded history.
+        """
+        ...
+
     def start(self) -> None:
         """Start the worker.
 

@@ -10,11 +10,13 @@ from protocol.factory import (
     build_delta_unavailable,
     build_full_sync_request,
     build_full_sync_response,
+    build_get_delta,
 )
 from protocol.handlers import (
     make_delta_unavailable_handler,
     make_full_sync_request_handler,
     make_full_sync_response_handler,
+    make_get_delta_handler,
 )
 from protocol.message_types import MessageType
 from protocol.messages import Message, PeerDescriptor
@@ -130,3 +132,59 @@ def test_delta_unavailable_triggers_full_sync_request() -> None:
     assert target == "node-b"
     assert req.msg_type is MessageType.FULL_SYNC_REQUEST
     assert req.payload.requester_id == "node-a"
+
+
+def test_get_delta_handler_streams_sensor_updates() -> None:
+    """Assert GET_DELTA replies with ordered SENSOR_UPDATE messages."""
+    state_worker = make_worker("node-a")
+    state_worker.merge_update("s1", 10, 1000, "node-a")
+    state_worker.merge_update("s2", 20, 1001, "node-a")
+
+    sent: list[tuple[str, Message]] = []
+
+    def send(peer_id: str, msg: Message) -> None:
+        sent.append((peer_id, msg))
+
+    handler = make_get_delta_handler(
+        state_worker=state_worker,
+        send=send,
+        self_node_id="node-a",
+    )
+    handler(build_get_delta(sender_id="node-b", since_ts_ms=1000))
+
+    assert len(sent) == 1
+    target, msg = sent[0]
+    assert target == "node-b"
+    assert msg.msg_type is MessageType.SENSOR_UPDATE
+    assert msg.payload.sensor_id == "s2"
+    assert msg.payload.ts_ms == 1001
+
+
+def test_get_delta_handler_returns_delta_unavailable_for_stale_cursor() -> None:
+    """Assert GET_DELTA stale cursors trigger DELTA_UNAVAILABLE fallback."""
+    state_worker = NodeStateWorker(
+        node_id="node-a",
+        event_queue=Queue(),
+        log=DummyLog(),
+        replication_delta_maxlen=2,
+    )
+    state_worker.merge_update("s1", 10, 1000, "node-a")
+    state_worker.merge_update("s2", 20, 1001, "node-a")
+    state_worker.merge_update("s3", 30, 1002, "node-a")
+
+    sent: list[tuple[str, Message]] = []
+
+    def send(peer_id: str, msg: Message) -> None:
+        sent.append((peer_id, msg))
+
+    handler = make_get_delta_handler(
+        state_worker=state_worker,
+        send=send,
+        self_node_id="node-a",
+    )
+    handler(build_get_delta(sender_id="node-b", since_ts_ms=999))
+
+    assert len(sent) == 1
+    target, msg = sent[0]
+    assert target == "node-b"
+    assert msg.msg_type is MessageType.DELTA_UNAVAILABLE

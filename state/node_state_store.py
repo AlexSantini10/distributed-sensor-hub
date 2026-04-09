@@ -489,6 +489,31 @@ class NodeStateStore:
             drained = self._drain_replication_deltas_locked()
             return tuple(self._delta_to_dict(delta) for delta in drained)
 
+    def get_replication_deltas_since(
+        self,
+        *,
+        since_ts_ms: int,
+    ) -> ReplicationDeltaBatch | None:
+        """Return ordered deltas newer than ``since_ts_ms`` without draining.
+
+        Returns ``None`` when the requested cursor is older than the retained
+        bounded history and a full sync is required.
+        """
+        with self._lock:
+            if not self._replication_deltas:
+                return ()
+
+            oldest_ts_ms = self._replication_deltas[0].record.ts_ms
+            if since_ts_ms < oldest_ts_ms:
+                return None
+
+            selected = [
+                delta
+                for delta in self._replication_deltas
+                if delta.record.ts_ms > since_ts_ms
+            ]
+            return tuple(self._delta_to_dict(delta) for delta in selected)
+
     def _drain_replication_deltas_locked(self) -> list[_ReplicationDelta]:
         """Return unread replication deltas and advance the read cursor.
 

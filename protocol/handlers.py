@@ -12,16 +12,24 @@ import time
 from membership.liveness import NodeLiveness
 from membership.peer import Peer
 from membership.peer_table import PeerTable
-from protocol.factory import build_full_sync_request, build_full_sync_response, build_pong
+from protocol.factory import (
+    build_delta_unavailable,
+    build_full_sync_request,
+    build_full_sync_response,
+    build_pong,
+    build_sensor_update,
+)
 from protocol.message import Message
 from protocol.messages import (
     DeltaUnavailablePayload,
     FullSyncRequestPayload,
     FullSyncResponsePayload,
+    GetDeltaPayload,
     GossipStatePayload,
     PeerDescriptor,
     PingPayload,
     PongPayload,
+    SensorMeta,
     SensorUpdatePayload,
 )
 from membership.status import NodeStatus
@@ -410,6 +418,84 @@ def make_delta_unavailable_handler(
     return handle_delta_unavailable
 
 
+def make_get_delta_handler(
+    *,
+    state_worker: StateWorkerLike,
+    send: SenderLike,
+    self_node_id: str,
+) -> Callable[[Message], None]:
+    """Create a handler that serves incremental deltas or fallback signals."""
+    log: LoggerLike = get_logger(__name__, self_node_id)
+
+    def handle_get_delta(msg: Message) -> None:
+        payload = msg.payload
+        if not isinstance(payload, GetDeltaPayload):
+            log.warning("Invalid GET_DELTA payload")
+            return
+
+        requester_id = msg.sender_id
+        deltas = state_worker.get_replication_deltas_since(
+            since_ts_ms=payload.since_ts_ms
+        )
+        if deltas is None:
+            unavailable = build_delta_unavailable(
+                sender_id=self_node_id,
+                reason="stale_cursor",
+            )
+            try:
+                send(requester_id, unavailable)
+                log.info(
+                    "GET_DELTA unavailable: "
+                    f"requester={requester_id} since_ts_ms={payload.since_ts_ms}"
+                )
+            except Exception:
+                log.warning(
+                    f"Failed to send DELTA_UNAVAILABLE to {requester_id}",
+                    exc_info=True,
+                )
+            return
+
+        sent_count = 0
+        for delta in deltas:
+            sensor_id = delta.get("sensor_id")
+            origin = delta.get("origin")
+            ts_ms = delta.get("ts_ms")
+            if (
+                not isinstance(sensor_id, str)
+                or sensor_id == ""
+                or not isinstance(origin, str)
+                or origin == ""
+                or not isinstance(ts_ms, int)
+            ):
+                continue
+
+            try:
+                message = build_sensor_update(
+                    sender_id=self_node_id,
+                    sensor_id=sensor_id,
+                    value=delta.get("value"),
+                    ts_ms=ts_ms,
+                    origin=origin,
+                    meta=SensorMeta.from_mapping(delta.get("meta", {})),
+                )
+                send(requester_id, message)
+                sent_count += 1
+            except Exception:
+                log.warning(
+                    f"Failed to send delta SENSOR_UPDATE to {requester_id}",
+                    exc_info=True,
+                )
+                return
+
+        log.info(
+            "GET_DELTA served: "
+            f"requester={requester_id} since_ts_ms={payload.since_ts_ms} "
+            f"sent_updates={sent_count}"
+        )
+
+    return handle_get_delta
+
+
 def handle_full_sync_request(msg: Message) -> None:
     """Warn that full-sync request handling has not been wired for this node."""
     log = get_logger(__name__, msg.sender_id)
@@ -426,6 +512,12 @@ def handle_delta_unavailable(msg: Message) -> None:
     """Warn that delta-unavailable handling has not been wired for this node."""
     log = get_logger(__name__, msg.sender_id)
     log.warning("DELTA_UNAVAILABLE received but handler is not wired")
+
+
+def handle_get_delta(msg: Message) -> None:
+    """Warn that get-delta handling has not been wired for this node."""
+    log = get_logger(__name__, msg.sender_id)
+    log.warning("GET_DELTA received but handler is not wired")
 
 
 def handle_error(msg: Message) -> None:

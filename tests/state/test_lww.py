@@ -321,3 +321,21 @@ def test_replication_delta_drain_is_incremental() -> None:
     third = w.pop_replication_deltas()
     assert len(third) == 1
     assert third[0]["sensor_id"] == "s2"
+
+
+def test_replication_delta_since_returns_none_when_cursor_is_too_old() -> None:
+    """Assert stale delta cursors are rejected when history has rotated."""
+    w = NodeStateWorker(
+        node_id="A",
+        event_queue=Queue(),
+        log=DummyLog(),
+        replication_delta_maxlen=2,
+    )
+    w.merge_update("s1", 1, 1000, "A")
+    w.merge_update("s2", 2, 1001, "A")
+    w.merge_update("s3", 3, 1002, "A")
+
+    assert w.get_replication_deltas_since(since_ts_ms=999) is None
+    valid = w.get_replication_deltas_since(since_ts_ms=1001)
+    assert valid is not None
+    assert [d["sensor_id"] for d in valid] == ["s3"]

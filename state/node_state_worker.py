@@ -413,6 +413,14 @@ class NodeStateWorker(threading.Thread):
         """
         return self._store.pop_replication_deltas()
 
+    def get_replication_deltas_since(
+        self,
+        *,
+        since_ts_ms: int,
+    ) -> ReplicationDeltaBatch | None:
+        """Return ordered deltas newer than ``since_ts_ms`` without draining."""
+        return self._store.get_replication_deltas_since(since_ts_ms=since_ts_ms)
+
     def stop(self) -> None:
         """Request graceful worker termination.
 

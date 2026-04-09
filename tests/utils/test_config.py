@@ -58,6 +58,7 @@ def test_load_config_success(monkeypatch: MonkeyPatch) -> None:
     assert config.log_file == "logs/test.log"
     assert config.web_api_port == 10000
     assert config.heartbeat_interval_ms == 1000
+    assert config.replication_delta_maxlen == 512
     assert config.sensors == ()
 
 
