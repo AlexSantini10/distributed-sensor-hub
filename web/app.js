@@ -1,10 +1,15 @@
 "use strict";
 
 const statusEl = document.getElementById("status");
-const nodesEl = document.getElementById("nodes");
+const nodesLocalEl = document.getElementById("nodes-local");
+const nodesRemoteEl = document.getElementById("nodes-remote");
+const membershipBodyEl = document.getElementById("membership-body");
 const logEl = document.getElementById("log-entries");
 const statNodesEl = document.getElementById("stat-nodes");
 const statSensorsEl = document.getElementById("stat-sensors");
+const statPeersEl = document.getElementById("stat-peers");
+const statSuspectedEl = document.getElementById("stat-suspected");
+const statDeadEl = document.getElementById("stat-dead");
 const statChangedEl = document.getElementById("stat-changed");
 
 const baseUrlInput = document.getElementById("base-url");
@@ -13,6 +18,7 @@ const applyBtn = document.getElementById("apply");
 
 let timer = null;
 let currentBaseUrl = null;
+let currentLocalNodeId = null;
 
 const nodeCards = new Map();
 const sensorRows = new Map();
@@ -95,7 +101,8 @@ function resetUI() {
     timer = null;
   }
 
-  nodesEl.innerHTML = "";
+  nodesLocalEl.innerHTML = "";
+  nodesRemoteEl.innerHTML = "";
   logEl.innerHTML = "";
 
   nodeCards.clear();
@@ -106,14 +113,27 @@ function resetUI() {
 
   statNodesEl.textContent = "0";
   statSensorsEl.textContent = "0";
+  statPeersEl.textContent = "0";
+  statSuspectedEl.textContent = "0";
+  statDeadEl.textContent = "0";
   statChangedEl.textContent = "0";
+  membershipBodyEl.innerHTML = "";
+  currentLocalNodeId = null;
 
   setStatus(false);
+}
+
+function placeNodeCard(nodeId, card) {
+  const target = currentLocalNodeId && nodeId === currentLocalNodeId ? nodesLocalEl : nodesRemoteEl;
+  if (target && card.parentElement !== target) {
+    target.appendChild(card);
+  }
 }
 
 function getNodeCard(nodeId) {
   let card = nodeCards.get(nodeId);
   if (card) {
+    placeNodeCard(nodeId, card);
     return card;
   }
 
@@ -122,13 +142,12 @@ function getNodeCard(nodeId) {
   card.innerHTML = `
     <div class="node-header">
       <h2>${nodeId}</h2>
-      <span class="node-mark">idle</span>
     </div>
     <div class="sensors"></div>
   `;
 
   nodeCards.set(nodeId, card);
-  nodesEl.appendChild(card);
+  placeNodeCard(nodeId, card);
   return card;
 }
 
@@ -238,15 +257,9 @@ function renderState(rawState) {
   const changedThisPoll = new Set();
   let sensorCount = 0;
 
-  for (const card of nodeCards.values()) {
-    card.classList.remove("active");
-    const mark = card.querySelector(".node-mark");
-    if (mark) {
-      mark.textContent = "idle";
-    }
-  }
-
   for (const [nodeId, sensors] of Object.entries(state)) {
+    const card = getNodeCard(nodeId);
+    placeNodeCard(nodeId, card);
     for (const [sensorId, data] of Object.entries(sensors)) {
       const row = getSensorRow(nodeId, sensorId);
       const key = nodeId + "|" + sensorId;
@@ -265,14 +278,6 @@ function renderState(rawState) {
       if (isUpdated) {
         changedThisPoll.add(key);
         pushLog(nodeId, sensorId, data);
-        const card = nodeCards.get(nodeId);
-        if (card) {
-          card.classList.add("active");
-          const mark = card.querySelector(".node-mark");
-          if (mark) {
-            mark.textContent = "active";
-          }
-        }
       }
     }
   }
@@ -282,14 +287,76 @@ function renderState(rawState) {
   statChangedEl.textContent = String(changedThisPoll.size);
 }
 
+function formatDeltaMs(lastHeartbeatTsMs) {
+  if (typeof lastHeartbeatTsMs !== "number" || !Number.isFinite(lastHeartbeatTsMs)) {
+    return "-";
+  }
+  const delta = Math.max(0, Date.now() - lastHeartbeatTsMs);
+  return String(Math.round(delta));
+}
+
+function renderMembership(rawMembership) {
+  const peers = rawMembership && Array.isArray(rawMembership.peers) ? rawMembership.peers : [];
+  const localNodeId = rawMembership && typeof rawMembership.local_node_id === "string"
+    ? rawMembership.local_node_id
+    : null;
+  currentLocalNodeId = localNodeId;
+  membershipBodyEl.innerHTML = "";
+
+  let suspected = 0;
+  let dead = 0;
+
+  const ordered = peers.slice().sort((a, b) => {
+    const left = String(a && a.peer_id ? a.peer_id : "");
+    const right = String(b && b.peer_id ? b.peer_id : "");
+    return left.localeCompare(right);
+  });
+
+  for (const peer of ordered) {
+    const status = typeof peer.status === "string" ? peer.status : "unknown";
+    if (status === "suspected") {
+      suspected += 1;
+    } else if (status === "dead") {
+      dead += 1;
+    }
+
+    const phi = typeof peer.phi === "number" && Number.isFinite(peer.phi) ? peer.phi.toFixed(3) : "-";
+    const deltaMs = formatDeltaMs(peer.last_heartbeat_ts_ms);
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${peer.peer_id || "-"}</td>
+      <td><span class="member-status ${status}">${status}</span></td>
+      <td>${phi}</td>
+      <td><span class="heartbeat-delta ${status}">${deltaMs}</span></td>
+    `;
+    membershipBodyEl.appendChild(row);
+  }
+
+  statPeersEl.textContent = String(ordered.length);
+  statSuspectedEl.textContent = String(suspected);
+  statDeadEl.textContent = String(dead);
+
+  for (const [nodeId, card] of nodeCards.entries()) {
+    placeNodeCard(nodeId, card);
+  }
+}
+
 async function poll() {
   try {
-    const stateRes = await fetch(api("/api/state"), { cache: "no-store" });
-    if (!stateRes.ok) {
+    const [stateRes, membershipRes] = await Promise.all([
+      fetch(api("/api/state"), { cache: "no-store" }),
+      fetch(api("/api/membership"), { cache: "no-store" }),
+    ]);
+    if (!stateRes.ok || !membershipRes.ok) {
       throw new Error("state fetch failed");
     }
-    const rawState = await stateRes.json();
+    const [rawState, rawMembership] = await Promise.all([
+      stateRes.json(),
+      membershipRes.json(),
+    ]);
     renderState(rawState);
+    renderMembership(rawMembership);
     flushLog();
     setStatus(true);
   } catch {

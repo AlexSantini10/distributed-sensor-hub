@@ -79,7 +79,7 @@ button:hover {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
   gap: 10px;
   margin-bottom: 18px;
 }
@@ -104,15 +104,35 @@ button:hover {
 
 main {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1.75fr 1.25fr;
   gap: 24px;
   align-items: start;
 }
 
 #nodes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 16px;
+  gap: 14px;
+}
+
+.nodes-group {
+  background: rgba(30, 42, 61, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.nodes-group-title {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 10px 0;
+}
+
+.nodes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 12px;
 }
 
 .node-card {
@@ -120,17 +140,10 @@ main {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.node-card.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(79, 191, 159, 0.32);
 }
 
 .node-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
 }
@@ -139,15 +152,6 @@ main {
   font-size: 15px;
   margin: 0;
   font-weight: 600;
-}
-
-.node-mark {
-  font-size: 11px;
-  font-family: var(--mono);
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 2px 8px;
 }
 
 .sensor {
@@ -210,6 +214,12 @@ main {
   color: #c9eadf;
 }
 
+#side-panels {
+  display: grid;
+  gap: 14px;
+  align-items: start;
+}
+
 #log {
   background: rgba(30, 42, 61, 0.85);
   border: 1px solid var(--border);
@@ -248,12 +258,101 @@ main {
   border-bottom: none;
 }
 
+#membership {
+  background: rgba(30, 42, 61, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  overflow: hidden;
+}
+
+#membership h2 {
+  font-size: 15px;
+  margin: 0 0 10px 0;
+  font-weight: 600;
+}
+
+#membership .membership-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+#membership table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
+#membership th,
+#membership td {
+  text-align: left;
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+#membership tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.member-status {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 7px;
+  text-transform: lowercase;
+}
+
+.member-status.alive {
+  color: #bceada;
+  background: rgba(51, 112, 91, 0.28);
+  border-color: #4fbf9f;
+}
+
+.member-status.suspected {
+  color: #ffe3aa;
+  background: rgba(113, 85, 35, 0.3);
+  border-color: #d8a548;
+}
+
+.member-status.dead {
+  color: #ffd6dc;
+  background: rgba(111, 46, 57, 0.3);
+  border-color: #de6f7f;
+}
+
+.heartbeat-delta {
+  display: inline-block;
+  min-width: 78px;
+  text-align: right;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.heartbeat-delta.alive {
+  color: #bceada;
+  background: rgba(51, 112, 91, 0.25);
+}
+
+.heartbeat-delta.suspected {
+  color: #ffe3aa;
+  background: rgba(113, 85, 35, 0.28);
+}
+
+.heartbeat-delta.dead {
+  color: #ffd6dc;
+  background: rgba(111, 46, 57, 0.28);
+}
+
 @media (max-width: 980px) {
   main {
     grid-template-columns: 1fr;
   }
 
   .stats {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
   }
 }

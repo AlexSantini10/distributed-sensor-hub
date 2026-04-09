@@ -25,6 +25,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     _state_provider: SnapshotProvider
     _updates_provider: SnapshotProvider
+    _membership_provider: SnapshotProvider | None
     _log: LoggerLike | None
 
     def _send_cors_headers(self) -> None:
@@ -58,6 +59,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_state()
             elif self.path == "/api/updates":
                 self._handle_updates()
+            elif self.path == "/api/membership":
+                self._handle_membership()
             else:
                 self.send_response(404)
                 self._send_cors_headers()
@@ -117,6 +120,32 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _handle_membership(self) -> None:
+        """Serialize and return the current Phi-based membership snapshot."""
+        if self._membership_provider is None:
+            self.send_response(404)
+            self._send_cors_headers()
+            self.end_headers()
+            return
+
+        try:
+            membership = self._membership_provider()
+            payload = json.dumps(membership).encode(TextEncoding.UTF8.value)
+        except Exception:
+            if self._log is not None:
+                self._log.error("Failed to produce membership snapshot", exc_info=True)
+            self.send_response(500)
+            self._send_cors_headers()
+            self.end_headers()
+            return
+
+        self.send_response(200)
+        self._send_cors_headers()
+        self.send_header("Content-Type", HttpContentType.JSON.value)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def log_message(self, format: str, *args: object) -> None:
         """Suppress the standard library's default per-request stderr logging.
 
@@ -133,6 +162,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 def build_request_handler(
     state_provider: SnapshotProvider,
     updates_provider: SnapshotProvider,
+    membership_provider: SnapshotProvider | None,
     log: LoggerLike | None,
 ) -> type[RequestHandler]:
     """Create a concrete request-handler class bound to snapshot providers.
@@ -149,8 +179,13 @@ def build_request_handler(
     class ConfiguredRequestHandler(RequestHandler):
         """Bind snapshot providers into a concrete request-handler class."""
 
-        _state_provider = state_provider
-        _updates_provider = updates_provider
+        _state_provider = staticmethod(state_provider)
+        _updates_provider = staticmethod(updates_provider)
+        _membership_provider = (
+            staticmethod(membership_provider)
+            if membership_provider is not None
+            else None
+        )
         _log = log
 
     return ConfiguredRequestHandler
@@ -170,6 +205,7 @@ class WebAPIServer(threading.Thread):
         port: int,
         state_provider: SnapshotProvider,
         updates_provider: SnapshotProvider,
+        membership_provider: SnapshotProvider | None,
         log: LoggerLike | None,
     ) -> None:
         """Initialize the threaded HTTP server wrapper.
@@ -179,6 +215,8 @@ class WebAPIServer(threading.Thread):
             port (int): TCP port for the HTTP bind.
             state_provider (SnapshotProvider): Callable returning the full state snapshot.
             updates_provider (SnapshotProvider): Callable returning the incremental updates snapshot.
+            membership_provider (SnapshotProvider | None): Optional callable returning
+                the Phi-based membership snapshot.
             log (LoggerLike | None): Logger-like object used for lifecycle reporting.
 
         Returns:
@@ -190,6 +228,7 @@ class WebAPIServer(threading.Thread):
         handler_cls = build_request_handler(
             state_provider=state_provider,
             updates_provider=updates_provider,
+            membership_provider=membership_provider,
             log=log,
         )
         try:

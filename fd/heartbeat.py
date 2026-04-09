@@ -76,6 +76,11 @@ class HeartbeatMonitor:
         """Return the configured phi threshold for death."""
         return self._threshold_dead
 
+    @property
+    def max_intervals_per_peer(self) -> int:
+        """Return the configured sliding-window size for heartbeat intervals."""
+        return self._max_intervals_per_peer
+
     def initialize_peer(
         self,
         peer_id: str,

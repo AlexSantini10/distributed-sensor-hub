@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from membership.liveness import NodeLiveness
 from membership.peer import Peer
 from membership.peer_table import PeerTable
@@ -147,3 +149,41 @@ def test_ping_handler_rejects_invalid_payload() -> None:
 
     ping_handler(build_pong(sender_id="node-b", pong_timestamp_ms=123))
     assert sent == []
+
+
+def test_ping_handler_logs_transition_back_to_alive(caplog) -> None:
+    """Assert heartbeat recovery logs a membership state transition."""
+    peer_table = PeerTable(self_node_id="node-a")
+    peer_table.upsert_peer(node_id="node-b", host="10.0.0.2", port=9002)
+    current = peer_table.get_peer("node-b")
+    assert current is not None
+    peer_table.merge_gossip_state(
+        [
+            Peer(
+                node_id="node-b",
+                host="10.0.0.2",
+                port=9002,
+                liveness=NodeLiveness(
+                    last_heartbeat=1.0,
+                    phi=0.0,
+                    status=NodeStatus.DEAD,
+                    status_ts_ms=current.status_ts_ms + 10,
+                ),
+            )
+        ]
+    )
+
+    def send(_peer_id: str, _msg: Message) -> None:
+        pass
+
+    ping_handler, _ = make_heartbeat_handlers(
+        peer_table=peer_table,
+        send=send,
+        self_node_id="node-a",
+    )
+    with caplog.at_level(logging.INFO, logger="protocol.handlers"):
+        ping_handler(build_ping(sender_id="node-b", ping_timestamp_ms=123))
+
+    assert "Membership transition on heartbeat" in caplog.text
+    assert "peer=node-b" in caplog.text
+    assert "from=dead to=alive" in caplog.text

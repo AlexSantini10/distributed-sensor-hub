@@ -393,6 +393,29 @@ class PeerTable:
         with self._lock:
             return tuple(self._clone_peer(peer) for peer in self._peers.values())
 
+    def membership_snapshot(self) -> JsonObject:
+        """Return a thread-safe, read-only Phi-driven membership snapshot."""
+        with self._lock:
+            peers = sorted(self._peers.values(), key=lambda peer: peer.node_id)
+            snapshot_peers: list[JsonObject] = []
+            window_size = self._failure_detector.max_intervals_per_peer
+            for peer in peers:
+                sample_count = len(self._failure_detector.get_intervals(peer.node_id))
+                snapshot_peers.append(
+                    {
+                        "peer_id": peer.node_id,
+                        "host": peer.host,
+                        "port": peer.port,
+                        "status": peer.status.to_wire(),
+                        "phi": peer.phi,
+                        "last_heartbeat_ts_ms": int(peer.last_heartbeat * 1000),
+                        "sample_count": sample_count,
+                        "sample_window_size": window_size,
+                        "status_transition_ts_ms": peer.status_ts_ms,
+                    }
+                )
+            return {"local_node_id": self._self_node_id, "peers": snapshot_peers}
+
     def list_peers(self) -> list[Peer]:
         """Return a list snapshot for existing read-only call sites."""
         return list(self.snapshot())

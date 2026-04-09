@@ -395,3 +395,147 @@ def test_concurrent_heartbeat_and_gossip_processing_does_not_corrupt_state() -> 
     assert peers[0].node_id == "node-2"
     assert peers[0].status is NodeStatus.ALIVE
     assert peers[0].last_heartbeat == latest_heartbeat
+
+
+def test_membership_snapshot_includes_phi_status_and_timestamps() -> None:
+    """Assert membership snapshots expose Phi-driven liveness observability fields."""
+    table = PeerTable(self_node_id="node-1", phi_max_intervals_per_peer=16)
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+    base = time.time() + 1000.0
+    table.record_heartbeat("node-2", heartbeat_at=base, arrived_at_monotonic_s=1.0)
+    table.record_heartbeat("node-2", heartbeat_at=base + 1.0, arrived_at_monotonic_s=2.0)
+
+    snapshot = table.membership_snapshot()
+    assert snapshot["local_node_id"] == "node-1"
+    peers = snapshot["peers"]
+    assert isinstance(peers, list)
+    assert len(peers) == 1
+    peer = peers[0]
+    assert peer["peer_id"] == "node-2"
+    assert peer["status"] == "alive"
+    assert isinstance(peer["phi"], float)
+    assert peer["last_heartbeat_ts_ms"] == int((base + 1.0) * 1000)
+    assert peer["sample_count"] >= 1
+    assert peer["sample_window_size"] == 16
+    assert isinstance(peer["status_transition_ts_ms"], int)
+
+
+def test_membership_snapshot_reflects_suspected_dead_then_alive_recovery() -> None:
+    """Assert snapshot transitions follow alive -> suspected -> dead -> alive."""
+    table = PeerTable(
+        self_node_id="node-1",
+        phi_threshold_suspect=0.5,
+        phi_threshold_dead=2.0,
+        phi_initial_interval_s=1.0,
+    )
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+    base = time.time() + 1000.0
+    table.record_heartbeat("node-2", heartbeat_at=base, arrived_at_monotonic_s=10.0)
+    table.record_heartbeat("node-2", heartbeat_at=base + 1.0, arrived_at_monotonic_s=11.0)
+
+    table.evaluate_failure_detector(
+        observed_at_wall_s=base + 2.2,
+        observed_at_monotonic_s=12.2,
+    )
+    suspected = table.membership_snapshot()["peers"][0]
+    assert suspected["status"] == "suspected"
+
+    table.evaluate_failure_detector(
+        observed_at_wall_s=base + 3.5,
+        observed_at_monotonic_s=13.5,
+    )
+    dead = table.membership_snapshot()["peers"][0]
+    assert dead["status"] == "dead"
+
+    table.record_heartbeat(
+        "node-2",
+        heartbeat_at=base + 10.0,
+        arrived_at_monotonic_s=20.0,
+    )
+    alive_again = table.membership_snapshot()["peers"][0]
+    assert alive_again["status"] == "alive"
+
+
+def test_membership_snapshot_is_consistent_during_concurrent_updates() -> None:
+    """Assert snapshot generation stays safe under concurrent detector and gossip updates."""
+    table = PeerTable(
+        self_node_id="node-1",
+        phi_threshold_suspect=0.5,
+        phi_threshold_dead=1.0,
+        phi_initial_interval_s=1.0,
+    )
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+    barrier = threading.Barrier(4)
+    stop = threading.Event()
+    latest_heartbeat = time.time() + 1000.0
+    heartbeat_lock = threading.Lock()
+    failures: list[Exception] = []
+
+    def heartbeat_worker() -> None:
+        nonlocal latest_heartbeat
+        try:
+            barrier.wait()
+            monotonic_now = 10.0
+            for _ in range(200):
+                with heartbeat_lock:
+                    latest_heartbeat += 1.0
+                    heartbeat_at = latest_heartbeat
+                monotonic_now += 1.0
+                table.record_heartbeat(
+                    "node-2",
+                    heartbeat_at=heartbeat_at,
+                    arrived_at_monotonic_s=monotonic_now,
+                )
+                table.evaluate_failure_detector(
+                    observed_at_wall_s=heartbeat_at,
+                    observed_at_monotonic_s=monotonic_now,
+                )
+        except Exception as exc:  # pragma: no cover - defensive test plumbing
+            failures.append(exc)
+        finally:
+            stop.set()
+
+    def gossip_worker() -> None:
+        try:
+            barrier.wait()
+            for i in range(200):
+                table.merge_gossip_state(
+                    [
+                        _gossip_peer(
+                            node_id="node-2",
+                            host="127.0.0.1",
+                            port=9001,
+                            status=NodeStatus.SUSPECTED if i % 2 == 0 else NodeStatus.DEAD,
+                            status_ts_ms=i + 1,
+                        )
+                    ]
+                )
+        except Exception as exc:  # pragma: no cover - defensive test plumbing
+            failures.append(exc)
+
+    def snapshot_worker() -> None:
+        try:
+            barrier.wait()
+            while not stop.is_set():
+                snap = table.membership_snapshot()
+                peers = snap["peers"]
+                assert isinstance(peers, list)
+                if peers:
+                    status = peers[0]["status"]
+                    assert status in {"alive", "suspected", "dead"}
+                    assert isinstance(peers[0]["phi"], float)
+        except Exception as exc:  # pragma: no cover - defensive test plumbing
+            failures.append(exc)
+
+    threads = [
+        threading.Thread(target=heartbeat_worker),
+        threading.Thread(target=gossip_worker),
+        threading.Thread(target=snapshot_worker),
+    ]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join()
+
+    assert failures == []

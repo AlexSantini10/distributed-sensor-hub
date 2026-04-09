@@ -77,12 +77,12 @@ class HeartbeatSender:
         )
         for update in fd_updates:
             if update.status.changed and update.peer is not None:
-                self._log.debug(
-                    "Phi transition: "
+                self._log.info(
+                    "Membership transition from phi detector: "
                     f"peer={update.peer_id} "
                     f"from={update.status.previous_status} to={update.status.new_status} "
                     f"phi={update.peer.phi:.3f} "
-                    f"status_ts_ms={update.peer.status_ts_ms}"
+                    f"event_ts_ms={update.peer.status_ts_ms}"
                 )
 
         now_ms = int(time.time() * 1000)

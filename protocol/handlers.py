@@ -75,11 +75,12 @@ def make_heartbeat_handlers(
             log.debug(f"Heartbeat received from unknown peer {peer_id}")
             return
         if update.status.changed and update.peer is not None:
-            log.debug(
-                "Heartbeat restored peer to alive: "
+            log.info(
+                "Membership transition on heartbeat: "
                 f"peer={peer_id} "
                 f"from={update.status.previous_status} to={update.status.new_status} "
-                f"status_ts_ms={update.peer.status_ts_ms}"
+                f"phi={update.peer.phi:.3f} "
+                f"event_ts_ms={update.peer.status_ts_ms}"
             )
 
     def handle_ping(msg: Message) -> None:

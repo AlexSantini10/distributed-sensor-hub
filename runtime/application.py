@@ -343,6 +343,7 @@ class NodeApplication:
                 port=self.config.web_api_port,
                 state_provider=self.state_worker.get_state_snapshot,
                 updates_provider=self.state_worker.get_updates_snapshot,
+                membership_provider=self.peer_table.membership_snapshot if self.peer_table is not None else None,
                 log=self.log,
             )
             self.web_api.start()

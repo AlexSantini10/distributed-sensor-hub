@@ -23,15 +23,46 @@
 <section class="stats">
   <div class="stat"><div class="label">Nodes</div><div id="stat-nodes" class="value">0</div></div>
   <div class="stat"><div class="label">Sensors</div><div id="stat-sensors" class="value">0</div></div>
+  <div class="stat"><div class="label">Peers</div><div id="stat-peers" class="value">0</div></div>
+  <div class="stat"><div class="label">Suspected</div><div id="stat-suspected" class="value">0</div></div>
+  <div class="stat"><div class="label">Dead</div><div id="stat-dead" class="value">0</div></div>
   <div class="stat"><div class="label">Changed Last Poll</div><div id="stat-changed" class="value">0</div></div>
 </section>
 
 <main>
-  <section id="nodes"></section>
+  <section id="nodes">
+    <div class="nodes-group">
+      <h2 class="nodes-group-title">Local Node</h2>
+      <div id="nodes-local" class="nodes-grid"></div>
+    </div>
+    <div class="nodes-group">
+      <h2 class="nodes-group-title">Other Nodes</h2>
+      <div id="nodes-remote" class="nodes-grid"></div>
+    </div>
+  </section>
 
-  <section id="log">
-    <h2>Updates log</h2>
-    <div id="log-entries"></div>
+  <section id="side-panels">
+    <section id="membership">
+      <h2>Membership (Local View)</h2>
+      <div class="membership-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Peer</th>
+              <th>Status</th>
+              <th>Phi</th>
+              <th>Δ Last HB (ms)</th>
+            </tr>
+          </thead>
+          <tbody id="membership-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="log">
+      <h2>Updates log</h2>
+      <div id="log-entries"></div>
+    </section>
   </section>
 </main>
 

@@ -229,6 +229,8 @@ def seed_peer_table(
         None: This function inserts configured peers into the initial membership view.
     """
     for peer in bootstrap_peers:
+        if peer.node_id.startswith("bootstrap@"):
+            continue
         try:
             peer_table.upsert_peer(
                 node_id=peer.node_id,
