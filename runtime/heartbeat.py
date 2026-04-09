@@ -12,8 +12,11 @@ import threading
 import time
 
 from gossip.publisher import publish_membership_gossip
+from membership.peer import Peer
 from membership.peer_table import PeerTable
+from membership.results import FailureDetectionUpdateResult
 from protocol.factory import build_ping
+from protocol.message import Message
 from utils.typing import LoggerLike, SenderLike
 
 
@@ -72,10 +75,25 @@ class HeartbeatSender:
 
     def _send_heartbeat_round(self) -> None:
         """Evaluate phi, publish gossip, then send one PING per peer."""
-        fd_updates = self._peer_table.evaluate_failure_detector(
+        fd_updates = self._evaluate_failure_detector()
+        self._log_membership_transitions(fd_updates)
+
+        peers = self._peer_table.snapshot()
+        self._publish_membership_gossip(peers)
+        self._send_ping_to_peers(peers)
+
+    def _evaluate_failure_detector(self) -> tuple[FailureDetectionUpdateResult, ...]:
+        """Apply phi-accrual evaluation to the current membership view."""
+        return self._peer_table.evaluate_failure_detector(
             observed_at_wall_s=time.time(),
             observed_at_monotonic_s=time.monotonic(),
         )
+
+    def _log_membership_transitions(
+        self,
+        fd_updates: tuple[FailureDetectionUpdateResult, ...],
+    ) -> None:
+        """Log status changes produced by the failure detector."""
         for update in fd_updates:
             if update.status.changed and update.peer is not None:
                 self._log.info(
@@ -86,12 +104,8 @@ class HeartbeatSender:
                     f"event_ts_ms={update.peer.status_ts_ms}"
                 )
 
-        now_ms = int(time.time() * 1000)
-        ping = build_ping(
-            sender_id=self._self_node_id,
-            ping_timestamp_ms=now_ms,
-        )
-        peers = self._peer_table.snapshot()
+    def _publish_membership_gossip(self, peers: tuple[Peer, ...]) -> None:
+        """Publish the current membership view before sending direct probes."""
         publish_membership_gossip(
             self_node_id=self._self_node_id,
             peer_table=self._peer_table,
@@ -100,6 +114,16 @@ class HeartbeatSender:
             log=self._log,
         )
 
+    def _build_ping(self) -> Message:
+        """Build a timestamped heartbeat probe."""
+        return build_ping(
+            sender_id=self._self_node_id,
+            ping_timestamp_ms=int(time.time() * 1000),
+        )
+
+    def _send_ping_to_peers(self, peers: tuple[Peer, ...]) -> None:
+        """Send one heartbeat probe to each known peer."""
+        ping = self._build_ping()
         for peer in peers:
             try:
                 self._send(peer.node_id, ping)

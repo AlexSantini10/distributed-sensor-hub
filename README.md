@@ -38,6 +38,12 @@ Distributed Sensor Hub is a peer-to-peer system for aggregating heterogeneous Io
 - [Architecture, technologies, and design choices](docs/architecture.md)
 - [Roadmap and missing pieces](docs/roadmap.md)
 
+Module documentation:
+
+| Module | README |
+|--------|--------|
+| `runtime/` | [Runtime orchestration and subsystem bootstrap](runtime/README.md) |
+
 ## Core capabilities
 
 - Peer-to-peer node architecture with no centralized coordinator
@@ -66,7 +72,7 @@ The steady-state data flow is:
 |------|---------|
 | `node.py` | Entry point for a node process |
 | `docs/` | Architecture notes and technical documentation |
-| `runtime/` | Runtime orchestration and subsystem bootstrap |
+| `runtime/` | [Runtime orchestration and subsystem bootstrap](runtime/README.md) |
 | `state/` | LWW state worker and outbound update publishing |
 | `membership/` | Peer model, peer table, and membership handlers |
 | `protocol/` | Message envelope, message types, dispatcher, and protocol handlers |
