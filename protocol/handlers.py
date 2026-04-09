@@ -82,6 +82,9 @@ def make_heartbeat_handlers(
         if not isinstance(payload, PingPayload):
             log.warning("Invalid PING payload")
             return
+        if msg.sender_id == self_node_id:
+            log.debug("Ignored self PING")
+            return
 
         _mark_alive_and_record(
             peer_id=msg.sender_id,
@@ -101,6 +104,9 @@ def make_heartbeat_handlers(
         payload = msg.payload
         if not isinstance(payload, PongPayload):
             log.warning("Invalid PONG payload")
+            return
+        if msg.sender_id == self_node_id:
+            log.debug("Ignored self PONG")
             return
 
         _mark_alive_and_record(

@@ -64,3 +64,45 @@ def test_pong_handler_records_inter_arrival_interval() -> None:
     intervals = monitor.get_intervals("node-b")
     assert len(intervals) == 1
     assert intervals[0] >= 0.0
+
+
+def test_ping_handler_ignores_self_ping() -> None:
+    """Assert incoming self PING is ignored and does not send a PONG."""
+    peer_table = PeerTable(self_node_id="node-a")
+    monitor = HeartbeatMonitor()
+    sent: list[tuple[str, Message]] = []
+
+    def send(peer_id: str, msg: Message) -> None:
+        sent.append((peer_id, msg))
+
+    ping_handler, _pong_handler = make_heartbeat_handlers(
+        peer_table=peer_table,
+        send=send,
+        self_node_id="node-a",
+        heartbeat_monitor=monitor,
+    )
+
+    ping_handler(build_ping(sender_id="node-a", ping_timestamp_ms=111))
+
+    assert sent == []
+    assert monitor.get_intervals("node-a") == ()
+
+
+def test_pong_handler_ignores_self_pong() -> None:
+    """Assert incoming self PONG is ignored and does not update intervals."""
+    peer_table = PeerTable(self_node_id="node-a")
+    monitor = HeartbeatMonitor()
+
+    def send(_peer_id: str, _msg: Message) -> None:
+        pass
+
+    _ping_handler, pong_handler = make_heartbeat_handlers(
+        peer_table=peer_table,
+        send=send,
+        self_node_id="node-a",
+        heartbeat_monitor=monitor,
+    )
+
+    pong_handler(build_pong(sender_id="node-a", pong_timestamp_ms=222))
+
+    assert monitor.get_intervals("node-a") == ()
