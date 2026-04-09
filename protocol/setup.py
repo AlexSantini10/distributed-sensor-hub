@@ -8,7 +8,6 @@ Responsibilities:
 
 from collections.abc import Callable
 
-from fd.heartbeat import HeartbeatMonitor
 from membership.handlers import make_membership_handlers
 from membership.peer import Peer as MembershipPeer
 from membership.peer_table import PeerTable
@@ -26,7 +25,7 @@ def setup_protocol(
     send_function: SenderLike,
     state_worker: StateWorkerLike | None = None,
     on_peer_discovered: OnPeerDiscovered | None = None,
-) -> tuple[MessageDispatcher, PeerTable, HeartbeatMonitor]:
+) -> tuple[MessageDispatcher, PeerTable]:
     """Build the protocol dispatcher and register message handlers.
 
     Membership messages are delegated to the membership subsystem, while
@@ -44,12 +43,10 @@ def setup_protocol(
             when membership discovers a new peer.
 
     Returns:
-        tuple[MessageDispatcher, PeerTable, HeartbeatMonitor]: Configured
-            dispatcher, peer table, and heartbeat monitor used by liveness handlers.
+        tuple[MessageDispatcher, PeerTable]: Configured dispatcher and peer table.
     """
     dispatcher = MessageDispatcher()
     peer_table = PeerTable(self_node_id=self_node_id)
-    heartbeat_monitor = HeartbeatMonitor()
 
     join_handler, peer_list_handler = make_membership_handlers(
         peer_table=peer_table,
@@ -62,7 +59,6 @@ def setup_protocol(
         peer_table=peer_table,
         send=send_function,
         self_node_id=self_node_id,
-        heartbeat_monitor=heartbeat_monitor,
     )
 
     dispatcher.register(MessageType.JOIN_REQUEST, join_handler)
@@ -81,7 +77,14 @@ def setup_protocol(
     else:
         dispatcher.register(MessageType.SENSOR_UPDATE, handlers.handle_sensor_update)
 
-    dispatcher.register(MessageType.GOSSIP_STATE, handlers.handle_gossip_state)
+    dispatcher.register(
+        MessageType.GOSSIP_STATE,
+        handlers.make_gossip_state_handler(
+            peer_table=peer_table,
+            self_node_id=self_node_id,
+            on_peer_discovered=on_peer_discovered,
+        ),
+    )
     if state_worker is not None:
         dispatcher.register(
             MessageType.FULL_SYNC_REQUEST,
@@ -113,4 +116,4 @@ def setup_protocol(
     )
     dispatcher.register(MessageType.ERROR, handlers.handle_error)
     dispatcher.register(MessageType.ACK, handlers.handle_ack)
-    return dispatcher, peer_table, heartbeat_monitor
+    return dispatcher, peer_table

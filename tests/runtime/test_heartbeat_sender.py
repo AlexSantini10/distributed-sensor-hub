@@ -19,7 +19,7 @@ class DummyLog:
 
 
 def test_heartbeat_sender_runs_in_background_and_emits_pings() -> None:
-    """Assert heartbeat sender emits PING without blocking the caller thread."""
+    """Assert heartbeat sender emits PING and GOSSIP_STATE without blocking."""
     peer_table = PeerTable(self_node_id="node-a")
     peer_table.upsert_peer(node_id="node-b", host="10.0.0.2", port=9002)
     peer_table.upsert_peer(node_id="node-c", host="10.0.0.3", port=9003)
@@ -50,4 +50,5 @@ def test_heartbeat_sender_runs_in_background_and_emits_pings() -> None:
     assert startup_elapsed < 0.1
     assert delivered is True
     assert sent
-    assert all(msg.msg_type is MessageType.PING for _, msg in sent)
+    assert any(msg.msg_type is MessageType.PING for _, msg in sent)
+    assert any(msg.msg_type is MessageType.GOSSIP_STATE for _, msg in sent)

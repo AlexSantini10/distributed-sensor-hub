@@ -12,7 +12,7 @@ import threading
 import time
 
 from membership.peer_table import PeerTable
-from protocol.factory import build_ping
+from protocol.factory import build_gossip_state, build_ping
 from utils.typing import LoggerLike, SenderLike
 
 
@@ -70,13 +70,42 @@ class HeartbeatSender:
             self._stop_event.wait(self._interval_s)
 
     def _send_heartbeat_round(self) -> None:
-        """Send one ``PING`` to each currently known peer."""
+        """Evaluate phi, gossip membership state, then send one PING per peer."""
+        fd_updates = self._peer_table.evaluate_failure_detector(
+            observed_at_wall_s=time.time(),
+            observed_at_monotonic_s=time.monotonic(),
+        )
+        for update in fd_updates:
+            if update.status.changed and update.peer is not None:
+                self._log.debug(
+                    "Phi transition: "
+                    f"peer={update.peer_id} "
+                    f"from={update.status.previous_status} to={update.status.new_status} "
+                    f"phi={update.peer.phi:.3f} "
+                    f"status_ts_ms={update.peer.status_ts_ms}"
+                )
+
         now_ms = int(time.time() * 1000)
         ping = build_ping(
             sender_id=self._self_node_id,
             ping_timestamp_ms=now_ms,
         )
-        for peer in self._peer_table.snapshot():
+        peers = self._peer_table.snapshot()
+        gossip = build_gossip_state(
+            sender_id=self._self_node_id,
+            state=self._peer_table.build_gossip_state(),
+        )
+
+        for peer in peers:
+            try:
+                self._send(peer.node_id, gossip)
+            except Exception:
+                self._log.debug(
+                    f"GOSSIP_STATE send failed to {peer.node_id} {peer.host}:{peer.port}",
+                    exc_info=True,
+                )
+
+        for peer in peers:
             try:
                 self._send(peer.node_id, ping)
             except Exception:

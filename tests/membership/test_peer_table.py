@@ -3,9 +3,31 @@
 import threading
 import time
 
+from membership.liveness import NodeLiveness
 from membership.peer import Peer
 from membership.peer_table import PeerTable
 from membership.status import NodeStatus
+
+
+def _gossip_peer(
+    *,
+    node_id: str,
+    host: str,
+    port: int,
+    status: NodeStatus,
+    status_ts_ms: int,
+) -> Peer:
+    return Peer(
+        node_id=node_id,
+        host=host,
+        port=port,
+        liveness=NodeLiveness(
+            last_heartbeat=status_ts_ms / 1000.0,
+            phi=0.0,
+            status=status,
+            status_ts_ms=status_ts_ms,
+        ),
+    )
 
 
 def test_upsert_peer_success() -> None:
@@ -62,64 +84,167 @@ def test_upsert_self_peer_ignored() -> None:
     assert table.snapshot() == ()
 
 
-def test_mark_alive_existing_peer() -> None:
-    """Assert that heartbeat updates refresh status for known peers."""
-    table = PeerTable(self_node_id="node-1")
-
-    inserted = table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
-    assert inserted.peer is not None
-    table.mark_suspected("node-2", phi=7.5)
-
-    old_ts = inserted.peer.last_heartbeat
-    new_ts = old_ts + 10.0
-
-    result = table.mark_alive("node-2", heartbeat_at=new_ts)
-
-    assert result.peer_id == "node-2"
-    assert result.changed is True
-    assert result.heartbeat_advanced is True
-    assert result.phi_updated is True
-    assert result.should_gossip is True
-    assert result.status.changed is True
-    assert result.status.previous_status is NodeStatus.SUSPECTED
-    assert result.status.new_status is NodeStatus.ALIVE
-    updated = table.get_peer("node-2")
-    assert updated is not None
-    assert updated.last_heartbeat == new_ts
-    assert updated.status is NodeStatus.ALIVE
-    assert updated.phi == 0.0
-
-
-def test_mark_suspected_exposes_status_transition() -> None:
-    """Assert that suspicion updates describe the liveness transition explicitly."""
-    table = PeerTable(self_node_id="node-1")
+def test_regular_heartbeat_stream_keeps_peer_alive() -> None:
+    """Assert a steady heartbeat stream keeps status alive."""
+    table = PeerTable(
+        self_node_id="node-1",
+        phi_threshold_suspect=2.0,
+        phi_threshold_dead=4.0,
+        phi_initial_interval_s=1.0,
+    )
     table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
 
-    result = table.mark_suspected("node-2", phi=7.5)
+    base = time.time() + 1000.0
+    table.record_heartbeat("node-2", heartbeat_at=base, arrived_at_monotonic_s=1.0)
+    table.record_heartbeat("node-2", heartbeat_at=base + 1.0, arrived_at_monotonic_s=2.0)
+    table.record_heartbeat("node-2", heartbeat_at=base + 2.0, arrived_at_monotonic_s=3.0)
+    table.evaluate_failure_detector(
+        observed_at_wall_s=base + 2.2,
+        observed_at_monotonic_s=3.2,
+    )
 
-    assert result.changed is True
-    assert result.heartbeat_advanced is False
-    assert result.phi_updated is True
-    assert result.should_gossip is True
-    assert result.status.changed is True
-    assert result.status.previous_status is NodeStatus.ALIVE
-    assert result.status.new_status is NodeStatus.SUSPECTED
-    assert result.reason == "marked_suspected"
+    peer = table.get_peer("node-2")
+    assert peer is not None
+    assert peer.status is NodeStatus.ALIVE
 
 
-def test_mark_alive_unknown_peer_noop() -> None:
-    """Assert that heartbeat updates do not create unknown peers."""
+def test_missing_heartbeats_moves_peer_from_suspected_to_dead() -> None:
+    """Assert missing heartbeats first suspect a peer, then mark it dead."""
+    table = PeerTable(
+        self_node_id="node-1",
+        phi_threshold_suspect=0.5,
+        phi_threshold_dead=1.2,
+        phi_initial_interval_s=1.0,
+    )
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+
+    base = time.time() + 1000.0
+    table.record_heartbeat("node-2", heartbeat_at=base, arrived_at_monotonic_s=10.0)
+    table.record_heartbeat("node-2", heartbeat_at=base + 1.0, arrived_at_monotonic_s=11.0)
+
+    table.evaluate_failure_detector(
+        observed_at_wall_s=base + 2.2,
+        observed_at_monotonic_s=12.2,
+    )
+    suspected = table.get_peer("node-2")
+    assert suspected is not None
+    assert suspected.status is NodeStatus.SUSPECTED
+
+    table.evaluate_failure_detector(
+        observed_at_wall_s=base + 4.0,
+        observed_at_monotonic_s=14.0,
+    )
+    dead = table.get_peer("node-2")
+    assert dead is not None
+    assert dead.status is NodeStatus.DEAD
+
+
+def test_heartbeat_after_dead_recovers_peer_to_alive() -> None:
+    """Assert a new heartbeat clears stale dead suspicion automatically."""
+    table = PeerTable(
+        self_node_id="node-1",
+        phi_threshold_suspect=0.5,
+        phi_threshold_dead=1.0,
+        phi_initial_interval_s=1.0,
+    )
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+    base = time.time() + 1000.0
+    table.record_heartbeat("node-2", heartbeat_at=base, arrived_at_monotonic_s=10.0)
+    table.record_heartbeat("node-2", heartbeat_at=base + 1.0, arrived_at_monotonic_s=11.0)
+    table.evaluate_failure_detector(
+        observed_at_wall_s=base + 3.5,
+        observed_at_monotonic_s=13.5,
+    )
+    before = table.get_peer("node-2")
+    assert before is not None
+    assert before.status is NodeStatus.DEAD
+
+    recovery_heartbeat = base + 10.0
+    table.record_heartbeat(
+        "node-2",
+        heartbeat_at=recovery_heartbeat,
+        arrived_at_monotonic_s=20.0,
+    )
+    after = table.get_peer("node-2")
+    assert after is not None
+    assert after.status is NodeStatus.ALIVE
+    assert after.last_heartbeat == recovery_heartbeat
+    assert after.status_ts_ms > before.status_ts_ms
+
+
+def test_remote_stale_suspicion_does_not_override_fresher_local_alive() -> None:
+    """Assert LWW merge ignores stale remote suspicion against fresher alive status."""
     table = PeerTable(self_node_id="node-1")
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+    local_heartbeat = time.time() + 1000.0
+    table.record_heartbeat(
+        "node-2",
+        heartbeat_at=local_heartbeat,
+        arrived_at_monotonic_s=5.0,
+    )
+    local = table.get_peer("node-2")
+    assert local is not None
+    assert local.status is NodeStatus.ALIVE
 
-    result = table.mark_alive("node-unknown", heartbeat_at=time.time())
+    stale_suspected = _gossip_peer(
+        node_id="node-2",
+        host="127.0.0.1",
+        port=9001,
+        status=NodeStatus.SUSPECTED,
+        status_ts_ms=local.status_ts_ms - 10,
+    )
+    merge = table.merge_gossip_state([stale_suspected])
 
-    assert result.changed is False
-    assert result.status.changed is False
-    assert result.status.previous_status is None
-    assert result.status.new_status is None
-    assert result.reason == "peer_not_found"
-    assert table.get_peer("node-unknown") is None
-    assert table.snapshot() == ()
+    assert merge.changed is False
+    current = table.get_peer("node-2")
+    assert current is not None
+    assert current.status is NodeStatus.ALIVE
+    assert current.status_ts_ms == local.status_ts_ms
+
+
+def test_gossip_merge_is_lww_by_status_timestamp() -> None:
+    """Assert newer status timestamps win while older ones are ignored."""
+    table = PeerTable(self_node_id="node-1")
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+    current = table.get_peer("node-2")
+    assert current is not None
+
+    dead_newer = _gossip_peer(
+        node_id="node-2",
+        host="127.0.0.1",
+        port=9001,
+        status=NodeStatus.DEAD,
+        status_ts_ms=current.status_ts_ms + 10,
+    )
+    table.merge_gossip_state([dead_newer])
+    after_dead = table.get_peer("node-2")
+    assert after_dead is not None
+    assert after_dead.status is NodeStatus.DEAD
+
+    alive_older = _gossip_peer(
+        node_id="node-2",
+        host="127.0.0.1",
+        port=9001,
+        status=NodeStatus.ALIVE,
+        status_ts_ms=current.status_ts_ms + 9,
+    )
+    table.merge_gossip_state([alive_older])
+    still_dead = table.get_peer("node-2")
+    assert still_dead is not None
+    assert still_dead.status is NodeStatus.DEAD
+
+    alive_newer = _gossip_peer(
+        node_id="node-2",
+        host="127.0.0.1",
+        port=9001,
+        status=NodeStatus.ALIVE,
+        status_ts_ms=current.status_ts_ms + 11,
+    )
+    table.merge_gossip_state([alive_newer])
+    recovered = table.get_peer("node-2")
+    assert recovered is not None
+    assert recovered.status is NodeStatus.ALIVE
+    assert recovered.status_ts_ms == current.status_ts_ms + 11
 
 
 def test_snapshot_returns_copies() -> None:
@@ -137,34 +262,23 @@ def test_snapshot_returns_copies() -> None:
     assert stored.status is NodeStatus.ALIVE
 
 
-def test_merge_membership_view_integrates_new_peers_only() -> None:
-    """Assert that membership-view merges add only previously unknown peers."""
+def test_merge_membership_view_preserves_liveness_state() -> None:
+    """Assert endpoint-only merges do not overwrite current liveness metadata."""
     table = PeerTable(self_node_id="node-1")
     table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
-
-    merge = table.merge_membership_view(
+    current = table.get_peer("node-2")
+    assert current is not None
+    table.merge_gossip_state(
         [
-            Peer.new("node-2", "127.0.0.1", 9001),
-            Peer.new("node-3", "127.0.0.1", 9002),
-            Peer.new("node-1", "127.0.0.1", 9000),
+            _gossip_peer(
+                node_id="node-2",
+                host="127.0.0.1",
+                port=9001,
+                status=NodeStatus.SUSPECTED,
+                status_ts_ms=current.status_ts_ms + 10,
+            )
         ]
     )
-
-    ids = {p.node_id for p in table.snapshot()}
-    assert ids == {"node-2", "node-3"}
-    assert merge.changed is True
-    assert merge.merged_entries == 1
-    assert merge.ignored_entries == 1
-    assert [p.node_id for p in merge.new_peers] == ["node-3"]
-    assert merge.updated_peers == ()
-    assert merge.should_gossip is True
-
-
-def test_merge_membership_view_preserves_liveness_state() -> None:
-    """Assert that endpoint merges do not reset suspicion metadata."""
-    table = PeerTable(self_node_id="node-1")
-    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
-    table.mark_suspected("node-2", phi=12.0)
 
     result = table.merge_membership_view([Peer.new("node-2", "10.0.0.2", 9002)])
 
@@ -173,12 +287,8 @@ def test_merge_membership_view_preserves_liveness_state() -> None:
     assert stored.host == "10.0.0.2"
     assert stored.port == 9002
     assert stored.status is NodeStatus.SUSPECTED
-    assert stored.phi == 12.0
+    assert stored.status_ts_ms == current.status_ts_ms + 10
     assert result.changed is True
-    assert result.merged_entries == 1
-    assert result.ignored_entries == 0
-    assert result.new_peers == ()
-    assert [peer.node_id for peer in result.updated_peers] == ["node-2"]
 
 
 def test_remove_peer_returns_typed_result() -> None:
@@ -236,30 +346,43 @@ def test_concurrent_updates_to_same_peer_preserve_single_entry() -> None:
     assert changed_results == 1
 
 
-def test_concurrent_merge_and_heartbeat_leave_peer_alive() -> None:
-    """Assert merge and heartbeat interleavings keep one consistent peer record."""
+def test_concurrent_heartbeat_and_gossip_processing_does_not_corrupt_state() -> None:
+    """Assert concurrent heartbeat and gossip updates preserve one consistent record."""
     table = PeerTable(self_node_id="node-1")
-    inserted = table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
-    assert inserted.peer is not None
-    table.mark_suspected("node-2", phi=5.0)
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
     barrier = threading.Barrier(3)
-    latest_heartbeat = inserted.peer.last_heartbeat
 
-    def merge_worker() -> None:
+    latest_heartbeat = time.time() + 1000.0
+    latest_heartbeat_lock = threading.Lock()
+
+    def gossip_worker() -> None:
         barrier.wait()
-        for index in range(50):
-            table.merge_membership_view(
-                [Peer.new("node-2", f"10.0.0.{index % 3 + 2}", 9001 + (index % 2))]
-            )
+        stale = _gossip_peer(
+            node_id="node-2",
+            host="127.0.0.1",
+            port=9001,
+            status=NodeStatus.SUSPECTED,
+            status_ts_ms=1,
+        )
+        for _ in range(200):
+            table.merge_gossip_state([stale])
 
     def heartbeat_worker() -> None:
         nonlocal latest_heartbeat
         barrier.wait()
-        for step in range(50):
-            latest_heartbeat += 1.0
-            table.mark_alive("node-2", heartbeat_at=latest_heartbeat)
+        monotonic_now = 10.0
+        for _ in range(200):
+            with latest_heartbeat_lock:
+                latest_heartbeat += 1.0
+                heartbeat_at = latest_heartbeat
+            monotonic_now += 1.0
+            table.record_heartbeat(
+                "node-2",
+                heartbeat_at=heartbeat_at,
+                arrived_at_monotonic_s=monotonic_now,
+            )
 
-    merge_thread = threading.Thread(target=merge_worker)
+    merge_thread = threading.Thread(target=gossip_worker)
     heartbeat_thread = threading.Thread(target=heartbeat_worker)
     merge_thread.start()
     heartbeat_thread.start()

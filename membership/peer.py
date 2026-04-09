@@ -75,3 +75,12 @@ class Peer:
     @status.setter
     def status(self, value: NodeStatus) -> None:
         self.liveness.status = value
+
+    @property
+    def status_ts_ms(self) -> int:
+        """Expose LWW timestamp for status merges."""
+        return self.liveness.status_ts_ms
+
+    @status_ts_ms.setter
+    def status_ts_ms(self, value: int) -> None:
+        self.liveness.status_ts_ms = value

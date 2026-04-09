@@ -9,7 +9,7 @@ Responsibilities:
 from collections.abc import Callable
 import time
 
-from fd.heartbeat import HeartbeatMonitor
+from membership.liveness import NodeLiveness
 from membership.peer import Peer
 from membership.peer_table import PeerTable
 from protocol.factory import build_full_sync_request, build_full_sync_response, build_pong
@@ -18,11 +18,13 @@ from protocol.messages import (
     DeltaUnavailablePayload,
     FullSyncRequestPayload,
     FullSyncResponsePayload,
+    GossipStatePayload,
     PeerDescriptor,
     PingPayload,
     PongPayload,
     SensorUpdatePayload,
 )
+from membership.status import NodeStatus
 from utils.logging import get_logger
 from utils.typing import LoggerLike, SenderLike, StateWorkerLike
 
@@ -54,7 +56,6 @@ def make_heartbeat_handlers(
     peer_table: PeerTable,
     send: SenderLike,
     self_node_id: str,
-    heartbeat_monitor: HeartbeatMonitor,
 ) -> tuple[Callable[[Message], None], Callable[[Message], None]]:
     """Create handlers for ``PING`` and ``PONG`` liveness traffic."""
     log: LoggerLike = get_logger(__name__, self_node_id)
@@ -64,17 +65,21 @@ def make_heartbeat_handlers(
         peer_id: str,
         sender_timestamp_ms: int | None,
     ) -> None:
-        observation = heartbeat_monitor.record_heartbeat(
+        update = peer_table.record_heartbeat(
             peer_id,
+            heartbeat_at=time.time(),
             sender_timestamp_ms=sender_timestamp_ms,
+            arrived_at_monotonic_s=time.monotonic(),
         )
-        update = peer_table.mark_alive(peer_id, heartbeat_at=time.time())
         if update.reason == "peer_not_found":
             log.debug(f"Heartbeat received from unknown peer {peer_id}")
             return
-        if observation.interval_s is not None:
+        if update.status.changed and update.peer is not None:
             log.debug(
-                f"Heartbeat interval: peer={peer_id} interval_s={observation.interval_s:.3f}"
+                "Heartbeat restored peer to alive: "
+                f"peer={peer_id} "
+                f"from={update.status.previous_status} to={update.status.new_status} "
+                f"status_ts_ms={update.peer.status_ts_ms}"
             )
 
     def handle_ping(msg: Message) -> None:
@@ -156,9 +161,121 @@ def handle_sensor_update(msg: Message) -> None:
     log.warning("SENSOR_UPDATE received but handler is not wired")
 
 
+def make_gossip_state_handler(
+    *,
+    peer_table: PeerTable,
+    self_node_id: str,
+    on_peer_discovered: Callable[[Peer], None] | None = None,
+) -> Callable[[Message], None]:
+    """Create a handler that merges membership liveness gossip."""
+    log: LoggerLike = get_logger(__name__, self_node_id)
+
+    def _notify_discovered(peer: Peer) -> None:
+        if on_peer_discovered is None:
+            return
+        try:
+            on_peer_discovered(peer)
+        except Exception:
+            log.warning(
+                f"on_peer_discovered failed for peer {peer.node_id} {peer.host}:{peer.port}",
+                exc_info=True,
+            )
+
+    def _parse_membership_gossip(payload: GossipStatePayload) -> list[Peer]:
+        state = payload.state
+        membership = state.get("membership")
+        if membership is None:
+            return []
+        if not isinstance(membership, dict):
+            raise ValueError("state.membership must be an object")
+
+        raw_peers = membership.get("peers", [])
+        if not isinstance(raw_peers, list):
+            raise ValueError("state.membership.peers must be a list")
+
+        parsed: list[Peer] = []
+        for index, raw in enumerate(raw_peers):
+            if not isinstance(raw, dict):
+                log.debug(f"Ignored gossip peer at index={index}: not an object")
+                continue
+
+            node_id = raw.get("node_id")
+            host = raw.get("host")
+            port = raw.get("port")
+            status_raw = raw.get("status")
+            status_ts_ms = raw.get("status_ts_ms")
+
+            if (
+                not isinstance(node_id, str)
+                or node_id == ""
+                or not isinstance(host, str)
+                or host == ""
+                or not isinstance(port, int)
+                or not isinstance(status_raw, str)
+                or not isinstance(status_ts_ms, int)
+            ):
+                log.debug(f"Ignored malformed gossip peer at index={index}")
+                continue
+
+            try:
+                status = NodeStatus.from_wire(status_raw)
+            except ValueError:
+                log.debug(
+                    f"Ignored gossip peer with unknown status at index={index}: {status_raw}"
+                )
+                continue
+
+            parsed.append(
+                Peer(
+                    node_id=node_id,
+                    host=host,
+                    port=port,
+                    liveness=NodeLiveness(
+                        last_heartbeat=time.time(),
+                        phi=0.0,
+                        status=status,
+                        status_ts_ms=status_ts_ms,
+                    ),
+                )
+            )
+        return parsed
+
+    def handle_gossip_state(msg: Message) -> None:
+        payload = msg.payload
+        if not isinstance(payload, GossipStatePayload):
+            log.warning("Invalid GOSSIP_STATE payload")
+            return
+
+        try:
+            incoming = _parse_membership_gossip(payload)
+        except ValueError as exc:
+            log.warning(f"Invalid GOSSIP_STATE structure: {exc}")
+            return
+
+        if not incoming:
+            return
+
+        merge_result = peer_table.merge_gossip_state(incoming)
+        for discovered in merge_result.new_peers:
+            _notify_discovered(discovered)
+
+        if merge_result.changed:
+            log.info(
+                "GOSSIP_STATE merged: "
+                f"sender={msg.sender_id} "
+                f"merged={merge_result.merged_entries} "
+                f"new={len(merge_result.new_peers)} "
+                f"updated={len(merge_result.updated_peers)} "
+                f"ignored={merge_result.ignored_entries}"
+            )
+
+    return handle_gossip_state
+
+
 def handle_gossip_state(msg: Message) -> None:
-    """Reject processing of an unimplemented state gossip message."""
-    raise NotImplementedError("GOSSIP_STATE not implemented yet")
+    """Warn that state-gossip handling has not been wired for this node."""
+    log = get_logger(__name__, msg.sender_id)
+    log.warning("GOSSIP_STATE received but handler is not wired")
 
 
 def make_full_sync_request_handler(

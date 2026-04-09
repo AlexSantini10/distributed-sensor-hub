@@ -21,17 +21,26 @@ class NodeLiveness:
         last_heartbeat (float): Unix timestamp of the latest accepted heartbeat.
         phi (float): Current failure-detector score for the peer.
         status (NodeStatus): Derived liveness classification used by membership.
+        status_ts_ms (int): LWW timestamp of the last status transition.
     """
 
     last_heartbeat: float
     phi: float
     status: NodeStatus
+    status_ts_ms: int
 
     @staticmethod
-    def new(*, now: float | None = None) -> "NodeLiveness":
+    def new(
+        *,
+        now: float | None = None,
+        status_ts_ms: int | None = None,
+    ) -> "NodeLiveness":
         """Create a healthy initial liveness state."""
+        heartbeat_now = time.time() if now is None else now
+        status_now = int(heartbeat_now * 1000) if status_ts_ms is None else status_ts_ms
         return NodeLiveness(
-            last_heartbeat=time.time() if now is None else now,
+            last_heartbeat=heartbeat_now,
             phi=0.0,
             status=NodeStatus.ALIVE,
+            status_ts_ms=status_now,
         )
