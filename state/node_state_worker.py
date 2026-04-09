@@ -18,6 +18,7 @@ from utils.typing import (
     JsonValue,
     LoggerLike,
     NodeSnapshot,
+    ReplicationDeltaBatch,
     SensorEventSource,
     SensorMetaDict,
 )
@@ -42,6 +43,7 @@ class NodeStateWorker(threading.Thread):
         event_queue: SensorEventSource,
         log: LoggerLike,
         debug_dump_every_s: float | None = None,
+        replication_delta_maxlen: int = 512,
     ) -> None:
         """Initialize the background worker and its LWW store.
 
@@ -61,7 +63,7 @@ class NodeStateWorker(threading.Thread):
         self.log = log
 
         self._stop_event = threading.Event()
-        self._store = NodeStateStore()
+        self._store = NodeStateStore(replication_delta_maxlen=replication_delta_maxlen)
 
         self._debug_dump_every_s = debug_dump_every_s
         self._next_dump_ts = (
@@ -402,6 +404,14 @@ class NodeStateWorker(threading.Thread):
             NodeSnapshot: Incremental snapshot of records not yet read by the publisher thread.
         """
         return self._store.pop_replication_updates(node_id=self.node_id)
+
+    def pop_replication_deltas(self) -> ReplicationDeltaBatch:
+        """Drain ordered delta events intended for best-effort replication gossip.
+
+        Returns:
+            ReplicationDeltaBatch: Ordered delta events not yet consumed by the publisher.
+        """
+        return self._store.pop_replication_deltas()
 
     def stop(self) -> None:
         """Request graceful worker termination.

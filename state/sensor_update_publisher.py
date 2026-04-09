@@ -15,7 +15,7 @@ from protocol.factory import build_sensor_update
 from protocol.message import Message
 from protocol.messages import SensorMeta
 from typing import Protocol
-from utils.typing import LoggerLike, NodeSnapshot, PeerTableLike, StateWorkerLike
+from utils.typing import LoggerLike, PeerTableLike, ReplicationDeltaBatch, StateWorkerLike
 
 
 class SensorUpdatePublisher(threading.Thread):
@@ -48,7 +48,7 @@ class SensorUpdatePublisher(threading.Thread):
             self_node_id (str): Local node identifier used to filter local-origin winners.
             peer_table (PeerTableLike): Peer table exposing ``snapshot()``.
             tcp_client (TcpClientLike): Client exposing ``send_json()`` and ``add_peer()``.
-            state_worker (StateWorkerLike): Worker exposing ``pop_replication_updates()``.
+            state_worker (StateWorkerLike): Worker exposing ordered replication delta drains.
             log (LoggerLike): Logger-like object used for warnings and errors.
             interval_s (float): Delay between publish attempts in seconds.
 
@@ -99,23 +99,22 @@ class SensorUpdatePublisher(threading.Thread):
         Returns:
             None: This method performs best-effort message delivery.
         """
-        snapshot: NodeSnapshot = self._state_worker.pop_replication_updates()
-        updates = snapshot.get(self._self_node_id, {})
-        if not updates:
+        deltas: ReplicationDeltaBatch = self._state_worker.pop_replication_deltas()
+        if not deltas:
             return
 
         peers = self._peer_table.snapshot()
         if not peers:
             return
 
-        for global_sensor_id, update in updates.items():
+        for update in deltas:
             origin = update.get("origin")
             if origin != self._self_node_id:
                 continue
 
-            sensor_id = global_sensor_id
-            if isinstance(global_sensor_id, str) and ":" in global_sensor_id:
-                sensor_id = global_sensor_id.split(":", 1)[1]
+            sensor_id = update.get("sensor_id")
+            if not isinstance(sensor_id, str) or sensor_id == "":
+                continue
 
             meta_value = update.get("meta", {})
             meta: SensorMeta

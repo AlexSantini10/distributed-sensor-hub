@@ -63,6 +63,19 @@ class SensorRecordDict(TypedDict):
 type NodeSnapshot = dict[str, dict[str, SensorRecordDict]]
 
 
+class ReplicationDeltaDict(TypedDict):
+    """Represent one ordered replication delta event."""
+
+    sensor_id: str
+    value: JsonValue
+    ts_ms: int
+    origin: str
+    meta: SensorMetaDict
+
+
+type ReplicationDeltaBatch = tuple[ReplicationDeltaDict, ...]
+
+
 class MembershipPeerDict(TypedDict):
     """Represent one peer entry exchanged in membership payloads."""
 
@@ -178,6 +191,14 @@ class StateWorkerLike(Protocol):
 
         Returns:
             NodeSnapshot: Snapshot grouped by node and global sensor identifier.
+        """
+        ...
+
+    def pop_replication_deltas(self) -> ReplicationDeltaBatch:
+        """Return ordered replication deltas from the internal ring buffer.
+
+        Returns:
+            ReplicationDeltaBatch: Ordered delta events not yet consumed by gossip publication.
         """
         ...
 

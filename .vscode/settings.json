@@ -10,7 +10,8 @@
         "state",
         "docs",
         "fd",
-        "heartbeat"
+        "heartbeat",
+        "gossip"
     ],
     "markdown.validate.enabled": true
 }

@@ -285,3 +285,39 @@ def test_merge_state_is_atomic_against_concurrent_updates() -> None:
 
     assert merged == 2
     assert update_interleaved_inside_merge["value"] is False
+
+
+def test_replication_delta_buffer_keeps_last_n_in_order() -> None:
+    """Assert replication deltas retain append order and bounded last-N behavior."""
+    w = NodeStateWorker(
+        node_id="A",
+        event_queue=Queue(),
+        log=DummyLog(),
+        replication_delta_maxlen=3,
+    )
+
+    w.merge_update("s1", 1, 1000, "A")
+    w.merge_update("s2", 2, 1001, "A")
+    w.merge_update("s3", 3, 1002, "A")
+    w.merge_update("s4", 4, 1003, "A")
+
+    deltas = w.pop_replication_deltas()
+    assert [d["sensor_id"] for d in deltas] == ["s2", "s3", "s4"]
+    assert [d["ts_ms"] for d in deltas] == [1001, 1002, 1003]
+
+
+def test_replication_delta_drain_is_incremental() -> None:
+    """Assert delta drains only return unread events after each pop."""
+    w = make_worker(node_id="A")
+    w.merge_update("s1", 1, 1000, "A")
+    first = w.pop_replication_deltas()
+    second = w.pop_replication_deltas()
+
+    assert len(first) == 1
+    assert first[0]["sensor_id"] == "s1"
+    assert second == ()
+
+    w.merge_update("s2", 2, 1001, "A")
+    third = w.pop_replication_deltas()
+    assert len(third) == 1
+    assert third[0]["sensor_id"] == "s2"

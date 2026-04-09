@@ -8,10 +8,19 @@ Responsibilities:
 """
 
 from copy import deepcopy
+from collections import deque
 from dataclasses import dataclass
 import threading
 
-from utils.typing import JsonObject, JsonValue, NodeSnapshot, SensorMetaDict, SensorRecordDict
+from utils.typing import (
+    JsonObject,
+    JsonValue,
+    NodeSnapshot,
+    ReplicationDeltaBatch,
+    ReplicationDeltaDict,
+    SensorMetaDict,
+    SensorRecordDict,
+)
 
 
 @dataclass
@@ -86,6 +95,15 @@ class SensorRecord:
         }
 
 
+@dataclass(frozen=True)
+class _ReplicationDelta:
+    """Store one ordered replication delta entry in the ring buffer."""
+
+    seq: int
+    sensor_id: str
+    record: SensorRecord
+
+
 class NodeStateStore:
     """Maintain thread-safe replicated sensor state and incremental buffers.
 
@@ -93,25 +111,38 @@ class NodeStateStore:
         _lock (threading.Lock): Mutex protecting state and update-buffer mutations.
         _state (dict[str, SensorRecord]): Current LWW winner for each logical ``sensor_id``.
         _updates_ui (dict[str, SensorRecord]): Pending records not yet drained by the UI/Web API consumer.
-        _updates_replication (dict[str, SensorRecord]): Pending records not yet drained by the gossip publisher.
+        _replication_deltas (deque[_ReplicationDelta]): Ordered bounded replication delta buffer.
+        _replication_next_seq (int): Monotonic sequence assigned to appended delta entries.
+        _replication_last_read_seq (int): Sequence cursor for drain operations.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, replication_delta_maxlen: int = 512) -> None:
         """Initialize empty state and update buffers.
 
         Returns:
             None: This constructor does not return a value.
         """
+        if replication_delta_maxlen <= 0:
+            raise ValueError("replication_delta_maxlen must be > 0")
         self._lock = threading.Lock()
         self._state: dict[str, SensorRecord] = {}
         self._updates_ui: dict[str, SensorRecord] = {}
-        self._updates_replication: dict[str, SensorRecord] = {}
+        self._replication_deltas: deque[_ReplicationDelta] = deque(maxlen=replication_delta_maxlen)
+        self._replication_next_seq = 0
+        self._replication_last_read_seq = 0
 
     def _apply_winner(self, sensor_id: str, record: SensorRecord) -> None:
         """Store one winning record across state and incremental buffers."""
         self._state[sensor_id] = record
         self._updates_ui[sensor_id] = record
-        self._updates_replication[sensor_id] = record
+        self._replication_deltas.append(
+            _ReplicationDelta(
+                seq=self._replication_next_seq,
+                sensor_id=sensor_id,
+                record=record,
+            )
+        )
+        self._replication_next_seq += 1
 
     def _is_newer_or_tie_winner(self, current: SensorRecord, candidate: SensorRecord) -> bool:
         """Return whether a candidate wins over the current LWW record."""
@@ -362,7 +393,6 @@ class NodeStateStore:
             existed = sensor_id in self._state
             self._state.pop(sensor_id, None)
             self._updates_ui.pop(sensor_id, None)
-            self._updates_replication.pop(sensor_id, None)
             return existed
 
     def clear(self) -> None:
@@ -374,7 +404,8 @@ class NodeStateStore:
         with self._lock:
             self._state.clear()
             self._updates_ui.clear()
-            self._updates_replication.clear()
+            self._replication_deltas.clear()
+            self._replication_last_read_seq = self._replication_next_seq
 
     def _snapshot_grouped_for_ui(
         self,
@@ -436,16 +467,53 @@ class NodeStateStore:
             NodeSnapshot: Incremental replication snapshot keyed by global sensor identifier.
         """
         with self._lock:
+            drained = self._drain_replication_deltas_locked()
             per_node: dict[str, SensorRecordDict] = {}
-            for sensor_id, record in self._updates_replication.items():
+            for delta in drained:
+                sensor_id = delta.sensor_id
+                record = delta.record
                 origin = record.origin
                 if not isinstance(origin, str) or origin == "":
                     origin = node_id
                 global_sensor_id = f"{origin}:{sensor_id}"
                 per_node[global_sensor_id] = record.to_dict()
-
-            self._updates_replication.clear()
             return {node_id: per_node}
+
+    def pop_replication_deltas(self) -> ReplicationDeltaBatch:
+        """Drain ordered replication deltas from the internal bounded ring buffer.
+
+        Returns:
+            ReplicationDeltaBatch: Ordered delta events in append order.
+        """
+        with self._lock:
+            drained = self._drain_replication_deltas_locked()
+            return tuple(self._delta_to_dict(delta) for delta in drained)
+
+    def _drain_replication_deltas_locked(self) -> list[_ReplicationDelta]:
+        """Return unread replication deltas and advance the read cursor.
+
+        Caller must hold ``_lock``.
+        """
+        if not self._replication_deltas:
+            self._replication_last_read_seq = self._replication_next_seq
+            return []
+
+        first_seq = self._replication_deltas[0].seq
+        read_from = max(self._replication_last_read_seq, first_seq)
+        drained = [delta for delta in self._replication_deltas if delta.seq >= read_from]
+        self._replication_last_read_seq = self._replication_next_seq
+        return drained
+
+    @staticmethod
+    def _delta_to_dict(delta: _ReplicationDelta) -> ReplicationDeltaDict:
+        """Serialize one internal replication delta entry."""
+        return {
+            "sensor_id": delta.sensor_id,
+            "value": delta.record.value,
+            "ts_ms": delta.record.ts_ms,
+            "origin": delta.record.origin,
+            "meta": delta.record.meta.to_dict(),
+        }
 
     def dump_full_state(self) -> JsonObject:
         """Return a deterministic inspection view grouped by winning origin.
