@@ -9,7 +9,6 @@ Responsibilities:
 
 from __future__ import annotations
 
-import json
 import queue
 import random
 import selectors
@@ -19,7 +18,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from utils.typing import JsonValue, SupportsToBytes
+from utils.typing import SupportsToBytes
 
 
 @dataclass(frozen=True)
@@ -164,8 +163,8 @@ class TcpClient:
         if worker is not None:
             worker.stop()
 
-    def send_json(self, peer_id: str, obj: SupportsToBytes | JsonValue) -> None:
-        """Enqueue a message for best-effort delivery to a peer.
+    def send_json(self, peer_id: str, obj: SupportsToBytes) -> None:
+        """Enqueue one typed protocol message for best-effort delivery to a peer.
 
         Messages are serialized immediately and delivered in FIFO order per
         peer if the underlying connection remains healthy. The transport may
@@ -175,19 +174,18 @@ class TcpClient:
 
         Args:
             peer_id (str): Node identifier of the destination peer.
-            obj (SupportsToBytes | JsonValue): JSON-serializable object or value
-                exposing ``to_bytes()``.
+            obj (SupportsToBytes): Message object exposing ``to_bytes()``.
 
         Returns:
             None
 
         Raises:
             KeyError: If ``peer_id`` is not registered.
-            TypeError: If ``obj`` cannot be serialized into bytes.
+            TypeError: If ``obj`` does not expose ``to_bytes()`` or returns non-bytes.
             ValueError: If the serialized payload exceeds ``_max_frame_size``.
         """
         worker = self._get_worker(peer_id)
-        payload = _serialize_to_json_bytes(obj)
+        payload = _serialize_to_bytes(obj)
         if len(payload) > self._max_frame_size:
             raise ValueError("payload exceeds maximum frame size")
         worker.enqueue(payload)
@@ -228,31 +226,29 @@ class TcpClient:
         return worker
 
 
-def _serialize_to_json_bytes(obj: SupportsToBytes | JsonValue) -> bytes:
-    """Serialize a message object into transport payload bytes.
+def _serialize_to_bytes(obj: SupportsToBytes) -> bytes:
+    """Serialize a typed message object into transport payload bytes.
 
-    The serializer accepts protocol message objects that already define their
-    wire encoding through ``to_bytes()`` as well as plain JSON-compatible
-    values. This keeps message-format ownership in the protocol layer.
+    The transport only accepts protocol-layer objects that define their own
+    wire encoding through ``to_bytes()``. This keeps message-format ownership
+    in the protocol layer and prevents accidental raw-dict sends.
 
     Args:
-        obj (SupportsToBytes | JsonValue): Value to serialize for transport.
+        obj (SupportsToBytes): Value to serialize for transport.
 
     Returns:
-        bytes: UTF-8 JSON bytes or protocol-defined binary bytes.
+        bytes: Protocol-defined binary bytes.
 
     Raises:
-        TypeError: If ``to_bytes()`` returns a non-bytes value or if ``obj``
-            is not JSON serializable.
+        TypeError: If ``obj`` does not expose ``to_bytes()`` or returns a non-bytes value.
     """
-    if isinstance(obj, SupportsToBytes):
-        raw = obj.to_bytes()
-        return raw
+    if not isinstance(obj, SupportsToBytes):
+        raise TypeError(f"Object does not implement to_bytes(): {type(obj)}")
 
-    try:
-        return json.dumps(obj).encode("utf-8")
-    except TypeError as exc:
-        raise TypeError(f"Object is not JSON serializable: {type(obj)}") from exc
+    raw = obj.to_bytes()
+    if not isinstance(raw, bytes):
+        raise TypeError("to_bytes() must return bytes")
+    return raw
 
 
 class _PeerWorker:
