@@ -25,6 +25,7 @@ from membership.results import (
     PeerUpsertResult,
 )
 from membership.status import NodeStatus
+from utils.typing import JsonObject
 
 
 class PeerTable:
@@ -339,7 +340,7 @@ class PeerTable:
             reason="gossip_state_changed" if added or updated else "unchanged",
         )
 
-    def build_gossip_state(self) -> dict[str, object]:
+    def build_gossip_state(self) -> JsonObject:
         """Build a serializable membership gossip payload."""
         with self._lock:
             peers = sorted(self._peers.values(), key=lambda peer: peer.node_id)
