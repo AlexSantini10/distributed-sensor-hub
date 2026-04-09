@@ -11,6 +11,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import random
 import threading
 import time
 
@@ -38,6 +39,8 @@ class BaseSensor:
             periodic emission while the provider is running.
         _lifecycle_lock (threading.Lock): Mutex protecting start/stop and
             handler updates.
+        latency_ms (float): Base simulated sensor latency before each emission.
+        latency_jitter_ms (float): Symmetric jitter radius applied to ``latency_ms``.
     """
 
     def __init__(
@@ -47,6 +50,8 @@ class BaseSensor:
         handler: SensorHandler | None,
         *,
         unit: str | None = None,
+        latency_ms: int | float = 0,
+        latency_jitter_ms: int | float = 0,
     ) -> None:
         """Initialize the provider contract and lifecycle state.
 
@@ -58,6 +63,8 @@ class BaseSensor:
                 generated reading.
             unit (str | None): Optional engineering unit stored in reading
                 metadata.
+            latency_ms (int | float): Base simulated latency before emission.
+            latency_jitter_ms (int | float): Symmetric latency jitter radius.
 
         Returns:
             None: This constructor initializes the provider instance.
@@ -66,6 +73,8 @@ class BaseSensor:
         self.period_ms = period_ms
         self.handler = handler
         self.unit = unit
+        self.latency_ms = max(0.0, float(latency_ms))
+        self.latency_jitter_ms = max(0.0, float(latency_jitter_ms))
 
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -83,6 +92,35 @@ class BaseSensor:
         """
         with self._lifecycle_lock:
             self.handler = handler
+
+    def set_latency_profile(
+        self,
+        *,
+        latency_ms: int | float = 0,
+        latency_jitter_ms: int | float = 0,
+    ) -> None:
+        """Set artificial latency profile applied before each sensor emission.
+
+        Args:
+            latency_ms (int | float): Base latency in milliseconds.
+            latency_jitter_ms (int | float): Symmetric jitter radius in milliseconds.
+
+        Returns:
+            None: This method updates the profile in place.
+        """
+        with self._lifecycle_lock:
+            self.latency_ms = max(0.0, float(latency_ms))
+            self.latency_jitter_ms = max(0.0, float(latency_jitter_ms))
+
+    def _sample_latency_s(self) -> float:
+        """Sample one non-negative emission latency in seconds."""
+        latency_ms = self.latency_ms
+        jitter_ms = self.latency_jitter_ms
+        if jitter_ms > 0:
+            latency_ms += random.uniform(-jitter_ms, jitter_ms)
+        if latency_ms < 0:
+            latency_ms = 0.0
+        return latency_ms / 1000.0
 
     def generate_value(self) -> JsonValue:
         """Produce the next sensor value for publication.
@@ -153,6 +191,12 @@ class BaseSensor:
         period_s = self.period_ms / 1000.0
 
         while not self._stop_event.is_set():
+            sensor_latency_s = self._sample_latency_s()
+            if sensor_latency_s > 0:
+                self._stop_event.wait(timeout=sensor_latency_s)
+                if self._stop_event.is_set():
+                    break
+
             value = self.generate_value()
             observed_at_ms = int(time.time() * 1000)
             self._emit_reading(self._build_reading(value, observed_at_ms))

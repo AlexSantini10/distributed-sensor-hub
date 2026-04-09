@@ -59,6 +59,11 @@ def test_load_config_success(monkeypatch: MonkeyPatch) -> None:
     assert config.web_api_port == 10000
     assert config.heartbeat_interval_ms == 1000
     assert config.replication_delta_maxlen == 512
+    assert config.network_delay_ms == 0.0
+    assert config.network_delay_jitter_ms == 0.0
+    assert config.network_delay_spike_prob == 0.0
+    assert config.network_delay_spike_ms == 0.0
+    assert config.network_packet_loss_prob == 0.0
     assert config.sensors == ()
 
 
@@ -102,3 +107,12 @@ def test_invalid_peer_format() -> None:
     """
     with pytest.raises(RuntimeError):
         _parse_peers("127.0.0.1")
+
+
+def test_invalid_packet_loss_probability(monkeypatch: MonkeyPatch) -> None:
+    """Assert that network probabilities above 1 are rejected."""
+    _set_base_env(monkeypatch)
+    monkeypatch.setenv("NETWORK_PACKET_LOSS_PROB", "1.2")
+
+    with pytest.raises(RuntimeError):
+        Config.from_env(dict(os.environ))

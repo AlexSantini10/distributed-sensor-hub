@@ -63,8 +63,14 @@ Use [.env.example](.env.example) as the base configuration.
 | `LOG_LEVEL` | Logging verbosity | `INFO` |
 | `LOG_FILE` | Node log path | `/app/logs/node-1.log` |
 | `SENSORS` | Number of sensors configured for the node | `4` |
+| `NETWORK_DELAY_MS` | Base artificial outbound network delay (ms) | `35` |
+| `NETWORK_DELAY_JITTER_MS` | Random delay jitter radius (ms) | `25` |
+| `NETWORK_DELAY_SPIKE_PROB` | Probability of delay spike per message (`0..1`) | `0.08` |
+| `NETWORK_DELAY_SPIKE_MS` | Extra delay when a spike occurs (ms) | `220` |
+| `NETWORK_PACKET_LOSS_PROB` | Probability of dropping outbound message (`0..1`) | `0.01` |
 
 See [.env.example](.env.example) for the full sensor-specific variables.
+Each sensor can also define `SENSOR_<i>_LATENCY_MS` and `SENSOR_<i>_LATENCY_JITTER_MS`.
 
 ## Running the project
 
@@ -160,6 +166,22 @@ Notes:
 - `--service` is the Compose service name (`node1`, `node2`, ...), not `container_name`.
 - Use `--cycles 0` for an infinite loop.
 - Add `--initial-delay-seconds N` to wait before the first stop.
+
+### Simulating latency and unstable networks
+
+For phi-accrual and resilience tests, you can combine sensor and network simulation:
+
+- Sensor latency: `SENSOR_<i>_LATENCY_MS`, `SENSOR_<i>_LATENCY_JITTER_MS`
+- Network delay/loss: `NETWORK_DELAY_MS`, `NETWORK_DELAY_JITTER_MS`, `NETWORK_DELAY_SPIKE_PROB`, `NETWORK_DELAY_SPIKE_MS`, `NETWORK_PACKET_LOSS_PROB`
+
+Example:
+
+```bash
+export NETWORK_DELAY_MS=40 NETWORK_DELAY_JITTER_MS=30
+export NETWORK_DELAY_SPIKE_PROB=0.1 NETWORK_DELAY_SPIKE_MS=250
+export NETWORK_PACKET_LOSS_PROB=0.02
+export SENSOR_0_LATENCY_MS=60 SENSOR_0_LATENCY_JITTER_MS=40
+```
 
 Quick test flow:
 

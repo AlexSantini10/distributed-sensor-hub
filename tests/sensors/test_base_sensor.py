@@ -64,3 +64,17 @@ def test_base_sensor_start_stop() -> None:
 
     assert len(results) >= 1
     assert results[0][0] == "dummy"
+
+
+@pytest.mark.sensors
+def test_base_sensor_latency_profile_sampling(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Assert sampled latency applies jitter and never becomes negative."""
+
+    sensor = BaseSensor("base", 100, handler=None)
+    sensor.set_latency_profile(latency_ms=10, latency_jitter_ms=50)
+
+    monkeypatch.setattr("sensors.providers.base_sensor.random.uniform", lambda a, b: -50)
+    assert sensor._sample_latency_s() == 0.0
+
+    monkeypatch.setattr("sensors.providers.base_sensor.random.uniform", lambda a, b: 20)
+    assert sensor._sample_latency_s() == 0.03

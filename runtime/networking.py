@@ -260,7 +260,13 @@ def setup_node_networking(
     Returns:
         NetworkingContext: Fully assembled networking objects for the runtime.
     """
-    client = TcpClient()
+    client = TcpClient(
+        network_delay_s=config.network_delay_ms / 1000.0,
+        network_delay_jitter_s=config.network_delay_jitter_ms / 1000.0,
+        network_delay_spike_prob=config.network_delay_spike_prob,
+        network_delay_spike_s=config.network_delay_spike_ms / 1000.0,
+        network_packet_loss_prob=config.network_packet_loss_prob,
+    )
     registry = ClientPeerRegistry(client=client)
 
     def on_peer_discovered(peer: MembershipPeer) -> None:

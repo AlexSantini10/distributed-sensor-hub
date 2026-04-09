@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from sensors.contracts import SensorHandler, SensorProvider
+from sensors.providers.base_sensor import BaseSensor
 from sensors.providers.boolean_sensor import BooleanSensor
 from sensors.providers.categorical_sensor import CategoricalSensor
 from sensors.providers.incremental_sensor import IncrementalSensor
@@ -89,7 +90,13 @@ class SensorManager:
             raise RuntimeError("Sensors already loaded")
 
         for sensor_config in sensor_configs:
-            self.register(self._build_sensor(sensor_config))
+            provider = self._build_sensor(sensor_config)
+            if isinstance(provider, BaseSensor):
+                provider.set_latency_profile(
+                    latency_ms=sensor_config.latency_ms,
+                    latency_jitter_ms=sensor_config.latency_jitter_ms,
+                )
+            self.register(provider)
 
     def register(self, provider: SensorProvider) -> None:
         """Register one provider instance with the shared ingestion handler.

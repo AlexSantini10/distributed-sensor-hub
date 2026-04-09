@@ -29,6 +29,11 @@ class EnvKey(StrEnum):
     WEB_API_PORT = "WEB_API_PORT"
     HEARTBEAT_INTERVAL_MS = "HEARTBEAT_INTERVAL_MS"
     REPLICATION_DELTA_MAXLEN = "REPLICATION_DELTA_MAXLEN"
+    NETWORK_DELAY_MS = "NETWORK_DELAY_MS"
+    NETWORK_DELAY_JITTER_MS = "NETWORK_DELAY_JITTER_MS"
+    NETWORK_DELAY_SPIKE_PROB = "NETWORK_DELAY_SPIKE_PROB"
+    NETWORK_DELAY_SPIKE_MS = "NETWORK_DELAY_SPIKE_MS"
+    NETWORK_PACKET_LOSS_PROB = "NETWORK_PACKET_LOSS_PROB"
     SENSORS = "SENSORS"
 
 
@@ -53,6 +58,8 @@ class SensorEnvSuffix(StrEnum):
     AMPLITUDE = "AMPLITUDE"
     FREQUENCY = "FREQUENCY"
     BASE = "BASE"
+    LATENCY_MS = "LATENCY_MS"
+    LATENCY_JITTER_MS = "LATENCY_JITTER_MS"
 
 
 class LogLevel(StrEnum):
@@ -102,6 +109,8 @@ class SensorConfig:
         amplitude (float | None): Wave amplitude for ``WAVE`` sensors.
         frequency (float | None): Wave frequency for ``WAVE`` sensors.
         base (float | None): Baseline value for ``NOISE`` sensors.
+        latency_ms (float): Optional base sensor-emission latency in milliseconds.
+        latency_jitter_ms (float): Optional jitter radius applied to ``latency_ms``.
     """
 
     index: int
@@ -123,6 +132,8 @@ class SensorConfig:
     amplitude: float | None = None
     frequency: float | None = None
     base: float | None = None
+    latency_ms: float = 0.0
+    latency_jitter_ms: float = 0.0
 
     @property
     def sensor_id(self) -> str:
@@ -148,6 +159,11 @@ class Config:
         clear_log (bool): Whether startup should truncate the configured log file.
         web_api_port (int): TCP port exposed by the HTTP monitoring API.
         heartbeat_interval_ms (int): Heartbeat period used for periodic liveness probes.
+        network_delay_ms (float): Artificial outbound network delay baseline in milliseconds.
+        network_delay_jitter_ms (float): Delay jitter radius in milliseconds.
+        network_delay_spike_prob (float): Probability of an additional delay spike per message.
+        network_delay_spike_ms (float): Extra delay applied when a spike occurs.
+        network_packet_loss_prob (float): Probability of dropping one outbound message.
         sensors (tuple[SensorConfig, ...]): Local sensors declared for this node.
     """
 
@@ -161,6 +177,11 @@ class Config:
     web_api_port: int
     heartbeat_interval_ms: int
     replication_delta_maxlen: int
+    network_delay_ms: float
+    network_delay_jitter_ms: float
+    network_delay_spike_prob: float
+    network_delay_spike_ms: float
+    network_packet_loss_prob: float
     sensors: tuple[SensorConfig, ...]
 
     @classmethod
@@ -217,6 +238,26 @@ class Config:
             _get_optional_env(env, EnvKey.REPLICATION_DELTA_MAXLEN, default="512"),
             EnvKey.REPLICATION_DELTA_MAXLEN.value,
         )
+        network_delay_ms = _parse_non_negative_float(
+            _get_optional_env(env, EnvKey.NETWORK_DELAY_MS, default="0"),
+            EnvKey.NETWORK_DELAY_MS.value,
+        )
+        network_delay_jitter_ms = _parse_non_negative_float(
+            _get_optional_env(env, EnvKey.NETWORK_DELAY_JITTER_MS, default="0"),
+            EnvKey.NETWORK_DELAY_JITTER_MS.value,
+        )
+        network_delay_spike_prob = _parse_probability(
+            _get_optional_env(env, EnvKey.NETWORK_DELAY_SPIKE_PROB, default="0"),
+            EnvKey.NETWORK_DELAY_SPIKE_PROB.value,
+        )
+        network_delay_spike_ms = _parse_non_negative_float(
+            _get_optional_env(env, EnvKey.NETWORK_DELAY_SPIKE_MS, default="0"),
+            EnvKey.NETWORK_DELAY_SPIKE_MS.value,
+        )
+        network_packet_loss_prob = _parse_probability(
+            _get_optional_env(env, EnvKey.NETWORK_PACKET_LOSS_PROB, default="0"),
+            EnvKey.NETWORK_PACKET_LOSS_PROB.value,
+        )
         sensors = tuple(_parse_sensors(env))
 
         return cls(
@@ -230,6 +271,11 @@ class Config:
             web_api_port=web_api_port,
             heartbeat_interval_ms=heartbeat_interval_ms,
             replication_delta_maxlen=replication_delta_maxlen,
+            network_delay_ms=network_delay_ms,
+            network_delay_jitter_ms=network_delay_jitter_ms,
+            network_delay_spike_prob=network_delay_spike_prob,
+            network_delay_spike_ms=network_delay_spike_ms,
+            network_packet_loss_prob=network_packet_loss_prob,
             sensors=sensors,
         )
 
@@ -339,6 +385,25 @@ def _parse_positive_int(raw: str, env_name: str) -> int:
     return value
 
 
+def _parse_non_negative_float(raw: str, env_name: str) -> float:
+    """Parse a non-negative float from configuration text."""
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{env_name} must be a float, got: {raw}") from exc
+    if value < 0:
+        raise RuntimeError(f"{env_name} must be >= 0, got: {value}")
+    return value
+
+
+def _parse_probability(raw: str, env_name: str) -> float:
+    """Parse a probability value in the closed interval [0, 1]."""
+    value = _parse_non_negative_float(raw, env_name)
+    if value > 1:
+        raise RuntimeError(f"{env_name} must be <= 1, got: {value}")
+    return value
+
+
 def _parse_peers(raw: str) -> list[tuple[str, int]]:
     """Parse bootstrap peers from a comma-separated ``host:port`` list.
 
@@ -429,6 +494,24 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
         default=f"sensor_{index}",
     )
     unit = _get_sensor_value(env, index, SensorEnvSuffix.UNIT)
+    latency_ms = _parse_non_negative_float(
+        _get_sensor_value_or_default(
+            env,
+            index,
+            SensorEnvSuffix.LATENCY_MS,
+            default="0",
+        ),
+        _sensor_key(index, SensorEnvSuffix.LATENCY_MS),
+    )
+    latency_jitter_ms = _parse_non_negative_float(
+        _get_sensor_value_or_default(
+            env,
+            index,
+            SensorEnvSuffix.LATENCY_JITTER_MS,
+            default="0",
+        ),
+        _sensor_key(index, SensorEnvSuffix.LATENCY_JITTER_MS),
+    )
 
     if sensor_type == SensorType.NUMERIC:
         min_value = _require_sensor_float(env, index, SensorEnvSuffix.MIN)
@@ -439,6 +522,8 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             name=name,
             period_ms=period_ms,
             unit=unit,
+            latency_ms=latency_ms,
+            latency_jitter_ms=latency_jitter_ms,
             min_value=min_value,
             max_value=max_value,
         )
@@ -450,6 +535,8 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             name=name,
             period_ms=period_ms,
             unit=unit,
+            latency_ms=latency_ms,
+            latency_jitter_ms=latency_jitter_ms,
             p_true=float(
                 _get_sensor_value_or_default(
                     env,
@@ -482,6 +569,8 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             name=name,
             period_ms=period_ms,
             unit=unit,
+            latency_ms=latency_ms,
+            latency_jitter_ms=latency_jitter_ms,
             values=values,
         )
 
@@ -492,6 +581,8 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             name=name,
             period_ms=period_ms,
             unit=unit,
+            latency_ms=latency_ms,
+            latency_jitter_ms=latency_jitter_ms,
             start=float(
                 _get_sensor_value_or_default(
                     env,
@@ -517,6 +608,8 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             name=name,
             period_ms=period_ms,
             unit=unit,
+            latency_ms=latency_ms,
+            latency_jitter_ms=latency_jitter_ms,
             start=float(
                 _get_sensor_value_or_default(
                     env,
@@ -550,6 +643,8 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             name=name,
             period_ms=period_ms,
             unit=unit,
+            latency_ms=latency_ms,
+            latency_jitter_ms=latency_jitter_ms,
             baseline=float(
                 _get_sensor_value_or_default(
                     env,
@@ -583,6 +678,8 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             name=name,
             period_ms=period_ms,
             unit=unit,
+            latency_ms=latency_ms,
+            latency_jitter_ms=latency_jitter_ms,
             amplitude=float(
                 _get_sensor_value_or_default(
                     env,
@@ -607,6 +704,8 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
         name=name,
         period_ms=period_ms,
         unit=unit,
+        latency_ms=latency_ms,
+        latency_jitter_ms=latency_jitter_ms,
         base=float(
             _get_sensor_value_or_default(
                 env,

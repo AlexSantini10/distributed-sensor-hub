@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import queue
+import random
 import selectors
 import socket
 import struct
@@ -51,6 +52,7 @@ class TcpClient:
         _stop_event (threading.Event): Shared shutdown signal for all peer workers.
         _lock (threading.Lock): Synchronizes access to the worker registry.
         _workers (dict[str, _PeerWorker]): Active outbound workers keyed by peer node ID.
+        _network_simulation (_NetworkSimulation): Optional outbound delay/loss profile.
     """
 
     def __init__(
@@ -63,6 +65,11 @@ class TcpClient:
         backoff_mode: str = "exponential",
         idle_check_interval_s: float = 1.0,
         tcp_keepalive: bool = True,
+        network_delay_s: float = 0.0,
+        network_delay_jitter_s: float = 0.0,
+        network_delay_spike_prob: float = 0.0,
+        network_delay_spike_s: float = 0.0,
+        network_packet_loss_prob: float = 0.0,
     ) -> None:
         """Initialize the outbound transport manager.
 
@@ -75,6 +82,11 @@ class TcpClient:
             backoff_mode (str): Reconnect growth policy, typically exponential.
             idle_check_interval_s (float): Delay between idle-side liveness probes.
             tcp_keepalive (bool): Enables socket keepalive when supported.
+            network_delay_s (float): Base artificial outbound delay for each message.
+            network_delay_jitter_s (float): Symmetric jitter applied to base delay.
+            network_delay_spike_prob (float): Probability of an additional delay spike.
+            network_delay_spike_s (float): Extra delay applied when a spike occurs.
+            network_packet_loss_prob (float): Probability of dropping one outbound message.
 
         Returns:
             None: This initializer configures the outbound transport manager.
@@ -89,6 +101,13 @@ class TcpClient:
 
         self._idle_check_interval_s = idle_check_interval_s
         self._tcp_keepalive = tcp_keepalive
+        self._network_simulation = _NetworkSimulation(
+            base_delay_s=network_delay_s,
+            delay_jitter_s=network_delay_jitter_s,
+            delay_spike_prob=network_delay_spike_prob,
+            delay_spike_s=network_delay_spike_s,
+            packet_loss_prob=network_packet_loss_prob,
+        )
 
         self._stop_event = threading.Event()
 
@@ -125,6 +144,7 @@ class TcpClient:
                 backoff_mode=self._backoff_mode,
                 idle_check_interval_s=self._idle_check_interval_s,
                 tcp_keepalive=self._tcp_keepalive,
+                network_simulation=self._network_simulation,
             )
             self._workers[peer.node_id] = worker
             worker.start()
@@ -254,6 +274,7 @@ class _PeerWorker:
         _sock (socket.socket | None): Active socket or None when disconnected.
         _thread (threading.Thread): Background thread running the worker loop.
         _local_stop (threading.Event): Per-worker shutdown signal.
+        _network_simulation (_NetworkSimulation): Outbound delay/loss profile.
     """
 
     def __init__(
@@ -268,6 +289,7 @@ class _PeerWorker:
         backoff_mode: str,
         idle_check_interval_s: float,
         tcp_keepalive: bool,
+        network_simulation: "_NetworkSimulation",
     ):
         """Initialize a worker for a single remote peer.
 
@@ -282,6 +304,7 @@ class _PeerWorker:
             backoff_mode (str): Backoff policy name.
             idle_check_interval_s (float): Delay between idle liveness checks.
             tcp_keepalive (bool): Enables keepalive on created sockets.
+            network_simulation (_NetworkSimulation): Outbound delay/loss profile.
 
         Returns:
             None: This initializer configures the peer worker state.
@@ -298,6 +321,7 @@ class _PeerWorker:
         self._backoff_mode = backoff_mode
         self._idle_check_interval_s = idle_check_interval_s
         self._tcp_keepalive = tcp_keepalive
+        self._network_simulation = network_simulation
 
         self._queue: queue.Queue[bytes] = queue.Queue()
         self._sock_lock = threading.Lock()
@@ -459,6 +483,15 @@ class _PeerWorker:
 
         frame = struct.pack(">I", len(payload)) + payload
 
+        if self._network_simulation.should_drop_message():
+            return True
+
+        self._sleep_interruptible(
+            self._network_simulation.sample_delay_s(),
+        )
+        if self._should_stop():
+            return False
+
         sock = self._get_socket()
         if sock is None:
             return False
@@ -567,3 +600,31 @@ class _PeerWorker:
         if nxt > self._backoff_max_s:
             nxt = self._backoff_max_s
         return nxt
+
+
+@dataclass(frozen=True)
+class _NetworkSimulation:
+    """Represent outbound artificial delay and packet-loss parameters."""
+
+    base_delay_s: float
+    delay_jitter_s: float
+    delay_spike_prob: float
+    delay_spike_s: float
+    packet_loss_prob: float
+
+    def sample_delay_s(self) -> float:
+        """Sample one non-negative outbound delay in seconds."""
+        delay_s = self.base_delay_s
+        if self.delay_jitter_s > 0:
+            delay_s += random.uniform(-self.delay_jitter_s, self.delay_jitter_s)
+        if self.delay_spike_s > 0 and random.random() < self.delay_spike_prob:
+            delay_s += self.delay_spike_s
+        if delay_s < 0:
+            return 0.0
+        return delay_s
+
+    def should_drop_message(self) -> bool:
+        """Return whether the current outbound message should be dropped."""
+        if self.packet_loss_prob <= 0:
+            return False
+        return random.random() < self.packet_loss_prob
