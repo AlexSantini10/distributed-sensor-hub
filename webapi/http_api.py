@@ -11,7 +11,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from protocol.contracts import HttpContentType, TextEncoding
-from utils.typing import LoggerLike, SnapshotProvider
+from utils.typing import LoggerLike, MembershipSnapshotProvider, SnapshotProvider
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -25,7 +25,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     _state_provider: SnapshotProvider
     _updates_provider: SnapshotProvider
-    _membership_provider: SnapshotProvider | None
+    _membership_provider: MembershipSnapshotProvider | None
     _log: LoggerLike | None
 
     def _send_cors_headers(self) -> None:
@@ -162,7 +162,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 def build_request_handler(
     state_provider: SnapshotProvider,
     updates_provider: SnapshotProvider,
-    membership_provider: SnapshotProvider | None,
+    membership_provider: MembershipSnapshotProvider | None,
     log: LoggerLike | None,
 ) -> type[RequestHandler]:
     """Create a concrete request-handler class bound to snapshot providers.
@@ -205,7 +205,7 @@ class WebAPIServer(threading.Thread):
         port: int,
         state_provider: SnapshotProvider,
         updates_provider: SnapshotProvider,
-        membership_provider: SnapshotProvider | None,
+        membership_provider: MembershipSnapshotProvider | None,
         log: LoggerLike | None,
     ) -> None:
         """Initialize the threaded HTTP server wrapper.

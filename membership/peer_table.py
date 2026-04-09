@@ -25,7 +25,7 @@ from membership.results import (
     PeerUpsertResult,
 )
 from membership.status import NodeStatus
-from utils.typing import JsonObject
+from utils.typing import JsonObject, MembershipSnapshotDict, MembershipSnapshotPeerDict
 
 
 class PeerTable:
@@ -393,11 +393,11 @@ class PeerTable:
         with self._lock:
             return tuple(self._clone_peer(peer) for peer in self._peers.values())
 
-    def membership_snapshot(self) -> JsonObject:
+    def membership_snapshot(self) -> MembershipSnapshotDict:
         """Return a thread-safe, read-only Phi-driven membership snapshot."""
         with self._lock:
             peers = sorted(self._peers.values(), key=lambda peer: peer.node_id)
-            snapshot_peers: list[JsonObject] = []
+            snapshot_peers: list[MembershipSnapshotPeerDict] = []
             window_size = self._failure_detector.max_intervals_per_peer
             for peer in peers:
                 sample_count = len(self._failure_detector.get_intervals(peer.node_id))

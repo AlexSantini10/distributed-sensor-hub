@@ -95,6 +95,27 @@ class SensorUpdatePayload(TypedDict):
     meta: SensorMetaDict
 
 
+class MembershipSnapshotPeerDict(TypedDict):
+    """Represent one peer row exposed by the membership snapshot endpoint."""
+
+    peer_id: str
+    host: str
+    port: int
+    status: str
+    phi: float
+    last_heartbeat_ts_ms: int
+    sample_count: int
+    sample_window_size: int
+    status_transition_ts_ms: int
+
+
+class MembershipSnapshotDict(TypedDict):
+    """Represent the read-only Phi-based membership snapshot payload."""
+
+    local_node_id: str
+    peers: list[MembershipSnapshotPeerDict]
+
+
 class StateWorkerLike(Protocol):
     """Define the subset of worker behavior used by runtime collaborators."""
 
@@ -200,6 +221,18 @@ class SnapshotProvider(Protocol):
 
         Returns:
             NodeSnapshot: Snapshot payload returned by the HTTP API.
+        """
+        ...
+
+
+class MembershipSnapshotProvider(Protocol):
+    """Define the call signature used by the HTTP membership endpoint."""
+
+    def __call__(self) -> MembershipSnapshotDict:
+        """Produce a membership snapshot payload.
+
+        Returns:
+            MembershipSnapshotDict: Phi-based membership snapshot.
         """
         ...
 

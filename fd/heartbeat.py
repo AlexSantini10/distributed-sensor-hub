@@ -9,10 +9,10 @@ Responsibilities:
 from __future__ import annotations
 
 from dataclasses import dataclass
-import math
 import threading
 import time
 
+from fd.phi_estimator import ExponentialPhiEstimator, PhiEstimator
 from membership.status import NodeStatus
 
 
@@ -47,6 +47,7 @@ class HeartbeatMonitor:
         threshold_suspect: float = 3.0,
         threshold_dead: float = 8.0,
         initial_interval_s: float = 1.0,
+        phi_estimator: PhiEstimator | None = None,
     ) -> None:
         """Initialize the monitor with bounded history and phi thresholds."""
         if threshold_suspect < 0.0:
@@ -63,6 +64,9 @@ class HeartbeatMonitor:
         self._threshold_suspect = threshold_suspect
         self._threshold_dead = threshold_dead
         self._initial_interval_s = initial_interval_s
+        self._phi_estimator: PhiEstimator = (
+            ExponentialPhiEstimator() if phi_estimator is None else phi_estimator
+        )
         self._last_arrival_s: dict[str, float] = {}
         self._intervals_s: dict[str, list[float]] = {}
 
@@ -191,13 +195,10 @@ class HeartbeatMonitor:
 
         elapsed = max(0.0, observed_at_s - last_arrival)
         intervals = self._intervals_s.get(peer_id)
-        if intervals:
-            mean_interval_s = max(0.001, sum(intervals) / len(intervals))
-        else:
-            mean_interval_s = self._initial_interval_s
-
-        lambda_rate = 1.0 / mean_interval_s
-        survival = math.exp(-lambda_rate * elapsed)
-        bounded_survival = max(survival, 1e-16)
-        return -math.log10(bounded_survival)
+        intervals_snapshot = tuple(intervals) if intervals else ()
+        return self._phi_estimator.compute_phi(
+            elapsed_s=elapsed,
+            intervals_s=intervals_snapshot,
+            initial_interval_s=self._initial_interval_s,
+        )
 
