@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 
 from membership.liveness import NodeLiveness
@@ -159,3 +160,117 @@ def test_gossip_state_converges_under_delay_after_partition() -> None:
     assert converged is not None
     assert converged.status is NodeStatus.DEAD
     assert converged.status_ts_ms == table_a_current.status_ts_ms + 20
+
+
+def test_gossip_state_handler_merges_only_valid_entries_in_mixed_payload() -> None:
+    """Assert mixed gossip payloads merge valid peers and skip malformed entries."""
+    peer_table = PeerTable(self_node_id="node-a")
+    peer_table.upsert_peer(node_id="node-b", host="10.0.0.2", port=9002)
+    current = peer_table.get_peer("node-b")
+    assert current is not None
+
+    discovered: list[str] = []
+    handler = make_gossip_state_handler(
+        peer_table=peer_table,
+        self_node_id="node-a",
+        on_peer_discovered=lambda peer: discovered.append(peer.node_id),
+    )
+    handler(
+        build_gossip_state(
+            sender_id="node-x",
+            state={
+                "membership": {
+                    "peers": [
+                        {
+                            "node_id": "node-b",
+                            "host": "10.0.0.22",
+                            "port": 9022,
+                            "status": "dead",
+                            "status_ts_ms": current.status_ts_ms + 10,
+                        },
+                        {
+                            "node_id": "node-c",
+                            "host": "10.0.0.3",
+                            "port": 9003,
+                            "status": "alive",
+                            "status_ts_ms": 5000,
+                        },
+                        {
+                            "node_id": "node-a",
+                            "host": "10.0.0.1",
+                            "port": 9001,
+                            "status": "alive",
+                            "status_ts_ms": 5001,
+                        },
+                        {
+                            "node_id": "node-d",
+                            "host": "",
+                            "port": 9004,
+                            "status": "alive",
+                            "status_ts_ms": 5002,
+                        },
+                        {
+                            "node_id": "node-e",
+                            "host": "10.0.0.5",
+                            "port": "9005",
+                            "status": "alive",
+                            "status_ts_ms": 5003,
+                        },
+                        {
+                            "node_id": "node-f",
+                            "host": "10.0.0.6",
+                            "port": 9006,
+                            "status": "zombie",
+                            "status_ts_ms": 5004,
+                        },
+                        "not-an-object",
+                    ]
+                }
+            },
+        )
+    )
+
+    updated_b = peer_table.get_peer("node-b")
+    assert updated_b is not None
+    assert updated_b.host == "10.0.0.22"
+    assert updated_b.port == 9022
+    assert updated_b.status is NodeStatus.DEAD
+    assert updated_b.status_ts_ms == current.status_ts_ms + 10
+
+    assert peer_table.get_peer("node-c") is not None
+    assert discovered == ["node-c"]
+    assert peer_table.get_peer("node-a") is None
+    assert peer_table.get_peer("node-d") is None
+    assert peer_table.get_peer("node-e") is None
+    assert peer_table.get_peer("node-f") is None
+
+
+def test_gossip_state_handler_survives_discovery_callback_failure(caplog) -> None:
+    """Assert discovery callback failures are logged and do not abort merge."""
+    peer_table = PeerTable(self_node_id="node-a")
+
+    def failing_callback(peer: Peer) -> None:
+        raise RuntimeError(f"cannot handle {peer.node_id}")
+
+    handler = make_gossip_state_handler(
+        peer_table=peer_table,
+        self_node_id="node-a",
+        on_peer_discovered=failing_callback,
+    )
+
+    with caplog.at_level(logging.WARNING, logger="gossip.handlers"):
+        handler(
+            build_gossip_state(
+                sender_id="node-x",
+                state=_membership_state(
+                    node_id="node-c",
+                    host="10.0.0.3",
+                    port=9003,
+                    status="alive",
+                    status_ts_ms=5000,
+                ),
+            )
+        )
+
+    assert peer_table.get_peer("node-c") is not None
+    assert "on_peer_discovered failed for peer node-c 10.0.0.3:9003" in caplog.text

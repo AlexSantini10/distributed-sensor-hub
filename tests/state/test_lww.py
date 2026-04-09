@@ -154,6 +154,27 @@ def test_apply_update_uses_local_origin() -> None:
     assert state["A:s2"]["origin"] == "A"
 
 
+def test_merge_update_rejects_empty_sensor_or_origin() -> None:
+    """Assert merge_update rejects invalid identifiers and keeps state unchanged."""
+    w = make_worker(node_id="A")
+
+    assert w.merge_update("", 1, 1000, "A") is False
+    assert w.merge_update("s1", 1, 1000, "") is False
+    assert w.get_state_snapshot()["A"] == {}
+
+
+def test_merge_state_ignores_non_mapping_payload() -> None:
+    """Assert merge_state safely ignores non-dict payloads."""
+    w = make_worker(node_id="A")
+    w.merge_update("s1", 10, 1000, "A")
+
+    merged = w.merge_state(remote_full_state="not-a-dict")  # type: ignore[arg-type]
+
+    assert merged == 0
+    state = w.get_state_snapshot()["A"]
+    assert state["A:s1"]["value"] == 10
+
+
 def test_merge_state_full_sync_flat_shape() -> None:
     """Assert bulk merge supports flat ``{sensor_id: {value, timestamp}}`` shape."""
     w = make_worker(node_id="A")
