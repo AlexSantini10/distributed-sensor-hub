@@ -58,6 +58,9 @@ def test_load_config_success(monkeypatch: MonkeyPatch) -> None:
     assert config.log_file == "logs/test.log"
     assert config.web_api_port == 10000
     assert config.heartbeat_interval_ms == 1000
+    assert config.phi_threshold_suspect == 3.0
+    assert config.phi_threshold_dead == 8.0
+    assert config.phi_initial_interval_s == 1.0
     assert config.replication_delta_maxlen == 512
     assert config.network_delay_ms == 0.0
     assert config.network_delay_jitter_ms == 0.0
@@ -113,6 +116,16 @@ def test_invalid_packet_loss_probability(monkeypatch: MonkeyPatch) -> None:
     """Assert that network probabilities above 1 are rejected."""
     _set_base_env(monkeypatch)
     monkeypatch.setenv("NETWORK_PACKET_LOSS_PROB", "1.2")
+
+    with pytest.raises(RuntimeError):
+        Config.from_env(dict(os.environ))
+
+
+def test_invalid_phi_threshold_order(monkeypatch: MonkeyPatch) -> None:
+    """Assert dead threshold cannot be smaller than suspect threshold."""
+    _set_base_env(monkeypatch)
+    monkeypatch.setenv("PHI_THRESHOLD_SUSPECT", "4.0")
+    monkeypatch.setenv("PHI_THRESHOLD_DEAD", "3.0")
 
     with pytest.raises(RuntimeError):
         Config.from_env(dict(os.environ))

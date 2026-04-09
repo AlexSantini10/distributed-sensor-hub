@@ -309,6 +309,9 @@ def setup_node_networking(
         send_function=client.send_json,
         state_worker=state_worker,
         on_peer_discovered=on_peer_discovered,
+        phi_threshold_suspect=config.phi_threshold_suspect,
+        phi_threshold_dead=config.phi_threshold_dead,
+        phi_initial_interval_s=config.phi_initial_interval_s,
     )
 
     server = tcp_server_cls(

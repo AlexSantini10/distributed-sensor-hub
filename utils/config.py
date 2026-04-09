@@ -28,6 +28,9 @@ class EnvKey(StrEnum):
     CLEAR_LOG = "CLEAR_LOG"
     WEB_API_PORT = "WEB_API_PORT"
     HEARTBEAT_INTERVAL_MS = "HEARTBEAT_INTERVAL_MS"
+    PHI_THRESHOLD_SUSPECT = "PHI_THRESHOLD_SUSPECT"
+    PHI_THRESHOLD_DEAD = "PHI_THRESHOLD_DEAD"
+    PHI_INITIAL_INTERVAL_S = "PHI_INITIAL_INTERVAL_S"
     REPLICATION_DELTA_MAXLEN = "REPLICATION_DELTA_MAXLEN"
     NETWORK_DELAY_MS = "NETWORK_DELAY_MS"
     NETWORK_DELAY_JITTER_MS = "NETWORK_DELAY_JITTER_MS"
@@ -176,6 +179,9 @@ class Config:
     clear_log: bool
     web_api_port: int
     heartbeat_interval_ms: int
+    phi_threshold_suspect: float
+    phi_threshold_dead: float
+    phi_initial_interval_s: float
     replication_delta_maxlen: int
     network_delay_ms: float
     network_delay_jitter_ms: float
@@ -234,6 +240,23 @@ class Config:
             _get_optional_env(env, EnvKey.HEARTBEAT_INTERVAL_MS, default="1000"),
             EnvKey.HEARTBEAT_INTERVAL_MS.value,
         )
+        phi_threshold_suspect = _parse_positive_float(
+            _get_optional_env(env, EnvKey.PHI_THRESHOLD_SUSPECT, default="3.0"),
+            EnvKey.PHI_THRESHOLD_SUSPECT.value,
+        )
+        phi_threshold_dead = _parse_positive_float(
+            _get_optional_env(env, EnvKey.PHI_THRESHOLD_DEAD, default="8.0"),
+            EnvKey.PHI_THRESHOLD_DEAD.value,
+        )
+        if phi_threshold_dead < phi_threshold_suspect:
+            raise RuntimeError(
+                "PHI_THRESHOLD_DEAD must be >= PHI_THRESHOLD_SUSPECT "
+                f"(got dead={phi_threshold_dead}, suspect={phi_threshold_suspect})"
+            )
+        phi_initial_interval_s = _parse_positive_float(
+            _get_optional_env(env, EnvKey.PHI_INITIAL_INTERVAL_S, default="1.0"),
+            EnvKey.PHI_INITIAL_INTERVAL_S.value,
+        )
         replication_delta_maxlen = _parse_positive_int(
             _get_optional_env(env, EnvKey.REPLICATION_DELTA_MAXLEN, default="512"),
             EnvKey.REPLICATION_DELTA_MAXLEN.value,
@@ -270,6 +293,9 @@ class Config:
             clear_log=clear_log,
             web_api_port=web_api_port,
             heartbeat_interval_ms=heartbeat_interval_ms,
+            phi_threshold_suspect=phi_threshold_suspect,
+            phi_threshold_dead=phi_threshold_dead,
+            phi_initial_interval_s=phi_initial_interval_s,
             replication_delta_maxlen=replication_delta_maxlen,
             network_delay_ms=network_delay_ms,
             network_delay_jitter_ms=network_delay_jitter_ms,
@@ -380,6 +406,17 @@ def _parse_positive_int(raw: str, env_name: str) -> int:
         value = int(raw)
     except ValueError as exc:
         raise RuntimeError(f"{env_name} must be an integer, got: {raw}") from exc
+    if value <= 0:
+        raise RuntimeError(f"{env_name} must be > 0, got: {value}")
+    return value
+
+
+def _parse_positive_float(raw: str, env_name: str) -> float:
+    """Parse a strictly positive float from configuration text."""
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{env_name} must be a float, got: {raw}") from exc
     if value <= 0:
         raise RuntimeError(f"{env_name} must be > 0, got: {value}")
     return value

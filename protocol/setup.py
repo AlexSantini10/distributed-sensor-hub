@@ -25,6 +25,9 @@ def setup_protocol(
     send_function: SenderLike,
     state_worker: StateWorkerLike | None = None,
     on_peer_discovered: OnPeerDiscovered | None = None,
+    phi_threshold_suspect: float = 3.0,
+    phi_threshold_dead: float = 8.0,
+    phi_initial_interval_s: float = 1.0,
 ) -> tuple[MessageDispatcher, PeerTable]:
     """Build the protocol dispatcher and register message handlers.
 
@@ -46,7 +49,12 @@ def setup_protocol(
         tuple[MessageDispatcher, PeerTable]: Configured dispatcher and peer table.
     """
     dispatcher = MessageDispatcher()
-    peer_table = PeerTable(self_node_id=self_node_id)
+    peer_table = PeerTable(
+        self_node_id=self_node_id,
+        phi_threshold_suspect=phi_threshold_suspect,
+        phi_threshold_dead=phi_threshold_dead,
+        phi_initial_interval_s=phi_initial_interval_s,
+    )
 
     join_handler, peer_list_handler = make_membership_handlers(
         peer_table=peer_table,

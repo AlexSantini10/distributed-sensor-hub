@@ -33,13 +33,16 @@ class ExponentialPhiEstimator:
     ) -> float:
         """Return ``-log10(P(T > t))`` under an exponential inter-arrival model."""
         elapsed = max(0.0, elapsed_s)
+        # Keep the expected interval anchored to the configured baseline so a few
+        # very short back-to-back arrivals do not make phi overly aggressive.
+        baseline_interval_s = max(0.001, initial_interval_s)
         if intervals_s:
-            mean_interval_s = max(0.001, sum(intervals_s) / len(intervals_s))
+            observed_mean_s = sum(intervals_s) / len(intervals_s)
+            mean_interval_s = max(baseline_interval_s, observed_mean_s)
         else:
-            mean_interval_s = max(0.001, initial_interval_s)
+            mean_interval_s = baseline_interval_s
 
         lambda_rate = 1.0 / mean_interval_s
         survival = math.exp(-lambda_rate * elapsed)
         bounded_survival = max(survival, 1e-16)
         return -math.log10(bounded_survival)
-

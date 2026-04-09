@@ -441,8 +441,8 @@ def test_membership_snapshot_reflects_suspected_dead_then_alive_recovery() -> No
     assert suspected["status"] == "suspected"
 
     table.evaluate_failure_detector(
-        observed_at_wall_s=base + 3.5,
-        observed_at_monotonic_s=13.5,
+        observed_at_wall_s=base + 6.0,
+        observed_at_monotonic_s=16.0,
     )
     dead = table.membership_snapshot()["peers"][0]
     assert dead["status"] == "dead"

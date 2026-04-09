@@ -62,6 +62,9 @@ Use [.env.example](.env.example) as the base configuration.
 | `WEB_API_PORT` | HTTP API port | `10000` |
 | `LOG_LEVEL` | Logging verbosity | `INFO` |
 | `LOG_FILE` | Node log path | `/app/logs/node-1.log` |
+| `PHI_THRESHOLD_SUSPECT` | Phi threshold for `suspected` status | `2.5` |
+| `PHI_THRESHOLD_DEAD` | Phi threshold for `dead` status | `6.0` |
+| `PHI_INITIAL_INTERVAL_S` | Baseline expected heartbeat interval (seconds) | `1.0` |
 | `SENSORS` | Number of sensors configured for the node | `4` |
 | `NETWORK_DELAY_MS` | Base artificial outbound network delay (ms) | `35` |
 | `NETWORK_DELAY_JITTER_MS` | Random delay jitter radius (ms) | `25` |
