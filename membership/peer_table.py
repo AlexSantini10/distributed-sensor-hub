@@ -13,6 +13,7 @@ import threading
 from collections.abc import Iterable
 from typing import Dict
 
+from membership.liveness import NodeLiveness
 from membership.peer import Peer
 from membership.results import (
     FailureDetectionUpdateResult,
@@ -307,7 +308,9 @@ class PeerTable:
             node_id=peer.node_id,
             host=peer.host,
             port=peer.port,
-            last_heartbeat=peer.last_heartbeat,
-            phi=peer.phi,
-            status=peer.status,
+            liveness=NodeLiveness(
+                last_heartbeat=peer.last_heartbeat,
+                phi=peer.phi,
+                status=peer.status,
+            ),
         )

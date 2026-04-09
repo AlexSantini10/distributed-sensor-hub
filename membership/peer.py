@@ -7,8 +7,8 @@ Responsibilities:
 """
 
 from dataclasses import dataclass
-import time
 
+from membership.liveness import NodeLiveness
 from membership.status import NodeStatus
 
 
@@ -20,18 +20,14 @@ class Peer:
         node_id (str): Stable logical identifier for the remote node.
         host (str): Advertised host or IP address used for future connections.
         port (int): TCP port exposed by the peer's protocol server.
-        last_heartbeat (float): Unix timestamp of the latest accepted liveness signal.
-        phi (float): Failure-detector score associated with the peer.
-        status (NodeStatus): Current liveness classification for membership decisions.
+        liveness (NodeLiveness): Aggregated heartbeat and failure-detection state.
     """
 
     node_id: str
     host: str
     port: int
 
-    last_heartbeat: float
-    phi: float
-    status: NodeStatus
+    liveness: NodeLiveness
 
     @staticmethod
     def new(node_id: str, host: str, port: int) -> "Peer":
@@ -50,7 +46,32 @@ class Peer:
             node_id=node_id,
             host=host,
             port=port,
-            last_heartbeat=time.time(),
-            phi=0.0,
-            status=NodeStatus.ALIVE,
+            liveness=NodeLiveness.new(),
         )
+
+    @property
+    def last_heartbeat(self) -> float:
+        """Expose heartbeat timestamp for compatibility with existing call sites."""
+        return self.liveness.last_heartbeat
+
+    @last_heartbeat.setter
+    def last_heartbeat(self, value: float) -> None:
+        self.liveness.last_heartbeat = value
+
+    @property
+    def phi(self) -> float:
+        """Expose phi score for compatibility with existing call sites."""
+        return self.liveness.phi
+
+    @phi.setter
+    def phi(self, value: float) -> None:
+        self.liveness.phi = value
+
+    @property
+    def status(self) -> NodeStatus:
+        """Expose node status for compatibility with existing call sites."""
+        return self.liveness.status
+
+    @status.setter
+    def status(self, value: NodeStatus) -> None:
+        self.liveness.status = value
