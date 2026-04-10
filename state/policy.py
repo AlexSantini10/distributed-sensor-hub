@@ -37,6 +37,7 @@ class LwwMergePolicy:
         current: "SensorRecord",
         candidate: "SensorRecord",
     ) -> MergeDecision:
+        """Return how ``candidate`` compares with ``current`` under LWW ordering."""
         if candidate.ts_ms > current.ts_ms:
             return "newer_ts"
         if candidate.ts_ms == current.ts_ms and candidate.origin > current.origin:

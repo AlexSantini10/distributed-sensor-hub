@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """Define state-layer contracts for merge and storage collaboration.
 
 Responsibilities:
     - Expose abstraction boundaries for merge-capable stores used by workers.
     - Keep worker/store collaboration independent from concrete LWW implementation details.
 """
+
+from __future__ import annotations
 
 from typing import Literal, Protocol, TYPE_CHECKING
 
