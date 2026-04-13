@@ -15,6 +15,14 @@ import time
 from fd.phi_estimator import ExponentialPhiEstimator, PhiEstimator
 from membership.status import NodeStatus
 
+DEFAULT_MAX_INTERVALS_PER_PEER = 128
+DEFAULT_THRESHOLD_SUSPECT = 3.0
+DEFAULT_THRESHOLD_DEAD = 8.0
+DEFAULT_INITIAL_INTERVAL_S = 1.0
+
+_ZERO_SECONDS = 0.0
+_INITIAL_HEARTBEAT_PHI = 0.0
+
 
 @dataclass(frozen=True, slots=True)
 class HeartbeatObservation:
@@ -43,20 +51,20 @@ class HeartbeatMonitor:
     def __init__(
         self,
         *,
-        max_intervals_per_peer: int = 128,
-        threshold_suspect: float = 3.0,
-        threshold_dead: float = 8.0,
-        initial_interval_s: float = 1.0,
+        max_intervals_per_peer: int = DEFAULT_MAX_INTERVALS_PER_PEER,
+        threshold_suspect: float = DEFAULT_THRESHOLD_SUSPECT,
+        threshold_dead: float = DEFAULT_THRESHOLD_DEAD,
+        initial_interval_s: float = DEFAULT_INITIAL_INTERVAL_S,
         phi_estimator: PhiEstimator | None = None,
     ) -> None:
         """Initialize the monitor with bounded history and phi thresholds."""
-        if threshold_suspect < 0.0:
+        if threshold_suspect < _ZERO_SECONDS:
             raise ValueError("threshold_suspect must be >= 0")
         if threshold_dead < threshold_suspect:
             raise ValueError("threshold_dead must be >= threshold_suspect")
         if max_intervals_per_peer <= 0:
             raise ValueError("max_intervals_per_peer must be > 0")
-        if initial_interval_s <= 0.0:
+        if initial_interval_s <= _ZERO_SECONDS:
             raise ValueError("initial_interval_s must be > 0")
 
         self._lock = threading.Lock()
@@ -117,14 +125,14 @@ class HeartbeatMonitor:
             previous = self._last_arrival_s.get(peer_id)
             interval: float | None = None
             if previous is not None:
-                interval = max(0.0, arrival - previous)
+                interval = max(_ZERO_SECONDS, arrival - previous)
                 samples = self._intervals_s.setdefault(peer_id, [])
                 samples.append(interval)
                 overflow = len(samples) - self._max_intervals_per_peer
                 if overflow > 0:
                     del samples[:overflow]
             self._last_arrival_s[peer_id] = arrival
-            phi = 0.0
+            phi = _INITIAL_HEARTBEAT_PHI
             status = NodeStatus.ALIVE
 
         return HeartbeatObservation(
@@ -191,9 +199,9 @@ class HeartbeatMonitor:
         """Compute phi for one peer. Caller must hold ``_lock``."""
         last_arrival = self._last_arrival_s.get(peer_id)
         if last_arrival is None:
-            return 0.0
+            return _INITIAL_HEARTBEAT_PHI
 
-        elapsed = max(0.0, observed_at_s - last_arrival)
+        elapsed = max(_ZERO_SECONDS, observed_at_s - last_arrival)
         intervals = self._intervals_s.get(peer_id)
         intervals_snapshot = tuple(intervals) if intervals else ()
         return self._phi_estimator.compute_phi(

@@ -42,6 +42,7 @@ Module documentation:
 
 | Module | README |
 |--------|--------|
+| `fd/` | [Phi-accrual failure detection](fd/README.md) |
 | `runtime/` | [Runtime orchestration and subsystem bootstrap](runtime/README.md) |
 
 ## Core capabilities
@@ -73,6 +74,7 @@ The steady-state data flow is:
 | `node.py` | Entry point for a node process |
 | `docs/` | Architecture notes and technical documentation |
 | `runtime/` | [Runtime orchestration and subsystem bootstrap](runtime/README.md) |
+| `fd/` | [Phi-accrual failure detection](fd/README.md) |
 | `state/` | LWW state worker and outbound update publishing |
 | `membership/` | Peer model, peer table, and membership handlers |
 | `protocol/` | Message envelope, message types, dispatcher, and protocol handlers |
