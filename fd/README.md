@@ -1,100 +1,76 @@
-# Failure Detection Module
+# Module: fd
 
-`fd` contains the phi-accrual failure detector used by the node to estimate peer liveness continuously, instead of relying on fixed timeouts.
-Its core engine is `HeartbeatMonitor`, which records heartbeat arrivals, tracks inter-arrival samples, computes `phi` as silence grows, and classifies peer liveness as `alive`, `suspected`, or `dead`. The module is primarily consumed by `PeerTable` and, through it, by heartbeat protocol handlers and the runtime heartbeat loop.
+## Responsibility
+Implements heartbeat-based phi-accrual failure detection to estimate peer liveness over time (`alive`, `suspected`, `dead`) without fixed timeout cutoffs.
 
-## Responsibilities
-
-- Track heartbeat arrivals per peer with thread-safe access.
-- Keep a bounded sliding window of inter-arrival intervals.
-- Compute `phi` from elapsed time since the last heartbeat.
-- Classify peers as `alive`, `suspected`, or `dead` using configurable thresholds.
-- Expose a pluggable contract (`PhiEstimator`) for custom statistical models.
-
-## Module Files
-
-| File | Role |
-|------|-------|
-| `heartbeat.py` | `HeartbeatMonitor`, output dataclasses, and phi classification logic. |
-| `phi_estimator.py` | `PhiEstimator` protocol and `ExponentialPhiEstimator` implementation. |
-| `__init__.py` | Public module exports. |
+## Key Concepts
+- Phi-accrual detection: liveness is a continuously increasing suspicion score (`phi`) based on heartbeat silence.
+- Sliding interval window: each peer keeps a bounded history of inter-arrival intervals used by the estimator.
+- Pluggable estimator: statistical model is injected through the `PhiEstimator` protocol.
 
 ## Public API
+### Class / Function: `HeartbeatMonitor`
+- Purpose: track heartbeat arrivals per peer, compute `phi`, and classify peer status.
+- Inputs: constructor thresholds/window settings; peer id and optional timestamps for initialize/record/evaluate methods.
+- Outputs: `HeartbeatObservation` from `record_heartbeat`, `PhiEvaluation` from `evaluate_peer`/`evaluate_all`, snapshots from `get_intervals`.
+- Side effects: mutates in-memory detector state (`_last_arrival_s`, `_intervals_s`) under lock.
 
-Exports from `fd`:
+### Class / Function: `HeartbeatObservation`
+- Purpose: immutable result object describing one accepted heartbeat.
+- Inputs: `peer_id`, `arrived_at_s`, optional `interval_s`, optional `sender_timestamp_ms`, `phi`, `status`.
+- Outputs: dataclass instance consumed by upper layers.
+- Side effects: none.
 
-- `HeartbeatMonitor`
-- `HeartbeatObservation`
-- `PhiEvaluation`
-- `PhiEstimator`
-- `ExponentialPhiEstimator`
+### Class / Function: `PhiEvaluation`
+- Purpose: immutable result object describing one liveness evaluation.
+- Inputs: `peer_id`, computed `phi`, derived `status`.
+- Outputs: dataclass instance for one peer.
+- Side effects: none.
 
-### `HeartbeatMonitor`
+### Class / Function: `PhiEstimator` (Protocol)
+- Purpose: define the pluggable contract for `phi` computation.
+- Inputs: `elapsed_s`, `intervals_s`, `initial_interval_s`.
+- Outputs: numeric `phi` score (`float`).
+- Side effects: none (pure computation expected).
 
-Constructor parameters:
+### Class / Function: `ExponentialPhiEstimator`
+- Purpose: default `PhiEstimator` implementation using exponential survival.
+- Inputs: same contract as `PhiEstimator.compute_phi`.
+- Outputs: `phi = -log10(P(T > t))` with numeric floor protection.
+- Side effects: none.
 
+## Data Structures
+- `_last_arrival_s: dict[str, float]`: last heartbeat arrival timestamp per peer.
+- `_intervals_s: dict[str, list[float]]`: bounded list of inter-arrival samples per peer.
+- `HeartbeatObservation`: immutable heartbeat event snapshot.
+- `PhiEvaluation`: immutable evaluation snapshot.
+
+## Protocol / Messages (if applicable)
+- Not applicable in this module: no wire message schema is defined here.
+- Integration note: callers pass optional `sender_timestamp_ms` from heartbeat protocol messages to `record_heartbeat`.
+
+## Concurrency Model
+- Threads / locks used: one `threading.Lock` (`_lock`) in `HeartbeatMonitor`.
+- Critical sections: all reads/writes of `_last_arrival_s` and `_intervals_s`, including interval-window trimming and `phi` computation inputs.
+
+## Failure Handling
+- Constructor validates configuration and raises `ValueError` for invalid thresholds/window/interval values.
+- Unknown peer during evaluation returns `phi = 0.0` and classifies as `alive` (no exception).
+- Negative/clock-skew timing effects are clamped to `0.0` elapsed/interval.
+- Very large silence avoids math underflow using bounded survival floor (`1e-16`).
+
+## Configuration
 - `max_intervals_per_peer` (default `128`)
 - `threshold_suspect` (default `3.0`)
-- `threshold_dead` (default `8.0`)
-- `initial_interval_s` (default `1.0`)
-- `phi_estimator` (default `ExponentialPhiEstimator`)
+- `threshold_dead` (default `8.0`, must be `>= threshold_suspect`)
+- `initial_interval_s` (default `1.0`, must be `> 0`)
+- Runtime env inputs (loaded outside this module): `PHI_THRESHOLD_SUSPECT`, `PHI_THRESHOLD_DEAD`, `PHI_INITIAL_INTERVAL_S`
 
-Main methods:
+## Dependencies
+- Internal modules: `membership.status.NodeStatus`
+- External libs: Python stdlib (`dataclasses`, `threading`, `time`, `math`, `typing`)
 
-- `initialize_peer(peer_id, observed_at_s=None)`: seeds detector state for a discovered peer.
-- `record_heartbeat(peer_id, arrived_at_s=None, sender_timestamp_ms=None)`: records one heartbeat, updates interval history, and returns `HeartbeatObservation` (always `alive` at receipt time).
-- `evaluate_peer(peer_id, observed_at_s=None)`: computes current `phi` and returns `PhiEvaluation`.
-- `evaluate_all(observed_at_s=None)`: computes state for all peers currently tracked by the detector.
-- `remove_peer(peer_id)`: removes detector state for one peer.
-- `get_intervals(peer_id)`: returns a read-only snapshot of observed intervals.
-- `classify_phi(phi)`: maps `phi` to `NodeStatus`.
-
-## Default Phi Model
-
-`ExponentialPhiEstimator` uses an exponential model over heartbeat inter-arrival times:
-
-- estimates `mean_interval_s` from observed samples;
-- anchors the mean to `initial_interval_s` (baseline) to avoid overly aggressive phi after a few very short arrivals;
-- computes survival `P(T > t)` and then `phi = -log10(P(T > t))`.
-
-In practice: the longer a peer stays silent, the higher `phi` becomes.
-
-## Project Integration
-
-The `fd` module is used by `membership/peer_table.py`, which embeds `HeartbeatMonitor` and exposes FD outcomes to the rest of the node:
-
-- on peer discovery/upsert: `initialize_peer(...)`;
-- on incoming `PING/PONG`: `record_heartbeat(...)` and immediate reset to `alive`;
-- in the heartbeat loop (`runtime/heartbeat.py`): `evaluate_failure_detector(...)` applies `alive/suspected/dead` transitions.
-
-Results are exposed through `GET /api/membership`, with fields like `status`, `phi`, `sample_count`, and `sample_window_size`.
-
-## Runtime Configuration
-
-Environment variables (`utils/config.py`):
-
-- `PHI_THRESHOLD_SUSPECT` (default `3.0`)
-- `PHI_THRESHOLD_DEAD` (default `8.0`)
-- `PHI_INITIAL_INTERVAL_S` (default `1.0`)
-
-Constraints:
-
-- `PHI_THRESHOLD_DEAD >= PHI_THRESHOLD_SUSPECT`
-- `PHI_INITIAL_INTERVAL_S > 0`
-
-## Extensibility
-
-To use a custom model, implement the `PhiEstimator` protocol:
-
-```python
-class MyPhiEstimator:
-    def compute_phi(self, *, elapsed_s: float, intervals_s: tuple[float, ...], initial_interval_s: float) -> float:
-        ...
-```
-
-Then pass it to `HeartbeatMonitor(phi_estimator=MyPhiEstimator())`.
-
-## Relevant Tests
-
-- `tests/fd/test_heartbeat_monitor_di.py`: validates estimator dependency inversion.
-- `tests/membership/test_peer_table.py`: validates `alive -> suspected -> dead -> alive` transitions, concurrency behavior, and membership snapshots with `phi`.
+## Notes
+- `record_heartbeat` always returns `status=alive` and `phi=0.0` at receipt time; suspicion is computed only in later evaluations.
+- The default estimator anchors observed mean interval to `initial_interval_s` to reduce aggressiveness after short transient bursts.
+- Public exports are centralized in `fd/__init__.py` (`HeartbeatMonitor`, `HeartbeatObservation`, `PhiEvaluation`, `PhiEstimator`, `ExponentialPhiEstimator`).
