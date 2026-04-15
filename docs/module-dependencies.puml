@@ -1,0 +1,76 @@
+@startuml
+title Distributed Sensor Hub - Module Dependencies
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam ArrowColor #4B5563
+skinparam PackageBorderColor #1F2937
+skinparam PackageFontColor #111827
+skinparam ComponentBorderColor #1F2937
+skinparam ComponentFontColor #111827
+
+legend right
+  This diagram shows top-level code dependencies.
+  An arrow A --> B means "A depends on B".
+  The diagram is intentionally simplified to package/module level.
+endlegend
+
+component "node.py" as node
+
+package "runtime" as runtime
+package "protocol" as protocol
+package "networking" as networking
+package "membership" as membership
+package "fd" as fd
+package "gossip" as gossip
+package "state" as state
+package "sensors" as sensors
+package "webapi" as webapi
+package "utils" as utils
+component "web/\n(static UI)" as web
+
+node --> runtime
+node --> utils
+
+runtime --> networking
+runtime --> protocol
+runtime --> membership
+runtime --> gossip
+runtime --> sensors
+runtime --> state
+runtime --> webapi
+runtime --> utils
+
+protocol --> membership
+protocol --> gossip
+protocol --> utils
+
+networking --> protocol
+networking --> utils
+
+membership --> fd
+membership --> protocol
+membership --> utils
+
+fd --> membership
+
+gossip --> membership
+gossip --> protocol
+gossip --> utils
+
+state --> membership
+state --> networking
+state --> protocol
+state --> utils
+
+sensors --> state
+sensors --> utils
+
+webapi --> protocol
+webapi --> utils
+
+web ..> webapi : HTTP polling
+
+@enduml
