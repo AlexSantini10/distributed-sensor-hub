@@ -42,10 +42,16 @@ Heartbeat-based phi-accrual failure detection for peer liveness. The module trac
 ### `HeartbeatObservation`
 - Immutable result returned by `record_heartbeat(...)`.
 - Fields: `peer_id`, `arrived_at_s`, `interval_s`, `sender_timestamp_ms`, `phi`, `status`.
+- `status` is a detector-local `FailureStatus`, not `membership.NodeStatus`.
 
 ### `PhiEvaluation`
 - Immutable result returned by `evaluate_peer(...)` and `evaluate_all(...)`.
 - Fields: `peer_id`, `phi`, `status`.
+- `status` is a detector-local `FailureStatus`, not `membership.NodeStatus`.
+
+### `FailureStatus`
+- Detector-local enum with `ALIVE`, `SUSPECTED`, and `DEAD`.
+- `membership.PeerTable` maps it to `membership.NodeStatus` when applying detector results.
 
 ### `PhiEstimator`
 - Protocol for pluggable phi computation.
@@ -62,5 +68,6 @@ Heartbeat-based phi-accrual failure detection for peer liveness. The module trac
 
 ## Integration
 - `fd` is used by `membership.PeerTable`.
+- `fd` is domain-local: it does not import `membership.NodeStatus`.
 - `record_heartbeat(...)` resets the peer to `alive` with `phi = 0.0`.
-- Periodic evaluation recomputes `phi` and updates peer status when thresholds are crossed.
+- Periodic evaluation recomputes `phi`; `PeerTable` maps the resulting `FailureStatus` to `NodeStatus` and updates membership state when thresholds are crossed.

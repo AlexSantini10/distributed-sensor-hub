@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fd.heartbeat import HeartbeatMonitor
-from membership.status import NodeStatus
+from fd.status import FailureStatus
 
 
 class ConstantPhiEstimator:
@@ -34,5 +34,5 @@ def test_heartbeat_monitor_uses_injected_phi_estimator() -> None:
     evaluation = monitor.evaluate_peer("node-b", observed_at_s=101.0)
 
     assert evaluation.phi == 9.5
-    assert evaluation.status is NodeStatus.DEAD
+    assert evaluation.status is FailureStatus.DEAD
 

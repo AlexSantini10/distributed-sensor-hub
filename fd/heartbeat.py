@@ -13,7 +13,7 @@ import threading
 import time
 
 from fd.phi_estimator import ExponentialPhiEstimator, PhiEstimator
-from membership.status import NodeStatus
+from fd.status import FailureStatus
 
 DEFAULT_MAX_INTERVALS_PER_PEER = 128
 DEFAULT_THRESHOLD_SUSPECT = 3.0
@@ -33,7 +33,7 @@ class HeartbeatObservation:
     interval_s: float | None
     sender_timestamp_ms: int | None
     phi: float
-    status: NodeStatus
+    status: FailureStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +42,7 @@ class PhiEvaluation:
 
     peer_id: str
     phi: float
-    status: NodeStatus
+    status: FailureStatus
 
 
 class HeartbeatMonitor:
@@ -133,7 +133,7 @@ class HeartbeatMonitor:
                     del samples[:overflow]
             self._last_arrival_s[peer_id] = arrival
             phi = _INITIAL_HEARTBEAT_PHI
-            status = NodeStatus.ALIVE
+            status = FailureStatus.ALIVE
 
         return HeartbeatObservation(
             peer_id=peer_id,
@@ -187,13 +187,13 @@ class HeartbeatMonitor:
                 )
         return tuple(evaluations)
 
-    def classify_phi(self, phi: float) -> NodeStatus:
+    def classify_phi(self, phi: float) -> FailureStatus:
         """Classify one phi score into membership status."""
         if phi >= self._threshold_dead:
-            return NodeStatus.DEAD
+            return FailureStatus.DEAD
         if phi >= self._threshold_suspect:
-            return NodeStatus.SUSPECTED
-        return NodeStatus.ALIVE
+            return FailureStatus.SUSPECTED
+        return FailureStatus.ALIVE
 
     def _compute_phi_locked(self, *, peer_id: str, observed_at_s: float) -> float:
         """Compute phi for one peer. Caller must hold ``_lock``."""

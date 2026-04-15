@@ -15,6 +15,7 @@ from collections.abc import Iterable
 from typing import Dict
 
 from fd.heartbeat import HeartbeatMonitor
+from fd.status import FailureStatus
 from membership.liveness import NodeLiveness
 from membership.peer import Peer
 from membership.results import (
@@ -50,6 +51,15 @@ class PeerTable:
             initial_interval_s=phi_initial_interval_s,
             max_intervals_per_peer=phi_max_intervals_per_peer,
         )
+
+    @staticmethod
+    def _map_failure_status(status: FailureStatus) -> NodeStatus:
+        """Translate detector-local status into membership status."""
+        if status is FailureStatus.DEAD:
+            return NodeStatus.DEAD
+        if status is FailureStatus.SUSPECTED:
+            return NodeStatus.SUSPECTED
+        return NodeStatus.ALIVE
 
     @property
     def phi_threshold_suspect(self) -> float:
@@ -211,8 +221,9 @@ class PeerTable:
                 phi_updated = peer.phi != evaluation.phi
                 peer.phi = evaluation.phi
 
-                status_changed = previous_status is not evaluation.status
-                peer.status = evaluation.status
+                next_status = self._map_failure_status(evaluation.status)
+                status_changed = previous_status is not next_status
+                peer.status = next_status
                 if status_changed:
                     peer.status_ts_ms = self._next_status_ts_ms(
                         current_ts_ms=previous_status_ts_ms,

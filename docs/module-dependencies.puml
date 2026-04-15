@@ -54,8 +54,6 @@ membership --> fd
 membership --> protocol
 membership --> utils
 
-fd --> membership
-
 gossip --> membership
 gossip --> protocol
 gossip --> utils
