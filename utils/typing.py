@@ -242,16 +242,25 @@ class StateWorkerLike(Protocol):
 class PeerTableLike(Protocol):
     """Define the membership-table behavior consumed outside the package."""
 
-    def snapshot(self) -> tuple[object, ...]:
+    def snapshot(self) -> tuple["PeerLike", ...]:
         """Return a snapshot of known peers.
 
         Returns:
-            tuple[object, ...]: Current peer snapshot.
+            tuple[PeerLike, ...]: Current peer snapshot.
         """
         ...
 
 
-type SenderLike = Callable[[str, object], None]
+@runtime_checkable
+class PeerLike(Protocol):
+    """Define the minimal peer surface used by runtime publishers."""
+
+    node_id: str
+    host: str
+    port: int
+
+
+type SenderLike = Callable[[str, SupportsToBytes], None]
 
 
 class SnapshotProvider(Protocol):

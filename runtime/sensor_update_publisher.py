@@ -3,12 +3,17 @@
 import threading
 from typing import Protocol
 
-from membership.peer import Peer
 from networking.tcp_client import Peer as TcpPeer
 from protocol.factory import build_sensor_update
 from protocol.message import Message
 from protocol.messages import SensorMeta
-from utils.typing import LoggerLike, PeerTableLike, ReplicationDeltaBatch, StateWorkerLike
+from utils.typing import (
+    LoggerLike,
+    PeerLike,
+    PeerTableLike,
+    ReplicationDeltaBatch,
+    StateWorkerLike,
+)
 
 
 class SensorUpdatePublisher(threading.Thread):
@@ -95,7 +100,7 @@ class SensorUpdatePublisher(threading.Thread):
             for p in peers:
                 self._send_to_peer(p, msg)
 
-    def _send_to_peer(self, peer: Peer, msg: Message) -> None:
+    def _send_to_peer(self, peer: PeerLike, msg: Message) -> None:
         """Deliver one replication message to one peer using best-effort transport."""
         try:
             self._client.send_json(peer.node_id, msg)
