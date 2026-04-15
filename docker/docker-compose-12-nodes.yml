@@ -1,0 +1,638 @@
+services:
+  node1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-1
+    environment:
+      NODE_ID: node-1
+      HOST: 0.0.0.0
+      PORT: 9000
+      BOOTSTRAP_PEERS: node2:9001,node7:9006
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-1.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10000
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      NETWORK_DELAY_MS: 35
+      NETWORK_DELAY_JITTER_MS: 25
+      NETWORK_DELAY_SPIKE_PROB: 0.08
+      NETWORK_DELAY_SPIKE_MS: 220
+      NETWORK_PACKET_LOSS_PROB: 0.01
+      SENSORS: 3
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: outdoor_temperature
+      SENSOR_0_PERIOD_MS: 5000
+      SENSOR_0_LATENCY_MS: 45
+      SENSOR_0_LATENCY_JITTER_MS: 30
+      SENSOR_0_MIN: -2
+      SENSOR_0_MAX: 38
+      SENSOR_0_UNIT: "degC"
+      SENSOR_1_TYPE: spike
+      SENSOR_1_NAME: vehicle_flow
+      SENSOR_1_PERIOD_MS: 3000
+      SENSOR_1_LATENCY_MS: 90
+      SENSOR_1_LATENCY_JITTER_MS: 60
+      SENSOR_1_BASELINE: 40
+      SENSOR_1_SPIKE_HEIGHT: 180
+      SENSOR_1_P_SPIKE: 0.2
+      SENSOR_1_UNIT: "vehicles/min"
+      SENSOR_2_TYPE: noise
+      SENSOR_2_NAME: ambient_noise
+      SENSOR_2_PERIOD_MS: 4000
+      SENSOR_2_LATENCY_MS: 35
+      SENSOR_2_LATENCY_JITTER_MS: 20
+      SENSOR_2_BASE: 65
+      SENSOR_2_NOISE: 12
+      SENSOR_2_UNIT: "dB"
+    ports:
+      - "9000:9000"
+      - "10000:10000"
+    volumes:
+      - ../logs:/app/logs
+
+  node2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-2
+    environment:
+      NODE_ID: node-2
+      HOST: 0.0.0.0
+      PORT: 9001
+      BOOTSTRAP_PEERS: node3:9002,node8:9007
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-2.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10001
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      NETWORK_DELAY_MS: 45
+      NETWORK_DELAY_JITTER_MS: 35
+      NETWORK_DELAY_SPIKE_PROB: 0.1
+      NETWORK_DELAY_SPIKE_MS: 300
+      NETWORK_PACKET_LOSS_PROB: 0.015
+      SENSORS: 3
+      SENSOR_0_TYPE: trend
+      SENSOR_0_NAME: co2_concentration
+      SENSOR_0_PERIOD_MS: 7000
+      SENSOR_0_LATENCY_MS: 60
+      SENSOR_0_LATENCY_JITTER_MS: 40
+      SENSOR_0_START: 420
+      SENSOR_0_SLOPE: 0.6
+      SENSOR_0_NOISE: 3
+      SENSOR_0_UNIT: "ppm"
+      SENSOR_1_TYPE: numeric
+      SENSOR_1_NAME: particulate_pm25
+      SENSOR_1_PERIOD_MS: 6000
+      SENSOR_1_LATENCY_MS: 55
+      SENSOR_1_LATENCY_JITTER_MS: 25
+      SENSOR_1_MIN: 5
+      SENSOR_1_MAX: 120
+      SENSOR_1_UNIT: "ug/m3"
+      SENSOR_2_TYPE: boolean
+      SENSOR_2_NAME: alarm_state
+      SENSOR_2_PERIOD_MS: 10000
+      SENSOR_2_LATENCY_MS: 120
+      SENSOR_2_LATENCY_JITTER_MS: 80
+      SENSOR_2_P_TRUE: 0.05
+      SENSOR_2_UNIT: "triggered"
+    ports:
+      - "9001:9001"
+      - "10001:10001"
+    volumes:
+      - ../logs:/app/logs
+
+  node3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-3
+    environment:
+      NODE_ID: node-3
+      HOST: 0.0.0.0
+      PORT: 9002
+      BOOTSTRAP_PEERS: node1:9000,node9:9008
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-3.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10002
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      NETWORK_DELAY_MS: 30
+      NETWORK_DELAY_JITTER_MS: 20
+      NETWORK_DELAY_SPIKE_PROB: 0.06
+      NETWORK_DELAY_SPIKE_MS: 180
+      NETWORK_PACKET_LOSS_PROB: 0.008
+      SENSORS: 3
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: residential_power_consumption
+      SENSOR_0_PERIOD_MS: 4000
+      SENSOR_0_LATENCY_MS: 40
+      SENSOR_0_LATENCY_JITTER_MS: 25
+      SENSOR_0_MIN: 0.4
+      SENSOR_0_MAX: 4.8
+      SENSOR_0_UNIT: "kW"
+      SENSOR_1_TYPE: categorical
+      SENSOR_1_NAME: waste_container_status
+      SENSOR_1_PERIOD_MS: 9000
+      SENSOR_1_LATENCY_MS: 180
+      SENSOR_1_LATENCY_JITTER_MS: 120
+      SENSOR_1_VALUES: "empty,half_full,full"
+      SENSOR_1_UNIT: "status"
+      SENSOR_2_TYPE: noise
+      SENSOR_2_NAME: night_noise_level
+      SENSOR_2_PERIOD_MS: 5000
+      SENSOR_2_LATENCY_MS: 30
+      SENSOR_2_LATENCY_JITTER_MS: 20
+      SENSOR_2_BASE: 45
+      SENSOR_2_NOISE: 8
+      SENSOR_2_UNIT: "dB"
+    ports:
+      - "9002:9002"
+      - "10002:10002"
+    volumes:
+      - ../logs:/app/logs
+
+  node4:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-4
+    environment:
+      NODE_ID: node-4
+      HOST: 0.0.0.0
+      PORT: 9003
+      BOOTSTRAP_PEERS: node2:9001,node10:9009
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-4.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10003
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      NETWORK_DELAY_MS: 55
+      NETWORK_DELAY_JITTER_MS: 40
+      NETWORK_DELAY_SPIKE_PROB: 0.12
+      NETWORK_DELAY_SPIKE_MS: 350
+      NETWORK_PACKET_LOSS_PROB: 0.02
+      SENSORS: 3
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: train_station_occupancy
+      SENSOR_0_PERIOD_MS: 2500
+      SENSOR_0_LATENCY_MS: 35
+      SENSOR_0_LATENCY_JITTER_MS: 20
+      SENSOR_0_MIN: 120
+      SENSOR_0_MAX: 1800
+      SENSOR_0_UNIT: "people"
+      SENSOR_1_TYPE: spike
+      SENSOR_1_NAME: ticket_validations
+      SENSOR_1_PERIOD_MS: 3000
+      SENSOR_1_LATENCY_MS: 65
+      SENSOR_1_LATENCY_JITTER_MS: 45
+      SENSOR_1_BASELINE: 100
+      SENSOR_1_SPIKE_HEIGHT: 500
+      SENSOR_1_P_SPIKE: 0.25
+      SENSOR_1_UNIT: "validations/min"
+      SENSOR_2_TYPE: numeric
+      SENSOR_2_NAME: platform_temperature
+      SENSOR_2_PERIOD_MS: 7000
+      SENSOR_2_LATENCY_MS: 45
+      SENSOR_2_LATENCY_JITTER_MS: 30
+      SENSOR_2_MIN: 5
+      SENSOR_2_MAX: 30
+      SENSOR_2_UNIT: "degC"
+    ports:
+      - "9003:9003"
+      - "10003:10003"
+    volumes:
+      - ../logs:/app/logs
+
+  node5:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-5
+    environment:
+      NODE_ID: node-5
+      HOST: 0.0.0.0
+      PORT: 9004
+      BOOTSTRAP_PEERS: node2:9001,node3:9002,node11:9010
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-5.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10004
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      NETWORK_DELAY_MS: 40
+      NETWORK_DELAY_JITTER_MS: 25
+      NETWORK_DELAY_SPIKE_PROB: 0.07
+      NETWORK_DELAY_SPIKE_MS: 200
+      NETWORK_PACKET_LOSS_PROB: 0.01
+      SENSORS: 3
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: river_water_level
+      SENSOR_0_PERIOD_MS: 6000
+      SENSOR_0_LATENCY_MS: 110
+      SENSOR_0_LATENCY_JITTER_MS: 70
+      SENSOR_0_MIN: 0.5
+      SENSOR_0_MAX: 4.5
+      SENSOR_0_UNIT: "m"
+      SENSOR_1_TYPE: trend
+      SENSOR_1_NAME: water_temperature
+      SENSOR_1_PERIOD_MS: 8000
+      SENSOR_1_LATENCY_MS: 95
+      SENSOR_1_LATENCY_JITTER_MS: 60
+      SENSOR_1_START: 12
+      SENSOR_1_SLOPE: 0.1
+      SENSOR_1_NOISE: 0.5
+      SENSOR_1_UNIT: "degC"
+      SENSOR_2_TYPE: numeric
+      SENSOR_2_NAME: water_ph
+      SENSOR_2_PERIOD_MS: 10000
+      SENSOR_2_LATENCY_MS: 140
+      SENSOR_2_LATENCY_JITTER_MS: 90
+      SENSOR_2_MIN: 6.5
+      SENSOR_2_MAX: 8.5
+      SENSOR_2_UNIT: "pH"
+    ports:
+      - "9004:9004"
+      - "10004:10004"
+    volumes:
+      - ../logs:/app/logs
+
+  node6:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-6
+    environment:
+      NODE_ID: node-6
+      HOST: 0.0.0.0
+      PORT: 9005
+      BOOTSTRAP_PEERS: node1:9000,node3:9002,node12:9011
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-6.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10005
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      HEARTBEAT_INTERVAL_MS: 1200
+      NETWORK_DELAY_MS: 90
+      NETWORK_DELAY_JITTER_MS: 120
+      NETWORK_DELAY_SPIKE_PROB: 0.18
+      NETWORK_DELAY_SPIKE_MS: 2500
+      NETWORK_PACKET_LOSS_PROB: 0.18
+      SENSORS: 3
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: building_energy_usage
+      SENSOR_0_PERIOD_MS: 4000
+      SENSOR_0_LATENCY_MS: 50
+      SENSOR_0_LATENCY_JITTER_MS: 30
+      SENSOR_0_MIN: 500
+      SENSOR_0_MAX: 3000
+      SENSOR_0_UNIT: "kW"
+      SENSOR_1_TYPE: numeric
+      SENSOR_1_NAME: campus_wifi_load
+      SENSOR_1_PERIOD_MS: 2000
+      SENSOR_1_LATENCY_MS: 25
+      SENSOR_1_LATENCY_JITTER_MS: 15
+      SENSOR_1_MIN: 350
+      SENSOR_1_MAX: 3200
+      SENSOR_1_UNIT: "devices"
+      SENSOR_2_TYPE: boolean
+      SENSOR_2_NAME: parking_availability
+      SENSOR_2_PERIOD_MS: 7000
+      SENSOR_2_LATENCY_MS: 90
+      SENSOR_2_LATENCY_JITTER_MS: 60
+      SENSOR_2_P_TRUE: 0.5
+      SENSOR_2_UNIT: "available"
+    ports:
+      - "9005:9005"
+      - "10005:10005"
+    volumes:
+      - ../logs:/app/logs
+
+  node7:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-7
+    environment:
+      NODE_ID: node-7
+      HOST: 0.0.0.0
+      PORT: 9006
+      BOOTSTRAP_PEERS: node1:9000,node8:9007
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-7.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10006
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      NETWORK_DELAY_MS: 28
+      NETWORK_DELAY_JITTER_MS: 18
+      NETWORK_DELAY_SPIKE_PROB: 0.05
+      NETWORK_DELAY_SPIKE_MS: 150
+      NETWORK_PACKET_LOSS_PROB: 0.006
+      SENSORS: 3
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: solar_panel_output
+      SENSOR_0_PERIOD_MS: 3000
+      SENSOR_0_LATENCY_MS: 25
+      SENSOR_0_LATENCY_JITTER_MS: 15
+      SENSOR_0_MIN: 100
+      SENSOR_0_MAX: 950
+      SENSOR_0_UNIT: "kW"
+      SENSOR_1_TYPE: wave
+      SENSOR_1_NAME: inverter_vibration
+      SENSOR_1_PERIOD_MS: 1500
+      SENSOR_1_LATENCY_MS: 20
+      SENSOR_1_LATENCY_JITTER_MS: 10
+      SENSOR_1_AMPLITUDE: 6
+      SENSOR_1_FREQUENCY: 0.4
+      SENSOR_1_UNIT: "mm/s"
+      SENSOR_2_TYPE: boolean
+      SENSOR_2_NAME: maintenance_alarm
+      SENSOR_2_PERIOD_MS: 8000
+      SENSOR_2_LATENCY_MS: 40
+      SENSOR_2_LATENCY_JITTER_MS: 25
+      SENSOR_2_P_TRUE: 0.03
+      SENSOR_2_UNIT: "triggered"
+    ports:
+      - "9006:9006"
+      - "10006:10006"
+    volumes:
+      - ../logs:/app/logs
+
+  node8:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-8
+    environment:
+      NODE_ID: node-8
+      HOST: 0.0.0.0
+      PORT: 9007
+      BOOTSTRAP_PEERS: node2:9001,node9:9008
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-8.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10007
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      NETWORK_DELAY_MS: 60
+      NETWORK_DELAY_JITTER_MS: 50
+      NETWORK_DELAY_SPIKE_PROB: 0.14
+      NETWORK_DELAY_SPIKE_MS: 600
+      NETWORK_PACKET_LOSS_PROB: 0.03
+      SENSORS: 3
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: freight_yard_load
+      SENSOR_0_PERIOD_MS: 3500
+      SENSOR_0_LATENCY_MS: 45
+      SENSOR_0_LATENCY_JITTER_MS: 30
+      SENSOR_0_MIN: 20
+      SENSOR_0_MAX: 300
+      SENSOR_0_UNIT: "containers"
+      SENSOR_1_TYPE: spike
+      SENSOR_1_NAME: crane_activity
+      SENSOR_1_PERIOD_MS: 2500
+      SENSOR_1_LATENCY_MS: 80
+      SENSOR_1_LATENCY_JITTER_MS: 50
+      SENSOR_1_BASELINE: 15
+      SENSOR_1_SPIKE_HEIGHT: 120
+      SENSOR_1_P_SPIKE: 0.22
+      SENSOR_1_UNIT: "moves/min"
+      SENSOR_2_TYPE: noise
+      SENSOR_2_NAME: dock_noise
+      SENSOR_2_PERIOD_MS: 4500
+      SENSOR_2_LATENCY_MS: 35
+      SENSOR_2_LATENCY_JITTER_MS: 20
+      SENSOR_2_BASE: 58
+      SENSOR_2_NOISE: 10
+      SENSOR_2_UNIT: "dB"
+    ports:
+      - "9007:9007"
+      - "10007:10007"
+    volumes:
+      - ../logs:/app/logs
+
+  node9:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-9
+    environment:
+      NODE_ID: node-9
+      HOST: 0.0.0.0
+      PORT: 9008
+      BOOTSTRAP_PEERS: node3:9002,node10:9009
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-9.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10008
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      NETWORK_DELAY_MS: 42
+      NETWORK_DELAY_JITTER_MS: 30
+      NETWORK_DELAY_SPIKE_PROB: 0.09
+      NETWORK_DELAY_SPIKE_MS: 260
+      NETWORK_PACKET_LOSS_PROB: 0.012
+      SENSORS: 3
+      SENSOR_0_TYPE: trend
+      SENSOR_0_NAME: greenhouse_temperature
+      SENSOR_0_PERIOD_MS: 5000
+      SENSOR_0_LATENCY_MS: 35
+      SENSOR_0_LATENCY_JITTER_MS: 20
+      SENSOR_0_START: 18
+      SENSOR_0_SLOPE: 0.2
+      SENSOR_0_NOISE: 0.7
+      SENSOR_0_UNIT: "degC"
+      SENSOR_1_TYPE: numeric
+      SENSOR_1_NAME: irrigation_pressure
+      SENSOR_1_PERIOD_MS: 6000
+      SENSOR_1_LATENCY_MS: 50
+      SENSOR_1_LATENCY_JITTER_MS: 30
+      SENSOR_1_MIN: 1.2
+      SENSOR_1_MAX: 4.7
+      SENSOR_1_UNIT: "bar"
+      SENSOR_2_TYPE: categorical
+      SENSOR_2_NAME: valve_state
+      SENSOR_2_PERIOD_MS: 7000
+      SENSOR_2_LATENCY_MS: 40
+      SENSOR_2_LATENCY_JITTER_MS: 25
+      SENSOR_2_VALUES: "open,partial,closed"
+      SENSOR_2_UNIT: "state"
+    ports:
+      - "9008:9008"
+      - "10008:10008"
+    volumes:
+      - ../logs:/app/logs
+
+  node10:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-10
+    environment:
+      NODE_ID: node-10
+      HOST: 0.0.0.0
+      PORT: 9009
+      BOOTSTRAP_PEERS: node4:9003,node11:9010
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-10.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10009
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      NETWORK_DELAY_MS: 75
+      NETWORK_DELAY_JITTER_MS: 65
+      NETWORK_DELAY_SPIKE_PROB: 0.16
+      NETWORK_DELAY_SPIKE_MS: 900
+      NETWORK_PACKET_LOSS_PROB: 0.04
+      SENSORS: 3
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: edge_datacenter_cpu_temp
+      SENSOR_0_PERIOD_MS: 2500
+      SENSOR_0_LATENCY_MS: 30
+      SENSOR_0_LATENCY_JITTER_MS: 20
+      SENSOR_0_MIN: 24
+      SENSOR_0_MAX: 78
+      SENSOR_0_UNIT: "degC"
+      SENSOR_1_TYPE: numeric
+      SENSOR_1_NAME: rack_power_draw
+      SENSOR_1_PERIOD_MS: 3000
+      SENSOR_1_LATENCY_MS: 25
+      SENSOR_1_LATENCY_JITTER_MS: 15
+      SENSOR_1_MIN: 2.5
+      SENSOR_1_MAX: 12.0
+      SENSOR_1_UNIT: "kW"
+      SENSOR_2_TYPE: boolean
+      SENSOR_2_NAME: ups_on_battery
+      SENSOR_2_PERIOD_MS: 9000
+      SENSOR_2_LATENCY_MS: 60
+      SENSOR_2_LATENCY_JITTER_MS: 35
+      SENSOR_2_P_TRUE: 0.02
+      SENSOR_2_UNIT: "active"
+    ports:
+      - "9009:9009"
+      - "10009:10009"
+    volumes:
+      - ../logs:/app/logs
+
+  node11:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-11
+    environment:
+      NODE_ID: node-11
+      HOST: 0.0.0.0
+      PORT: 9010
+      BOOTSTRAP_PEERS: node5:9004,node12:9011
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-11.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10010
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      NETWORK_DELAY_MS: 50
+      NETWORK_DELAY_JITTER_MS: 40
+      NETWORK_DELAY_SPIKE_PROB: 0.11
+      NETWORK_DELAY_SPIKE_MS: 320
+      NETWORK_PACKET_LOSS_PROB: 0.02
+      SENSORS: 3
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: tunnel_humidity
+      SENSOR_0_PERIOD_MS: 5000
+      SENSOR_0_LATENCY_MS: 30
+      SENSOR_0_LATENCY_JITTER_MS: 20
+      SENSOR_0_MIN: 45
+      SENSOR_0_MAX: 98
+      SENSOR_0_UNIT: "%RH"
+      SENSOR_1_TYPE: wave
+      SENSOR_1_NAME: structure_vibration
+      SENSOR_1_PERIOD_MS: 1800
+      SENSOR_1_LATENCY_MS: 20
+      SENSOR_1_LATENCY_JITTER_MS: 10
+      SENSOR_1_AMPLITUDE: 4
+      SENSOR_1_FREQUENCY: 0.6
+      SENSOR_1_UNIT: "mm/s"
+      SENSOR_2_TYPE: numeric
+      SENSOR_2_NAME: air_speed
+      SENSOR_2_PERIOD_MS: 4000
+      SENSOR_2_LATENCY_MS: 35
+      SENSOR_2_LATENCY_JITTER_MS: 20
+      SENSOR_2_MIN: 0.8
+      SENSOR_2_MAX: 8.5
+      SENSOR_2_UNIT: "m/s"
+    ports:
+      - "9010:9010"
+      - "10010:10010"
+    volumes:
+      - ../logs:/app/logs
+
+  node12:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-12
+    environment:
+      NODE_ID: node-12
+      HOST: 0.0.0.0
+      PORT: 9011
+      BOOTSTRAP_PEERS: node6:9005,node7:9006
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node-12.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 10011
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 6.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      HEARTBEAT_INTERVAL_MS: 1100
+      NETWORK_DELAY_MS: 85
+      NETWORK_DELAY_JITTER_MS: 110
+      NETWORK_DELAY_SPIKE_PROB: 0.2
+      NETWORK_DELAY_SPIKE_MS: 1800
+      NETWORK_PACKET_LOSS_PROB: 0.12
+      SENSORS: 3
+      SENSOR_0_TYPE: numeric
+      SENSOR_0_NAME: remote_link_latency
+      SENSOR_0_PERIOD_MS: 2000
+      SENSOR_0_LATENCY_MS: 90
+      SENSOR_0_LATENCY_JITTER_MS: 70
+      SENSOR_0_MIN: 15
+      SENSOR_0_MAX: 260
+      SENSOR_0_UNIT: "ms"
+      SENSOR_1_TYPE: spike
+      SENSOR_1_NAME: retry_rate
+      SENSOR_1_PERIOD_MS: 2500
+      SENSOR_1_LATENCY_MS: 70
+      SENSOR_1_LATENCY_JITTER_MS: 50
+      SENSOR_1_BASELINE: 2
+      SENSOR_1_SPIKE_HEIGHT: 30
+      SENSOR_1_P_SPIKE: 0.18
+      SENSOR_1_UNIT: "retries/min"
+      SENSOR_2_TYPE: categorical
+      SENSOR_2_NAME: uplink_status
+      SENSOR_2_PERIOD_MS: 6000
+      SENSOR_2_LATENCY_MS: 80
+      SENSOR_2_LATENCY_JITTER_MS: 55
+      SENSOR_2_VALUES: "stable,degraded,unstable"
+      SENSOR_2_UNIT: "state"
+    ports:
+      - "9011:9011"
+      - "10011:10011"
+    volumes:
+      - ../logs:/app/logs

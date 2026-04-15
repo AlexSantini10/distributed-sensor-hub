@@ -14,7 +14,8 @@
         "gossip",
         "simulation",
         "log",
-        "runtime"
+        "runtime",
+        "docker"
     ],
     "markdown.validate.enabled": true,
     "postman.settings.dotenv-detection-notification-visibility": false
