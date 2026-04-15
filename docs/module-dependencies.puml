@@ -49,10 +49,6 @@ membership --> fd
 gossip --> membership
 gossip --> protocol
 
-state --> membership
-state --> networking
-state --> protocol
-
 sensors --> state
 
 webapi --> protocol

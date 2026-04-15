@@ -26,10 +26,10 @@ from sensors.handler import QueueingSensorHandler
 from sensors.sensor_manager import SensorManager
 from state.events import SensorEventQueue
 from state.node_state_worker import NodeStateWorker
-from state.sensor_update_publisher import SensorUpdatePublisher
 from utils.config import Config
 from utils.typing import LoggerLike
 from webapi.http_api import WebAPIServer
+from runtime.sensor_update_publisher import SensorUpdatePublisher
 
 
 class NodeApplication:
