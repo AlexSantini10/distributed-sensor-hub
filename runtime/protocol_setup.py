@@ -3,13 +3,13 @@
 from collections.abc import Callable
 
 from gossip.handlers import make_gossip_state_handler
-from membership.handlers import make_membership_handlers
 from membership.peer import Peer as MembershipPeer
 from membership.peer_table import PeerTable
 from protocol import handlers
 from protocol.dispatcher import MessageDispatcher
 from protocol.message_types import MessageType
 from utils.typing import SenderLike, StateWorkerLike
+from runtime.membership_handlers import make_membership_handlers
 
 
 OnPeerDiscovered = Callable[[MembershipPeer], None]

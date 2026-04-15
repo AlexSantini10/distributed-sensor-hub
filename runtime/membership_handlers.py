@@ -1,11 +1,4 @@
-"""Handle membership messages used for peer discovery and convergence.
-
-Responsibilities:
-    - Build join and peer-list handlers bound to a shared membership table.
-    - Apply additive, idempotent membership updates from bootstrap and gossip.
-    - Reply with the local peer view so discovery can converge across nodes.
-    - Notify runtime code when membership learns a previously unknown peer.
-"""
+"""Handle membership protocol messages used for peer discovery and convergence."""
 
 from collections.abc import Callable
 from typing import TypeVar
@@ -30,19 +23,7 @@ def make_membership_handlers(
     self_node_id: str,
     on_peer_discovered: OnPeerDiscovered | None = None,
 ) -> tuple[Callable[[Message], None], Callable[[Message], None]]:
-    """Create handlers for join and peer-list membership messages.
-
-    Args:
-        peer_table (PeerTable): Shared membership table updated by both handlers.
-        send (SenderLike): Transport callback used to send protocol messages to a peer ID.
-        self_node_id (str): Logical identifier of the local node.
-        on_peer_discovered (OnPeerDiscovered | None): Optional callback invoked
-            only when a previously unknown peer is inserted into ``peer_table``.
-
-    Returns:
-        tuple[Callable[[Message], None], Callable[[Message], None]]: Pair of
-            handlers for ``JOIN_REQUEST`` and ``PEER_LIST`` messages.
-    """
+    """Create handlers for join and peer-list membership messages."""
     log: LoggerLike = get_logger(__name__, self_node_id)
 
     def _format_status(status: object) -> str:
@@ -59,7 +40,6 @@ def make_membership_handlers(
         expected_type: MessageType,
         payload_type: type[PayloadT],
     ) -> PayloadT | None:
-        """Return the typed payload or reject the message consistently."""
         if msg.msg_type is not expected_type or not isinstance(msg.payload, payload_type):
             log.warning(
                 "Rejected invalid membership message: "
@@ -70,7 +50,6 @@ def make_membership_handlers(
         return msg.payload
 
     def _build_peer_list_reply() -> Message:
-        """Build a peer-list reply from a stable membership snapshot."""
         return build_peer_list(
             sender_id=self_node_id,
             peers=[
@@ -80,14 +59,6 @@ def make_membership_handlers(
         )
 
     def _notify_discovered(peer: Peer) -> None:
-        """Invoke the discovery callback for a newly learned peer.
-
-        Args:
-            peer (Peer): Peer that was inserted into the membership table.
-
-        Returns:
-            None: This helper emits side effects only through the callback.
-        """
         if on_peer_discovered is None:
             return
 
@@ -100,15 +71,6 @@ def make_membership_handlers(
             )
 
     def handle_join_request(msg: Message) -> None:
-        """Process a join request and reply with the current peer list.
-
-        Args:
-            msg (Message): Incoming validated ``JOIN_REQUEST`` message whose
-                payload must be ``JoinRequestPayload``.
-
-        Returns:
-            None: The handler updates membership state and may emit a reply.
-        """
         payload = _extract_payload(
             msg=msg,
             expected_type=MessageType.JOIN_REQUEST,
@@ -159,15 +121,6 @@ def make_membership_handlers(
             raise
 
     def handle_peer_list(msg: Message) -> None:
-        """Merge peers from a peer-list message into local membership state.
-
-        Args:
-            msg (Message): Incoming validated ``PEER_LIST`` message whose
-                payload must be ``PeerListPayload``.
-
-        Returns:
-            None: The handler updates membership state in place.
-        """
         payload = _extract_payload(
             msg=msg,
             expected_type=MessageType.PEER_LIST,
