@@ -18,9 +18,9 @@ from protocol.contracts import NetworkConstant
 from protocol.dispatcher import MessageDispatcher
 from protocol.factory import build_join_request
 from protocol.message import Message
-from protocol.setup import setup_protocol
 from utils.config import Config
 from utils.typing import LoggerLike, SenderLike, StateWorkerLike
+from runtime.protocol_setup import setup_protocol
 
 
 @dataclass(frozen=True)

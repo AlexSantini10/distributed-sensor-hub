@@ -1,13 +1,8 @@
-"""Assemble protocol routing and handler bindings for a runtime node.
-
-Responsibilities:
-    - Build the dispatcher used to route validated inbound messages.
-    - Create the shared membership table consumed by membership handlers.
-    - Register handlers for membership, liveness, replication, and control flows.
-"""
+"""Assemble protocol routing and handler bindings for a runtime node."""
 
 from collections.abc import Callable
 
+from gossip.handlers import make_gossip_state_handler
 from membership.handlers import make_membership_handlers
 from membership.peer import Peer as MembershipPeer
 from membership.peer_table import PeerTable
@@ -29,25 +24,7 @@ def setup_protocol(
     phi_threshold_dead: float = 8.0,
     phi_initial_interval_s: float = 1.0,
 ) -> tuple[MessageDispatcher, PeerTable]:
-    """Build the protocol dispatcher and register message handlers.
-
-    Membership messages are delegated to the membership subsystem, while
-    ``SENSOR_UPDATE`` can be bound to a state worker so replicated updates are
-    merged locally. The returned peer table is the membership view owned by the
-    node and updated by membership handlers as peers are discovered or announced.
-
-    Args:
-        self_node_id (str): Identifier of the local node.
-        send_function (SenderLike): Callable used by handlers to emit outbound
-            protocol messages.
-        state_worker (StateWorkerLike | None): Optional state merge component for
-            ``SENSOR_UPDATE`` handling.
-        on_peer_discovered (OnPeerDiscovered | None): Optional callback invoked
-            when membership discovers a new peer.
-
-    Returns:
-        tuple[MessageDispatcher, PeerTable]: Configured dispatcher and peer table.
-    """
+    """Build the protocol dispatcher and register message handlers."""
     dispatcher = MessageDispatcher()
     peer_table = PeerTable(
         self_node_id=self_node_id,
@@ -87,7 +64,7 @@ def setup_protocol(
 
     dispatcher.register(
         MessageType.GOSSIP_STATE,
-        handlers.make_gossip_state_handler(
+        make_gossip_state_handler(
             peer_table=peer_table,
             self_node_id=self_node_id,
             on_peer_discovered=on_peer_discovered,

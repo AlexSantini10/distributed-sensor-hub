@@ -44,7 +44,6 @@ runtime --> webapi
 runtime --> utils
 
 protocol --> membership
-protocol --> gossip
 protocol --> utils
 
 networking --> protocol

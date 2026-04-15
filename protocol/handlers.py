@@ -11,10 +11,6 @@ import time
 
 from membership.peer import Peer
 from membership.peer_table import PeerTable
-from gossip.handlers import (
-    handle_gossip_state as gossip_handle_gossip_state,
-    make_gossip_state_handler as gossip_make_gossip_state_handler,
-)
 from protocol.factory import (
     build_delta_unavailable,
     build_full_sync_request,
@@ -174,25 +170,6 @@ def handle_sensor_update(msg: Message) -> None:
     """Warn that sensor-update handling has not been wired for this node."""
     log = get_logger(__name__, msg.sender_id)
     log.warning("SENSOR_UPDATE received but handler is not wired")
-
-
-def make_gossip_state_handler(
-    *,
-    peer_table: PeerTable,
-    self_node_id: str,
-    on_peer_discovered: Callable[[Peer], None] | None = None,
-) -> Callable[[Message], None]:
-    """Create a handler that merges membership liveness gossip."""
-    return gossip_make_gossip_state_handler(
-        peer_table=peer_table,
-        self_node_id=self_node_id,
-        on_peer_discovered=on_peer_discovered,
-    )
-
-
-def handle_gossip_state(msg: Message) -> None:
-    """Warn that state-gossip handling has not been wired for this node."""
-    gossip_handle_gossip_state(msg)
 
 
 def make_full_sync_request_handler(

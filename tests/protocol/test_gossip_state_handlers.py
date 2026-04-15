@@ -9,8 +9,8 @@ from membership.liveness import NodeLiveness
 from membership.peer import Peer
 from membership.peer_table import PeerTable
 from membership.status import NodeStatus
+from gossip.handlers import make_gossip_state_handler
 from protocol.factory import build_gossip_state
-from protocol.handlers import make_gossip_state_handler
 from utils.typing import JsonObject
 
 
