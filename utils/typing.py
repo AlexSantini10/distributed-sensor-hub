@@ -8,9 +8,8 @@ Responsibilities:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Protocol, TypedDict, runtime_checkable
+from typing import Protocol, TypedDict, runtime_checkable
 
 
 type JsonScalar = None | bool | int | float | str
@@ -243,16 +242,16 @@ class StateWorkerLike(Protocol):
 class PeerTableLike(Protocol):
     """Define the membership-table behavior consumed outside the package."""
 
-    def snapshot(self) -> tuple[MembershipPeer, ...]:
+    def snapshot(self) -> tuple[object, ...]:
         """Return a snapshot of known peers.
 
         Returns:
-            tuple[MembershipPeer, ...]: Current peer snapshot.
+            tuple[object, ...]: Current peer snapshot.
         """
         ...
 
 
-type SenderLike = Callable[[str, "Message"], None]
+type SenderLike = Callable[[str, object], None]
 
 
 class SnapshotProvider(Protocol):
@@ -282,14 +281,14 @@ class MembershipSnapshotProvider(Protocol):
 class SensorEventSource(Protocol):
     """Define the queue contract used by the state worker."""
 
-    def get(self, timeout: float | None = None) -> SensorEvent:
+    def get(self, timeout: float | None = None) -> object:
         """Return the next normalized sensor event.
 
         Args:
             timeout (float | None): Maximum wait time in seconds.
 
         Returns:
-            SensorEvent: Next available sensor event.
+            object: Next available sensor event.
         """
         ...
 
@@ -305,8 +304,3 @@ class ReplicationDeltaSourceLike(Protocol):
         """Return ordered deltas newer than ``since_ts_ms`` without draining."""
         ...
 
-
-if TYPE_CHECKING:
-    from membership.peer import Peer as MembershipPeer
-    from protocol.message import Message
-    from state.events import SensorEvent
