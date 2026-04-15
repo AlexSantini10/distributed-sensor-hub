@@ -13,7 +13,7 @@ from protocol.factory import (
     build_full_sync_response,
     build_get_delta,
 )
-from protocol.handlers import (
+from runtime.state_sync_handlers import (
     make_delta_unavailable_handler,
     make_full_sync_request_handler,
     make_full_sync_response_handler,

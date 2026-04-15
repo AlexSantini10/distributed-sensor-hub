@@ -5,11 +5,23 @@ from collections.abc import Callable
 from gossip.handlers import make_gossip_state_handler
 from membership.peer import Peer as MembershipPeer
 from membership.peer_table import PeerTable
-from protocol import handlers
 from protocol.dispatcher import MessageDispatcher
 from protocol.message_types import MessageType
 from utils.typing import SenderLike, StateWorkerLike
+from runtime.heartbeat_handlers import make_heartbeat_handlers
 from runtime.membership_handlers import make_membership_handlers
+from runtime.state_sync_handlers import (
+    handle_delta_unavailable,
+    handle_full_sync_request,
+    handle_full_sync_response,
+    handle_get_delta,
+    handle_sensor_update,
+    make_delta_unavailable_handler,
+    make_full_sync_request_handler,
+    make_full_sync_response_handler,
+    make_get_delta_handler,
+    make_sensor_update_handler,
+)
 
 
 OnPeerDiscovered = Callable[[MembershipPeer], None]
@@ -40,7 +52,7 @@ def setup_protocol(
         on_peer_discovered=on_peer_discovered,
     )
 
-    ping_handler, pong_handler = handlers.make_heartbeat_handlers(
+    ping_handler, pong_handler = make_heartbeat_handlers(
         peer_table=peer_table,
         send=send_function,
         self_node_id=self_node_id,
@@ -54,13 +66,13 @@ def setup_protocol(
     if state_worker is not None:
         dispatcher.register(
             MessageType.SENSOR_UPDATE,
-            handlers.make_sensor_update_handler(
+            make_sensor_update_handler(
                 state_worker=state_worker,
                 self_node_id=self_node_id,
             ),
         )
     else:
-        dispatcher.register(MessageType.SENSOR_UPDATE, handlers.handle_sensor_update)
+        dispatcher.register(MessageType.SENSOR_UPDATE, handle_sensor_update)
 
     dispatcher.register(
         MessageType.GOSSIP_STATE,
@@ -73,7 +85,7 @@ def setup_protocol(
     if state_worker is not None:
         dispatcher.register(
             MessageType.FULL_SYNC_REQUEST,
-            handlers.make_full_sync_request_handler(
+            make_full_sync_request_handler(
                 state_worker=state_worker,
                 peer_table=peer_table,
                 send=send_function,
@@ -82,7 +94,7 @@ def setup_protocol(
         )
         dispatcher.register(
             MessageType.FULL_SYNC_RESPONSE,
-            handlers.make_full_sync_response_handler(
+            make_full_sync_response_handler(
                 state_worker=state_worker,
                 peer_table=peer_table,
                 self_node_id=self_node_id,
@@ -90,11 +102,11 @@ def setup_protocol(
             ),
         )
     else:
-        dispatcher.register(MessageType.FULL_SYNC_REQUEST, handlers.handle_full_sync_request)
-        dispatcher.register(MessageType.FULL_SYNC_RESPONSE, handlers.handle_full_sync_response)
+        dispatcher.register(MessageType.FULL_SYNC_REQUEST, handle_full_sync_request)
+        dispatcher.register(MessageType.FULL_SYNC_RESPONSE, handle_full_sync_response)
     dispatcher.register(
         MessageType.DELTA_UNAVAILABLE,
-        handlers.make_delta_unavailable_handler(
+        make_delta_unavailable_handler(
             send=send_function,
             self_node_id=self_node_id,
         ),
@@ -102,14 +114,24 @@ def setup_protocol(
     if state_worker is not None:
         dispatcher.register(
             MessageType.GET_DELTA,
-            handlers.make_get_delta_handler(
+            make_get_delta_handler(
                 state_worker=state_worker,
                 send=send_function,
                 self_node_id=self_node_id,
             ),
         )
     else:
-        dispatcher.register(MessageType.GET_DELTA, handlers.handle_get_delta)
-    dispatcher.register(MessageType.ERROR, handlers.handle_error)
-    dispatcher.register(MessageType.ACK, handlers.handle_ack)
+        dispatcher.register(MessageType.GET_DELTA, handle_get_delta)
+    dispatcher.register(MessageType.ERROR, _handle_error)
+    dispatcher.register(MessageType.ACK, _handle_ack)
     return dispatcher, peer_table
+
+
+def _handle_error(_msg: object) -> None:
+    """Reject processing of an unimplemented protocol error message."""
+    raise NotImplementedError("ERROR not implemented yet")
+
+
+def _handle_ack(_msg: object) -> None:
+    """Reject processing of an unimplemented acknowledgement message."""
+    raise NotImplementedError("ACK not implemented yet")

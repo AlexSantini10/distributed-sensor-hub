@@ -1,13 +1,6 @@
-"""Provide protocol handlers and handler factories used by runtime wiring.
-
-Responsibilities:
-    - Define placeholder handlers for message types owned by other subsystems.
-    - Bind node-local dependencies into message handlers during node startup.
-    - Enforce payload contracts before local state and membership merges occur.
-"""
+"""Handle protocol messages that synchronize replicated state."""
 
 from collections.abc import Callable
-import time
 
 from membership.peer import Peer
 from membership.peer_table import PeerTable
@@ -15,7 +8,6 @@ from protocol.factory import (
     build_delta_unavailable,
     build_full_sync_request,
     build_full_sync_response,
-    build_pong,
     build_sensor_update,
 )
 from protocol.message import Message
@@ -25,8 +17,6 @@ from protocol.messages import (
     FullSyncResponsePayload,
     GetDeltaPayload,
     PeerDescriptor,
-    PingPayload,
-    PongPayload,
     SensorMeta,
     SensorUpdatePayload,
 )
@@ -37,100 +27,6 @@ from utils.typing import (
     SenderLike,
     StateWorkerLike,
 )
-
-
-def handle_join_request(msg: Message) -> None:
-    """Reject direct handling of a membership join request in this module."""
-    raise NotImplementedError("JOIN_REQUEST not implemented here (use membership handlers)")
-
-
-def handle_peer_list(msg: Message) -> None:
-    """Reject direct handling of a membership peer list in this module."""
-    raise NotImplementedError("PEER_LIST not implemented here (use membership handlers)")
-
-
-def handle_ping(msg: Message) -> None:
-    """Warn that ping handling has not been wired for this node."""
-    log = get_logger(__name__, msg.sender_id)
-    log.warning("PING received but handler is not wired")
-
-
-def handle_pong(msg: Message) -> None:
-    """Warn that pong handling has not been wired for this node."""
-    log = get_logger(__name__, msg.sender_id)
-    log.warning("PONG received but handler is not wired")
-
-
-def make_heartbeat_handlers(
-    *,
-    peer_table: PeerTable,
-    send: SenderLike,
-    self_node_id: str,
-) -> tuple[Callable[[Message], None], Callable[[Message], None]]:
-    """Create handlers for ``PING`` and ``PONG`` liveness traffic."""
-    log: LoggerLike = get_logger(__name__, self_node_id)
-
-    def _mark_alive_and_record(
-        *,
-        peer_id: str,
-        sender_timestamp_ms: int | None,
-    ) -> None:
-        update = peer_table.record_heartbeat(
-            peer_id,
-            heartbeat_at=time.time(),
-            sender_timestamp_ms=sender_timestamp_ms,
-            arrived_at_monotonic_s=time.monotonic(),
-        )
-        if update.reason == "peer_not_found":
-            log.debug(f"Heartbeat received from unknown peer {peer_id}")
-            return
-        if update.status.changed and update.peer is not None:
-            log.info(
-                "Membership transition on heartbeat: "
-                f"peer={peer_id} "
-                f"from={update.status.previous_status} to={update.status.new_status} "
-                f"phi={update.peer.phi:.3f} "
-                f"event_ts_ms={update.peer.status_ts_ms}"
-            )
-
-    def handle_ping(msg: Message) -> None:
-        payload = msg.payload
-        if not isinstance(payload, PingPayload):
-            log.warning("Invalid PING payload")
-            return
-        if msg.sender_id == self_node_id:
-            log.debug("Ignored self PING")
-            return
-
-        _mark_alive_and_record(
-            peer_id=msg.sender_id,
-            sender_timestamp_ms=payload.timestamp_ms,
-        )
-
-        pong = build_pong(
-            sender_id=self_node_id,
-            pong_timestamp_ms=int(time.time() * 1000),
-        )
-        try:
-            send(msg.sender_id, pong)
-        except Exception:
-            log.warning(f"Failed to send PONG to {msg.sender_id}", exc_info=True)
-
-    def handle_pong(msg: Message) -> None:
-        payload = msg.payload
-        if not isinstance(payload, PongPayload):
-            log.warning("Invalid PONG payload")
-            return
-        if msg.sender_id == self_node_id:
-            log.debug("Ignored self PONG")
-            return
-
-        _mark_alive_and_record(
-            peer_id=msg.sender_id,
-            sender_timestamp_ms=payload.timestamp_ms,
-        )
-
-    return handle_ping, handle_pong
 
 
 def make_sensor_update_handler(
@@ -403,13 +299,3 @@ def handle_get_delta(msg: Message) -> None:
     """Warn that get-delta handling has not been wired for this node."""
     log = get_logger(__name__, msg.sender_id)
     log.warning("GET_DELTA received but handler is not wired")
-
-
-def handle_error(msg: Message) -> None:
-    """Reject processing of an unimplemented protocol error message."""
-    raise NotImplementedError("ERROR not implemented yet")
-
-
-def handle_ack(msg: Message) -> None:
-    """Reject processing of an unimplemented acknowledgement message."""
-    raise NotImplementedError("ACK not implemented yet")
