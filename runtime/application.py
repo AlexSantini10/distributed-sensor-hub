@@ -14,15 +14,8 @@ import time
 from networking.tcp_client import Peer as TcpPeer
 from networking.tcp_client import TcpClient
 from networking.tcp_server import TcpServer
-from protocol.factory import build_full_sync_request
 from runtime.heartbeat import HeartbeatSender
-from runtime.networking import (
-    bootstrap_membership,
-    seed_peer_table,
-    setup_node_networking,
-)
 from membership.peer_table import PeerTable
-from sensors.handler import QueueingSensorHandler
 from sensors.sensor_manager import SensorManager
 from state.events import SensorEventQueue
 from state.node_state_worker import NodeStateWorker
@@ -30,6 +23,14 @@ from utils.config import Config
 from utils.typing import LoggerLike
 from webapi.http_api import WebAPIServer
 from runtime.sensor_update_publisher import SensorUpdatePublisher
+from runtime.startup import (
+    bootstrap_cluster_membership,
+    start_heartbeat_runtime,
+    start_networking_stack,
+    start_sensor_runtime,
+    start_state_worker,
+    start_web_api_server,
+)
 
 
 class NodeApplication:
@@ -179,14 +180,11 @@ class NodeApplication:
         Returns:
             None: This method creates and starts the local state worker.
         """
-        self.state_worker = NodeStateWorker(
-            node_id=self.config.node_id,  # local identity for LWW origin/tie-breaks
-            event_queue=self.sensor_event_queue,  # sensor-to-state worker channel
-            log=self.log,  # logger-like object with info/error/critical methods
-            replication_delta_maxlen=self.config.replication_delta_maxlen,  # delta history bound
+        self.state_worker = start_state_worker(
+            config=self.config,
+            event_queue=self.sensor_event_queue,
+            log=self.log,
         )
-        self.state_worker.start()
-        self.log.info("State worker started")
 
     def _start_networking(self) -> None:
         """Create the protocol stack and start inbound networking.
@@ -200,25 +198,17 @@ class NodeApplication:
         """
         assert self.state_worker is not None
 
-        networking = setup_node_networking(
-            config=self.config,  # node identity, bind address, peers, and timing knobs
-            log=self.log,  # shared runtime logger
-            state_worker=self.state_worker,  # protocol target for merges and sync reads
-            tcp_server_cls=TcpServer,  # injectable server implementation for tests
+        networking = start_networking_stack(
+            config=self.config,
+            log=self.log,
+            state_worker=self.state_worker,
+            tcp_server_cls=TcpServer,
         )
 
         self.client = networking.client
         self.server = networking.server
         self.peer_table = networking.peer_table
         self.bootstrap_peers = networking.bootstrap_peers
-
-        try:
-            self.server.start()
-        except Exception:
-            self.log.critical("Failed to start TCP server", exc_info=True)
-            raise
-
-        self.log.info(f"Node listening on {self.config.host}:{self.config.port}")
 
     def _bootstrap_membership(self) -> None:
         """Seed the membership view and send initial ``JOIN_REQUEST`` messages.
@@ -233,45 +223,13 @@ class NodeApplication:
         assert self.peer_table is not None
         assert self.client is not None
 
-        seed_peer_table(
+        bootstrap_cluster_membership(
+            config=self.config,
             peer_table=self.peer_table,
             bootstrap_peers=self.bootstrap_peers,
+            client=self.client,
             log=self.log,
         )
-
-        if not self.bootstrap_peers:
-            self.log.info("No bootstrap peers configured")
-            return
-
-        bootstrap_membership(
-            self_node_id=self.config.node_id,  # identity advertised in JOIN_REQUEST
-            host=self.config.host,  # host peers should use to reach this node
-            port=self.config.port,  # TCP port peers should use to reach this node
-            peers=self.bootstrap_peers,  # configured initial join targets
-            send=self.client.send_json,  # callable: queues Message by peer_id
-            log=self.log,  # shared runtime logger
-        )
-        self._request_full_sync_from_bootstrap_peers()
-
-    def _request_full_sync_from_bootstrap_peers(self) -> None:
-        """Request full-state transfer from bootstrap peers after startup join."""
-        assert self.client is not None
-
-        request = build_full_sync_request(
-            sender_id=self.config.node_id,
-            requester_id=self.config.node_id,
-        )
-        for peer in self.bootstrap_peers:
-            try:
-                self.client.send_json(peer.node_id, request)
-                self.log.info(
-                    f"Sent FULL_SYNC_REQUEST to {peer.node_id} {peer.host}:{peer.port}"
-                )
-            except Exception:
-                self.log.warning(
-                    f"FULL_SYNC_REQUEST failed to {peer.node_id} {peer.host}:{peer.port}",
-                    exc_info=True,
-                )
 
     def _start_sensors(self) -> None:
         """Start local sensors and publish their updates to the cluster.
@@ -288,25 +246,14 @@ class NodeApplication:
         assert self.state_worker is not None
 
         try:
-            sensor_handler = QueueingSensorHandler(
-                self.sensor_event_queue.put  # callback: enqueue raw sensor events
+            self.sensor_manager, self.publisher = start_sensor_runtime(
+                config=self.config,
+                event_queue=self.sensor_event_queue,
+                peer_table=self.peer_table,
+                client=self.client,
+                state_worker=self.state_worker,
+                log=self.log,
             )
-            self.sensor_manager = SensorManager(
-                handler=sensor_handler  # adapter used by every configured sensor
-            )
-            self.sensor_manager.load(self.config.sensors)
-            self.sensor_manager.start_all()
-            self.log.info(f"Started {len(self.sensor_manager.sensors)} sensors")
-
-            self.publisher = SensorUpdatePublisher(
-                self_node_id=self.config.node_id,  # origin for outbound SENSOR_UPDATE
-                peer_table=self.peer_table,  # current replication targets
-                tcp_client=self.client,  # shared outbound transport manager
-                state_worker=self.state_worker,  # source of local winning deltas
-                log=self.log,  # shared runtime logger
-            )
-            self.publisher.start()
-            self.log.info("Sensor update publisher started")
         except Exception:
             self.log.critical("Failed to initialize sensors", exc_info=True)
             raise
@@ -316,16 +263,11 @@ class NodeApplication:
         assert self.peer_table is not None
         assert self.client is not None
 
-        self.heartbeat_sender = HeartbeatSender(
-            self_node_id=self.config.node_id,  # sender identity in PING/GOSSIP_STATE
-            peer_table=self.peer_table,  # source of known peers and phi state
-            send=self.client.send_json,  # callable: queues Message by peer_id
-            interval_ms=self.config.heartbeat_interval_ms,  # heartbeat period
-            log=self.log,  # shared runtime logger
-        )
-        self.heartbeat_sender.start()
-        self.log.info(
-            f"Heartbeat sender started (interval_ms={self.config.heartbeat_interval_ms})"
+        self.heartbeat_sender = start_heartbeat_runtime(
+            config=self.config,
+            peer_table=self.peer_table,
+            client=self.client,
+            log=self.log,
         )
 
     def _start_web_api(self) -> None:
@@ -340,23 +282,12 @@ class NodeApplication:
         assert self.state_worker is not None
 
         try:
-            self.log.info(
-                f"Starting WebAPI on {self.config.host}:{self.config.web_api_port}"
+            self.web_api = start_web_api_server(
+                config=self.config,
+                state_worker=self.state_worker,
+                peer_table=self.peer_table,
+                log=self.log,
             )
-            self.web_api = WebAPIServer(
-                host=self.config.host,  # HTTP bind address
-                port=self.config.web_api_port,  # HTTP monitoring port
-                state_provider=self.state_worker.get_state_snapshot,  # callable snapshot reader
-                updates_provider=self.state_worker.get_updates_snapshot,  # callable update reader
-                membership_provider=(
-                    self.peer_table.membership_snapshot
-                    if self.peer_table is not None
-                    else None
-                ),  # callable membership reader, if membership is initialized
-                log=self.log,  # shared runtime logger
-            )
-            self.web_api.start()
-            self.log.info("WebAPI started")
         except Exception:
             self.log.critical("Failed to start WebAPI", exc_info=True)
             raise
