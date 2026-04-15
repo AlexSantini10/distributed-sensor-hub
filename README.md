@@ -26,16 +26,12 @@ Distributed Sensor Hub is a peer-to-peer system for aggregating heterogeneous Io
   - [Single node](#single-node)
   - [Docker topologies](#docker-topologies)
   - [Web API](#web-api)
-- [Testing](#testing)
-  - [Local test suite](#local-test-suite)
-  - [Integration and Docker checks](#integration-and-docker-checks)
-  - [Timed crash/recovery with Docker Compose](#timed-crashrecovery-with-docker-compose)
-  - [Simulating latency and unstable networks](#simulating-latency-and-unstable-networks)
 - [Notes](#notes)
 
 ## Documentation map
 
 - [Architecture, technologies, and design choices](docs/architecture.md)
+- [Testing guide and Docker validation scenarios](docs/testing.md)
 - [Roadmap and missing pieces](docs/roadmap.md)
 
 Module documentation:
@@ -133,12 +129,32 @@ Each sensor can also define `SENSOR_<i>_LATENCY_MS` and `SENSOR_<i>_LATENCY_JITT
 
 ### Single node
 
+PowerShell:
+
+```powershell
+$env:NODE_ID="node-1"
+$env:HOST="0.0.0.0"
+$env:PORT="9000"
+$env:BOOTSTRAP_PEERS=""
+$env:WEB_API_PORT="10000"
+$env:LOG_LEVEL="INFO"
+$env:SENSORS="1"
+$env:SENSOR_0_TYPE="numeric"
+$env:SENSOR_0_NAME="temperature"
+$env:SENSOR_0_PERIOD_MS="1000"
+$env:SENSOR_0_MIN="15"
+$env:SENSOR_0_MAX="30"
+$env:SENSOR_0_UNIT="C"
+python node.py
+```
+
+Linux/macOS:
+
 ```bash
 export NODE_ID=node-1 HOST=0.0.0.0 PORT=9000 BOOTSTRAP_PEERS=""
 export WEB_API_PORT=10000 LOG_LEVEL=INFO
 export SENSORS=1 SENSOR_0_TYPE=numeric SENSOR_0_NAME=temperature \
        SENSOR_0_PERIOD_MS=1000 SENSOR_0_MIN=15 SENSOR_0_MAX=30 SENSOR_0_UNIT=C
-
 python node.py
 ```
 
@@ -147,133 +163,18 @@ python node.py
 ```bash
 docker compose -f docker/docker-compose-base.yml up --build -d
 docker compose -f docker/docker-compose-6-nodes.yml up --build -d
+docker compose -f docker/docker-compose-12-nodes.yml up --build -d
 ```
 
 Stop a topology with the matching `docker compose ... down` command.
 
 ### Web API
 
-```bash
-curl http://localhost:10000/api/state
-curl http://localhost:10000/api/updates
-```
+Per monitorare il cluster si usa normalmente la UI statica in [web/index.html](web/index.html), che interroga gli endpoint HTTP esposti dai nodi.
 
 ## Testing
 
-### Local test suite
-
-```bash
-pytest --maxfail=1
-pytest -v --maxfail=1
-pytest -m protocol
-python -m pytest tests/state/test_lww.py -q
-```
-
-Available pytest markers are defined in [pytest.ini](pytest.ini):
-
-- `protocol`
-- `networking`
-- `membership`
-- `gossip`
-- `fd`
-- `runtime`
-- `state`
-- `sensors`
-- `webapi`
-- `utils`
-- `integration`
-
-### Integration and Docker checks
-
-```bash
-docker compose -f docker/docker-compose-base.yml up --build -d
-python tests/integration/verify_cluster.py --timeout 60 --interval 2
-docker compose -f docker/docker-compose-base.yml down
-```
-
-### Timed crash/recovery with Docker Compose
-
-You can simulate periodic node failures with:
-
-Prerequisite: start this compose stack first:
-`docker compose -f docker/docker-compose-6-nodes.yml up --build -d`.
-The script only performs `docker compose stop/start` on an existing service.
-
-```bash
-python manual_tests/compose_chaos.py \
-  --compose-file docker/docker-compose-6-nodes.yml \
-  --service node3 \
-  --down-seconds 20 \
-  --up-seconds 40 \
-  --cycles 5
-```
-
-PowerShell equivalent:
-
-```powershell
-python manual_tests/compose_chaos.py --compose-file docker/docker-compose-6-nodes.yml --service node3 --down-seconds 20 --up-seconds 40 --cycles 5
-```
-
-```powershell
-python manual_tests/compose_chaos.py `
-  --compose-file docker/docker-compose-6-nodes.yml `
-  --service node3 `
-  --down-seconds 20 `
-  --up-seconds 40 `
-  --cycles 5
-```
-
-Notes:
-- `--service` is the Compose service name (`node1`, `node2`, ...), not `container_name`.
-- Use `--cycles 0` for an infinite loop.
-- Add `--initial-delay-seconds N` to wait before the first stop.
-
-### Simulating latency and unstable networks
-
-For phi-accrual and resilience tests, you can combine sensor and network simulation:
-
-- Sensor latency: `SENSOR_<i>_LATENCY_MS`, `SENSOR_<i>_LATENCY_JITTER_MS`
-- Network delay/loss: `NETWORK_DELAY_MS`, `NETWORK_DELAY_JITTER_MS`, `NETWORK_DELAY_SPIKE_PROB`, `NETWORK_DELAY_SPIKE_MS`, `NETWORK_PACKET_LOSS_PROB`
-
-Example:
-
-```bash
-export NETWORK_DELAY_MS=40 NETWORK_DELAY_JITTER_MS=30
-export NETWORK_DELAY_SPIKE_PROB=0.1 NETWORK_DELAY_SPIKE_MS=250
-export NETWORK_PACKET_LOSS_PROB=0.02
-export SENSOR_0_LATENCY_MS=60 SENSOR_0_LATENCY_JITTER_MS=40
-```
-
-Quick test flow:
-
-```bash
-# 1) Start the cluster
-docker compose -f docker/docker-compose-6-nodes.yml up --build -d
-
-# 2) Run chaos on one node (example: node3)
-python manual_tests/compose_chaos.py \
-  --compose-file docker/docker-compose-6-nodes.yml \
-  --service node3 \
-  --down-seconds 20 \
-  --up-seconds 40 \
-  --cycles 5
-
-# 3) While chaos is running, inspect node state
-curl http://localhost:10000/api/state
-curl http://localhost:10001/api/state
-curl http://localhost:10002/api/state
-
-# 4) Optional convergence check
-python tests/integration/verify_cluster.py --timeout 120 --interval 2
-
-# 5) Cleanup
-docker compose -f docker/docker-compose-6-nodes.yml down
-```
-
-CI workflows live in:
-
-- [.github/workflows/pytest.yml](.github/workflows/pytest.yml)
-- [.github/workflows/integration-tests.yml](.github/workflows/integration-tests.yml)
+Testing workflows, Docker validation scenarios, and chaos experiments now live in [docs/testing.md](docs/testing.md).
 
 ## Notes
 
