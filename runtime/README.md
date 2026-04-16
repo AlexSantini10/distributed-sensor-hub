@@ -109,7 +109,7 @@ Creates the node communication stack:
 - outbound `TcpClient`;
 - `ClientPeerRegistry` for duplicate-safe peer registration;
 - configured bootstrap peers;
-- protocol dispatcher and handlers through `runtime.protocol_setup.setup_protocol(...)`;
+- protocol dispatcher and handlers through `protocol.setup.setup_protocol(...)`;
 - shared `PeerTable`;
 - inbound `TcpServer`.
 

@@ -8,7 +8,7 @@ from membership.peer_table import PeerTable
 from protocol.factory import build_join_request, build_peer_list, build_ping
 from protocol.message import Message
 from protocol.messages import PeerDescriptor, PeerListPayload, ProtocolValidationError
-from runtime.membership_handlers import make_membership_handlers
+from protocol.handlers.membership import make_membership_handlers
 
 
 class FakeSender:

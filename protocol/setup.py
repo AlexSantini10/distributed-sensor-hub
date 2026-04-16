@@ -6,12 +6,9 @@ from gossip.handlers import make_gossip_state_handler
 from membership.peer import Peer as MembershipPeer
 from membership.peer_table import PeerTable
 from protocol.dispatcher import MessageDispatcher
-from protocol.message_types import MessageType
-from utils.typing import SenderLike, StateWorkerLike
-from runtime.heartbeat_handlers import make_heartbeat_handlers
-from runtime.membership_handlers import make_membership_handlers
-from runtime.state_sync_handlers import (
-    handle_delta_unavailable,
+from protocol.handlers.heartbeat import make_heartbeat_handlers
+from protocol.handlers.membership import make_membership_handlers
+from protocol.handlers.state_sync import (
     handle_full_sync_request,
     handle_full_sync_response,
     handle_get_delta,
@@ -22,6 +19,8 @@ from runtime.state_sync_handlers import (
     make_get_delta_handler,
     make_sensor_update_handler,
 )
+from protocol.message_types import MessageType
+from utils.typing import SenderLike, StateWorkerLike
 
 
 OnPeerDiscovered = Callable[[MembershipPeer], None]

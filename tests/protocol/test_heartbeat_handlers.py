@@ -11,7 +11,7 @@ from membership.status import NodeStatus
 from protocol.message import Message
 from protocol.message_types import MessageType
 from protocol.factory import build_ping, build_pong
-from runtime.heartbeat_handlers import make_heartbeat_handlers
+from protocol.handlers.heartbeat import make_heartbeat_handlers
 
 
 def test_ping_handler_marks_alive_and_replies_with_pong() -> None:
@@ -181,7 +181,7 @@ def test_ping_handler_logs_transition_back_to_alive(caplog) -> None:
         send=send,
         self_node_id="node-a",
     )
-    with caplog.at_level(logging.INFO, logger="runtime.heartbeat_handlers"):
+    with caplog.at_level(logging.INFO, logger="protocol.handlers.heartbeat"):
         ping_handler(build_ping(sender_id="node-b", ping_timestamp_ms=123))
 
     assert "Membership transition on heartbeat" in caplog.text
@@ -242,7 +242,7 @@ def test_ping_handler_send_failure_is_swallowed_after_liveness_update(caplog) ->
         send=failing_send,
         self_node_id="node-a",
     )
-    with caplog.at_level(logging.WARNING, logger="runtime.heartbeat_handlers"):
+    with caplog.at_level(logging.WARNING, logger="protocol.handlers.heartbeat"):
         ping_handler(build_ping(sender_id="node-b", ping_timestamp_ms=123))
 
     after = peer_table.get_peer("node-b")
