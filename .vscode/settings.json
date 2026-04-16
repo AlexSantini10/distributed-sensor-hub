@@ -15,7 +15,8 @@
         "simulation",
         "log",
         "runtime",
-        "docker"
+        "docker",
+        "topology"
     ],
     "markdown.validate.enabled": true,
     "postman.settings.dotenv-detection-notification-visibility": false

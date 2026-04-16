@@ -37,6 +37,7 @@ class EnvKey(StrEnum):
     NETWORK_DELAY_SPIKE_PROB = "NETWORK_DELAY_SPIKE_PROB"
     NETWORK_DELAY_SPIKE_MS = "NETWORK_DELAY_SPIKE_MS"
     NETWORK_PACKET_LOSS_PROB = "NETWORK_PACKET_LOSS_PROB"
+    TOPOLOGY_POLICY = "TOPOLOGY_POLICY"
     SENSORS = "SENSORS"
 
 
@@ -86,6 +87,12 @@ class SensorType(StrEnum):
     SPIKE = "spike"
     WAVE = "wave"
     NOISE = "noise"
+
+
+class TopologyPolicyName(StrEnum):
+    """Enumerate supported topology policies."""
+
+    FULL_MESH = "full_mesh"
 
 
 @dataclass(frozen=True)
@@ -167,6 +174,7 @@ class Config:
         network_delay_spike_prob (float): Probability of an additional delay spike per message.
         network_delay_spike_ms (float): Extra delay applied when a spike occurs.
         network_packet_loss_prob (float): Probability of dropping one outbound message.
+        topology_policy (TopologyPolicyName): Selected topology policy for connection decisions.
         sensors (tuple[SensorConfig, ...]): Local sensors declared for this node.
     """
 
@@ -188,6 +196,7 @@ class Config:
     network_delay_spike_prob: float
     network_delay_spike_ms: float
     network_packet_loss_prob: float
+    topology_policy: TopologyPolicyName
     sensors: tuple[SensorConfig, ...]
 
     @classmethod
@@ -281,6 +290,18 @@ class Config:
             _get_optional_env(env, EnvKey.NETWORK_PACKET_LOSS_PROB, default="0"),
             EnvKey.NETWORK_PACKET_LOSS_PROB.value,
         )
+        topology_policy_raw = _get_optional_env(
+            env,
+            EnvKey.TOPOLOGY_POLICY,
+            default=TopologyPolicyName.FULL_MESH.value,
+        )
+        try:
+            topology_policy = TopologyPolicyName(topology_policy_raw)
+        except ValueError as exc:
+            allowed = ", ".join(name.value for name in TopologyPolicyName)
+            raise RuntimeError(
+                f"Invalid TOPOLOGY_POLICY: {topology_policy_raw} (allowed: {allowed})"
+            ) from exc
         sensors = tuple(_parse_sensors(env))
 
         return cls(
@@ -302,6 +323,7 @@ class Config:
             network_delay_spike_prob=network_delay_spike_prob,
             network_delay_spike_ms=network_delay_spike_ms,
             network_packet_loss_prob=network_packet_loss_prob,
+            topology_policy=topology_policy,
             sensors=sensors,
         )
 

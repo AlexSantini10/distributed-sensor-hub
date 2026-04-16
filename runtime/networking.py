@@ -18,6 +18,9 @@ from protocol.contracts import NetworkConstant
 from protocol.dispatcher import MessageDispatcher
 from protocol.factory import build_join_request
 from protocol.message import Message
+from topology.models import TopologyContext, TopologyPeer
+from topology.policy import TopologyPolicy
+from topology.resolver import resolve_topology_policy
 from utils.config import Config
 from utils.typing import LoggerLike, SenderLike, StateWorkerLike
 from protocol.setup import setup_protocol
@@ -33,6 +36,7 @@ class NetworkingContext:
         dispatcher (MessageDispatcher): Protocol dispatcher that routes decoded messages to handlers.
         peer_table (PeerTable): Membership view updated by protocol handlers and gossip.
         bootstrap_peers (list[TcpPeer]): Configured peers available for initial cluster contact.
+        topology_policy (TopologyPolicy): Topology policy driving connect-target decisions.
     """
 
     client: TcpClient
@@ -40,6 +44,7 @@ class NetworkingContext:
     dispatcher: MessageDispatcher
     peer_table: PeerTable
     bootstrap_peers: list[TcpPeer]
+    topology_policy: TopologyPolicy
 
 
 def make_join_request(self_node_id: str, host: str, port: int) -> Message:
@@ -182,33 +187,109 @@ class ClientPeerRegistry:
             self._pending_peer_ids.discard(node_id)
             self._known_peer_ids.add(node_id)
 
+    def connected_peer_ids(self) -> tuple[str, ...]:
+        """Return a snapshot of registered outbound peer node IDs.
+
+        Returns:
+            tuple[str, ...]: Stable sorted peer IDs known by the registry.
+        """
+        with self._lock:
+            return tuple(sorted(self._known_peer_ids))
+
+
+def _to_topology_peer(*, node_id: str, host: str, port: int) -> TopologyPeer:
+    """Build a policy peer descriptor from runtime endpoint data.
+
+    Args:
+        node_id (str): Stable node identifier.
+        host (str): Advertised host.
+        port (int): Advertised TCP port.
+
+    Returns:
+        TopologyPeer: Policy peer descriptor.
+    """
+    return TopologyPeer(node_id=node_id, host=host, port=port)
+
+
+def _build_topology_context(
+    *,
+    known_peers: tuple[TopologyPeer, ...],
+    connected_peers: tuple[str, ...],
+    bootstrap_peers: tuple[TopologyPeer, ...],
+) -> TopologyContext:
+    """Build a minimal topology context for policy decisions.
+
+    Args:
+        known_peers (tuple[TopologyPeer, ...]): Membership/discovery known peers.
+        connected_peers (tuple[str, ...]): Registered outbound transport peers.
+        bootstrap_peers (tuple[TopologyPeer, ...]): Configured bootstrap peers.
+
+    Returns:
+        TopologyContext: Immutable topology decision context.
+    """
+    return TopologyContext(
+        known_peers=known_peers,
+        connected_peers=connected_peers,
+        bootstrap_peers=bootstrap_peers,
+    )
+
 
 def build_bootstrap_peers(
     bootstrap_peers: tuple[tuple[str, int], ...],
-    client: TcpClient,
+    registry: ClientPeerRegistry,
+    topology_policy: TopologyPolicy,
 ) -> list[TcpPeer]:
     """Register configured bootstrap peers with the outbound client.
 
     Args:
         bootstrap_peers (tuple[tuple[str, int], ...]): Host and port pairs configured
             for initial cluster contact.
-        client (TcpClient): TCP client that should be able to send to bootstrap peers.
+        registry (ClientPeerRegistry): Outbound peer registry used to register selected peers.
+        topology_policy (TopologyPolicy): Policy used to select and resolve connect targets.
 
     Returns:
         list[TcpPeer]: Peer descriptors representing the configured bootstrap targets.
     """
     registered_peers: list[TcpPeer] = []
+    bootstrap_policy_peers: list[TopologyPeer] = []
 
     for host, port in bootstrap_peers:
         peer_id = f"bootstrap@{host}:{port}"
         peer = TcpPeer(node_id=peer_id, host=host, port=port)
-
-        try:
-            client.add_peer(peer)
-        except RuntimeError:
-            pass
-
+        bootstrap_policy_peers.append(
+            _to_topology_peer(node_id=peer.node_id, host=peer.host, port=peer.port)
+        )
         registered_peers.append(peer)
+
+    selected = topology_policy.select_peers_to_connect(
+        _build_topology_context(
+            known_peers=(),
+            connected_peers=registry.connected_peer_ids(),
+            bootstrap_peers=tuple(bootstrap_policy_peers),
+        )
+    )
+    for candidate in selected:
+        target = topology_policy.resolve_connection_target(candidate)
+        registry.ensure_peer(
+            node_id=target.node_id,
+            host=target.host,
+            port=target.port,
+        )
+
+    _ = topology_policy.select_peers_to_disconnect(
+        _build_topology_context(
+            known_peers=(),
+            connected_peers=registry.connected_peer_ids(),
+            bootstrap_peers=tuple(bootstrap_policy_peers),
+        )
+    )
+    _ = topology_policy.handle_under_connected(
+        _build_topology_context(
+            known_peers=(),
+            connected_peers=registry.connected_peer_ids(),
+            bootstrap_peers=tuple(bootstrap_policy_peers),
+        )
+    )
 
     return registered_peers
 
@@ -268,6 +349,7 @@ def setup_node_networking(
         network_packet_loss_prob=config.network_packet_loss_prob,
     )
     registry = ClientPeerRegistry(client=client)
+    topology_policy = resolve_topology_policy(config.topology_policy.value)
 
     def on_peer_discovered(peer: MembershipPeer) -> None:
         """Register a discovered peer and actively initiate reciprocal join.
@@ -278,7 +360,21 @@ def setup_node_networking(
         Returns:
             None: This callback registers the peer and initiates reciprocal discovery.
         """
-        registry.ensure_peer(peer.node_id, peer.host, peer.port)
+        known = (_to_topology_peer(node_id=peer.node_id, host=peer.host, port=peer.port),)
+        selected = topology_policy.select_peers_to_connect(
+            _build_topology_context(
+                known_peers=known,
+                connected_peers=registry.connected_peer_ids(),
+                bootstrap_peers=(),
+            )
+        )
+        for candidate in selected:
+            target = topology_policy.resolve_connection_target(candidate)
+            registry.ensure_peer(
+                node_id=target.node_id,
+                host=target.host,
+                port=target.port,
+            )
 
         join_msg = make_join_request(
             self_node_id=config.node_id,
@@ -301,7 +397,8 @@ def setup_node_networking(
 
     bootstrap_peers = build_bootstrap_peers(
         bootstrap_peers=config.bootstrap_peers,
-        client=client,
+        registry=registry,
+        topology_policy=topology_policy,
     )
 
     dispatcher, peer_table = setup_protocol(
@@ -326,4 +423,5 @@ def setup_node_networking(
         dispatcher=dispatcher,
         peer_table=peer_table,
         bootstrap_peers=bootstrap_peers,
+        topology_policy=topology_policy,
     )

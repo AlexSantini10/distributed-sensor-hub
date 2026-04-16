@@ -10,7 +10,7 @@ import os
 import pytest
 from pytest import MonkeyPatch
 
-from utils.config import Config, LogLevel, _parse_peers
+from utils.config import Config, LogLevel, TopologyPolicyName, _parse_peers
 
 
 def _set_base_env(monkeypatch: MonkeyPatch) -> None:
@@ -67,6 +67,7 @@ def test_load_config_success(monkeypatch: MonkeyPatch) -> None:
     assert config.network_delay_spike_prob == 0.0
     assert config.network_delay_spike_ms == 0.0
     assert config.network_packet_loss_prob == 0.0
+    assert config.topology_policy is TopologyPolicyName.FULL_MESH
     assert config.sensors == ()
 
 
@@ -126,6 +127,15 @@ def test_invalid_phi_threshold_order(monkeypatch: MonkeyPatch) -> None:
     _set_base_env(monkeypatch)
     monkeypatch.setenv("PHI_THRESHOLD_SUSPECT", "4.0")
     monkeypatch.setenv("PHI_THRESHOLD_DEAD", "3.0")
+
+    with pytest.raises(RuntimeError):
+        Config.from_env(dict(os.environ))
+
+
+def test_invalid_topology_policy(monkeypatch: MonkeyPatch) -> None:
+    """Assert unknown topology policy names are rejected."""
+    _set_base_env(monkeypatch)
+    monkeypatch.setenv("TOPOLOGY_POLICY", "unknown")
 
     with pytest.raises(RuntimeError):
         Config.from_env(dict(os.environ))
