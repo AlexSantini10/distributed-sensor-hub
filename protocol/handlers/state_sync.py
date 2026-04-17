@@ -36,7 +36,18 @@ def make_sensor_update_handler(
     peer_table: PeerTable | None = None,
     source_classifier: Callable[[str], str] | None = None,
 ) -> Callable[[Message], None]:
-    """Create a handler for replicated sensor updates."""
+    """Create a handler for replicated sensor updates.
+
+    Args:
+        state_worker (StateWorkerLike): Worker applying validated state updates.
+        self_node_id (str): Local node id used for logger namespace.
+        peer_table (PeerTable | None): Optional membership table for indirect evidence.
+        source_classifier (Callable[[str], str] | None): Optional classifier that
+            maps message sender id to update source labels (for example ``push``/``pull``).
+
+    Returns:
+        Callable[[Message], None]: Message handler bound to the supplied dependencies.
+    """
     log: LoggerLike = get_logger(__name__, self_node_id)
 
     def handle_sensor_update(msg: Message) -> None:

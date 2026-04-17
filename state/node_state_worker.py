@@ -286,6 +286,8 @@ class NodeStateWorker(threading.Thread):
             origin (str): Candidate origin used as the secondary LWW tie-break key.
             meta (JsonObject | SensorMetaDict | None): Optional metadata payload normalized
                 into ``SensorMeta``.
+            source (str): UI attribution label stored in incremental snapshots
+                (for example ``local_sensor``, ``push``, ``pull``, ``full_sync``).
 
         Returns:
             bool: ``True`` if the candidate becomes the new winner, else ``False``.

@@ -49,6 +49,8 @@ class NodeApplication:
         publisher (SensorUpdatePublisher | None): Publisher that forwards local state changes to peers.
         web_api (WebAPIServer | None): HTTP server exposing state snapshots for monitoring.
         bootstrap_peers (list[TcpPeer]): Configured peers contacted during initial membership join.
+        pull_response_tracker (PullResponseTracker | None): Classifier state shared
+            between pull requests and inbound update handling.
     """
 
     def __init__(

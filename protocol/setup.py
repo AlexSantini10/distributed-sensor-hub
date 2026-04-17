@@ -38,7 +38,22 @@ def setup_protocol(
     phi_threshold_dead: float = 8.0,
     phi_initial_interval_s: float = 1.0,
 ) -> tuple[MessageDispatcher, PeerTable]:
-    """Build the protocol dispatcher and register message handlers."""
+    """Build the protocol dispatcher and register message handlers.
+
+    Args:
+        self_node_id (str): Local node identifier used by protocol handlers.
+        send_function (SenderLike): Transport callback used by outbound handlers.
+        state_worker (StateWorkerLike | None): Optional state worker for state-sync handlers.
+        on_peer_discovered (OnPeerDiscovered | None): Optional callback notified for new peers.
+        sensor_update_source_classifier (Callable[[str], str] | None): Optional
+            sender classifier used to tag inbound ``SENSOR_UPDATE`` source.
+        phi_threshold_suspect (float): Phi threshold for ``suspected`` transitions.
+        phi_threshold_dead (float): Phi threshold for ``dead`` transitions.
+        phi_initial_interval_s (float): Initial heartbeat interval estimate in seconds.
+
+    Returns:
+        tuple[MessageDispatcher, PeerTable]: Configured dispatcher and shared peer table.
+    """
     dispatcher = MessageDispatcher()
     peer_table = PeerTable(
         self_node_id=self_node_id,

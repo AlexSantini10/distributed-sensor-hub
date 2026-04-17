@@ -140,7 +140,16 @@ class NodeStateStore:
         self._merge_policy: MergePolicy = merge_policy or LwwMergePolicy()
 
     def _apply_winner(self, sensor_id: str, record: SensorRecord, *, ui_source: str) -> None:
-        """Store one winning record across state and incremental buffers."""
+        """Store one winning record across state and incremental buffers.
+
+        Args:
+            sensor_id (str): Logical sensor identifier.
+            record (SensorRecord): Winning record to materialize.
+            ui_source (str): Attribution label for the UI updates buffer.
+
+        Returns:
+            None: This method mutates state and both incremental buffers.
+        """
         self._state[sensor_id] = record
         self._updates_ui[sensor_id] = record
         self._updates_ui_sources[sensor_id] = ui_source
@@ -282,6 +291,7 @@ class NodeStateStore:
         Args:
             sensor_id (str): Logical sensor key shared across competing origins.
             update (SensorRecord): Candidate record to compare against the current winner.
+            ui_source (str): UI attribution label attached when the update wins.
 
         Returns:
             tuple[bool, str, SensorRecord | None]: Merge outcome containing an applied flag,
@@ -311,6 +321,7 @@ class NodeStateStore:
         Args:
             sensor_id (str): Logical sensor key shared across competing origins.
             update (SensorRecord): Candidate record to compare against the current winner.
+            ui_source (str): UI attribution label attached when the update wins.
 
         Returns:
             StoreMergeOutcome: Merge outcome containing the applied flag, reason, and
@@ -371,6 +382,8 @@ class NodeStateStore:
 
         Args:
             remote_full_state (JsonObject): Full-state payload received from a peer.
+            reject_partial (bool): Whether malformed entries should reject the whole batch.
+            ui_source (str): UI attribution label attached to applied winners.
 
         Returns:
             int: Number of updates that became winners locally.
@@ -492,7 +505,8 @@ class NodeStateStore:
             node_id (str): Local node identifier used as the outer grouping key.
 
         Returns:
-            NodeSnapshot: Incremental snapshot containing only records not yet consumed by the UI.
+            NodeSnapshot: Incremental snapshot containing only records not yet
+                consumed by the UI, enriched with optional ``sync_source``.
         """
         with self._lock:
             per_node: dict[str, SensorRecordDict] = {}

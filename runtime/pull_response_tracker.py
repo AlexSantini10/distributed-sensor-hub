@@ -1,4 +1,10 @@
-"""Track short-lived pull windows to classify inbound SENSOR_UPDATE messages."""
+"""Track short-lived pull windows to classify inbound ``SENSOR_UPDATE`` messages.
+
+Responsibilities:
+    - Mark outbound ``GET_DELTA`` requests as pending pull windows per peer.
+    - Classify inbound updates as ``pull`` while a peer window is active.
+    - Expire stale windows to keep classification bounded and deterministic.
+"""
 
 from __future__ import annotations
 
@@ -7,9 +13,24 @@ import time
 
 
 class PullResponseTracker:
-    """Track pending GET_DELTA requests and classify follow-up updates."""
+    """Track pending ``GET_DELTA`` requests and classify follow-up updates.
+
+    Attributes:
+        _default_window_s (float): Default pull classification window in seconds.
+        _lock (threading.Lock): Mutex guarding concurrent window updates/lookups.
+        _pending_until_by_peer (dict[str, float]): Per-peer monotonic deadlines.
+    """
 
     def __init__(self, *, default_window_s: float = 1.5) -> None:
+        """Initialize the pull-response classifier.
+
+        Args:
+            default_window_s (float): Default TTL applied when no explicit window
+                is supplied to ``mark_pull_requested``.
+
+        Returns:
+            None: This constructor stores classifier settings only.
+        """
         if default_window_s <= 0:
             raise ValueError("default_window_s must be > 0")
         self._default_window_s = default_window_s
@@ -17,7 +38,15 @@ class PullResponseTracker:
         self._pending_until_by_peer: dict[str, float] = {}
 
     def mark_pull_requested(self, peer_id: str, *, window_s: float | None = None) -> None:
-        """Mark that we requested deltas from ``peer_id`` just now."""
+        """Mark that we requested deltas from ``peer_id`` just now.
+
+        Args:
+            peer_id (str): Peer identifier targeted by ``GET_DELTA``.
+            window_s (float | None): Optional TTL override for this peer request.
+
+        Returns:
+            None: This method updates in-memory classification windows.
+        """
         if not isinstance(peer_id, str) or peer_id == "":
             return
         ttl = self._default_window_s if window_s is None else window_s
@@ -28,7 +57,14 @@ class PullResponseTracker:
             self._pending_until_by_peer[peer_id] = deadline
 
     def classify_sender(self, sender_id: str) -> str:
-        """Classify an inbound sender as ``pull`` or ``push``."""
+        """Classify an inbound sender as ``pull`` or ``push``.
+
+        Args:
+            sender_id (str): Transport sender id of the inbound update.
+
+        Returns:
+            str: ``"pull"`` when sender has an active pull window, otherwise ``"push"``.
+        """
         if not isinstance(sender_id, str) or sender_id == "":
             return "push"
         now = time.monotonic()

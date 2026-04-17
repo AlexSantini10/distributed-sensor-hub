@@ -38,6 +38,8 @@ class NetworkingContext:
         peer_table (PeerTable): Membership view updated by protocol handlers and gossip.
         bootstrap_peers (list[TcpPeer]): Configured peers available for initial cluster contact.
         topology_policy (TopologyPolicy): Topology policy driving connect-target decisions.
+        pull_response_tracker (PullResponseTracker): Pull-window tracker used to
+            classify inbound state updates as push or pull.
     """
 
     client: TcpClient
@@ -341,7 +343,8 @@ def setup_node_networking(
         tcp_server_cls (type[TcpServer]): Server class used to bind inbound transport.
 
     Returns:
-        NetworkingContext: Fully assembled networking objects for the runtime.
+        NetworkingContext: Fully assembled networking objects for the runtime,
+            including pull-response classification state.
     """
     client = TcpClient(
         network_delay_s=config.network_delay_ms / 1000.0,

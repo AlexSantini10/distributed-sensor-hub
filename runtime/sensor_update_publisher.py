@@ -37,7 +37,27 @@ class SensorUpdatePublisher(threading.Thread):
         pull_response_tracker: "PullResponseTrackerLike | None" = None,
         random_seed: int | None = None,
     ) -> None:
-        """Initialize the publisher thread."""
+        """Initialize the publisher thread.
+
+        Args:
+            self_node_id (str): Local node id used as sender and local-origin filter.
+            peer_table (PeerTableLike): Membership snapshot provider for replication targets.
+            tcp_client (TcpClientLike): Outbound transport used to send protocol messages.
+            state_worker (StateWorkerLike): State source used for deltas and pull cursors.
+            log (LoggerLike): Logger used for transport and runtime failures.
+            interval_s (float): Seconds between replication rounds.
+            push_ratio (float): Push fanout ratio over alive peers.
+            push_min_peers (int): Minimum push fanout per round.
+            pull_ratio (float): Pull fanout ratio over alive peers.
+            pull_min_peers (int): Minimum pull fanout per pull round.
+            pull_every_rounds (int): Pull cadence in rounds.
+            pull_response_tracker (PullResponseTrackerLike | None): Optional tracker
+                that marks outbound pull requests to classify inbound updates.
+            random_seed (int | None): Optional deterministic seed for peer sampling.
+
+        Returns:
+            None: This constructor configures the background publisher.
+        """
         super().__init__(daemon=True)
         if interval_s <= 0:
             raise ValueError("interval_s must be > 0")
@@ -199,7 +219,16 @@ class SensorUpdatePublisher(threading.Thread):
                 self._pull_response_tracker.mark_pull_requested(target.node_id)
 
     def _send_message_to_peer(self, peer: PeerLike, msg: Message, *, op_name: str) -> bool:
-        """Deliver one replication message to one peer using best-effort transport."""
+        """Deliver one replication message to one peer using best-effort transport.
+
+        Args:
+            peer (PeerLike): Target peer descriptor.
+            msg (Message): Protocol message to send.
+            op_name (str): Human-readable operation label for logs.
+
+        Returns:
+            bool: ``True`` when delivery succeeds, else ``False``.
+        """
         try:
             self._client.send_json(peer.node_id, msg)
             return True

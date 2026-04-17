@@ -118,7 +118,21 @@ def start_sensor_runtime(
     log: LoggerLike,
     pull_response_tracker: PullResponseTracker | None = None,
 ) -> tuple[SensorManager, SensorUpdatePublisher]:
-    """Start sensors and the outbound replication publisher."""
+    """Start sensors and the outbound replication publisher.
+
+    Args:
+        config (Config): Runtime configuration with sensor and gossip settings.
+        event_queue (SensorEventQueue): Shared queue receiving local sensor events.
+        peer_table: Membership table used to select alive replication targets.
+        client (TcpClient): Outbound transport used by the publisher.
+        state_worker (NodeStateWorker): State worker providing deltas/cursors.
+        log (LoggerLike): Logger used for startup diagnostics.
+        pull_response_tracker (PullResponseTracker | None): Optional tracker used
+            to classify inbound updates as pull responses.
+
+    Returns:
+        tuple[SensorManager, SensorUpdatePublisher]: Started sensor manager and publisher.
+    """
     sensor_handler = QueueingSensorHandler(event_queue.put)
     sensor_manager = SensorManager(handler=sensor_handler)
     sensor_manager.load(config.sensors)

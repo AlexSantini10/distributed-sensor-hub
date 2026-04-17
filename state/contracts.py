@@ -27,7 +27,13 @@ class RecordMergeStore(Protocol):
         update: "SensorRecord",
         ui_source: str = "unknown",
     ) -> StoreMergeOutcome:
-        """Merge one normalized record into the store."""
+        """Merge one normalized record into the store.
+
+        Args:
+            sensor_id (str): Logical sensor identifier.
+            update (SensorRecord): Candidate LWW record.
+            ui_source (str): UI attribution label used for incremental update snapshots.
+        """
         ...
 
 
@@ -48,7 +54,13 @@ class StateStoreLike(RecordMergeStore, Protocol):
         reject_partial: bool = False,
         ui_source: str = "full_sync",
     ) -> int:
-        """Merge a remote snapshot into local state."""
+        """Merge a remote snapshot into local state.
+
+        Args:
+            remote_full_state (JsonObject | NodeSnapshot): Full-state payload from a peer.
+            reject_partial (bool): Whether malformed entries reject the entire merge.
+            ui_source (str): UI attribution label used for applied winners.
+        """
         ...
 
     def remove(self, sensor_id: str) -> bool:

@@ -163,6 +163,7 @@ class StateWorkerLike(Protocol):
             ts_ms (int): Candidate timestamp in milliseconds.
             origin (str): Candidate origin node identifier.
             meta (JsonObject | SensorMetaDict): Candidate metadata payload.
+            source (str): UI attribution label associated with the winning update.
 
         Returns:
             bool: ``True`` when the candidate becomes the winning record.
