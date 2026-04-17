@@ -24,6 +24,7 @@ from topology.resolver import resolve_topology_policy
 from utils.config import Config
 from utils.typing import LoggerLike, SenderLike, StateWorkerLike
 from protocol.setup import setup_protocol
+from runtime.pull_response_tracker import PullResponseTracker
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,7 @@ class NetworkingContext:
     peer_table: PeerTable
     bootstrap_peers: list[TcpPeer]
     topology_policy: TopologyPolicy
+    pull_response_tracker: PullResponseTracker
 
 
 def make_join_request(self_node_id: str, host: str, port: int) -> Message:
@@ -400,12 +402,14 @@ def setup_node_networking(
         registry=registry,
         topology_policy=topology_policy,
     )
+    pull_response_tracker = PullResponseTracker()
 
     dispatcher, peer_table = setup_protocol(
         self_node_id=config.node_id,
         send_function=client.send_json,
         state_worker=state_worker,
         on_peer_discovered=on_peer_discovered,
+        sensor_update_source_classifier=pull_response_tracker.classify_sender,
         phi_threshold_suspect=config.phi_threshold_suspect,
         phi_threshold_dead=config.phi_threshold_dead,
         phi_initial_interval_s=config.phi_initial_interval_s,
@@ -424,4 +428,5 @@ def setup_node_networking(
         peer_table=peer_table,
         bootstrap_peers=bootstrap_peers,
         topology_policy=topology_policy,
+        pull_response_tracker=pull_response_tracker,
     )

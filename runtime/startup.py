@@ -10,6 +10,7 @@ from runtime.networking import (
     setup_node_networking,
 )
 from runtime.sensor_update_publisher import SensorUpdatePublisher
+from runtime.pull_response_tracker import PullResponseTracker
 from sensors.handler import QueueingSensorHandler
 from sensors.sensor_manager import SensorManager
 from state.events import SensorEventQueue
@@ -115,6 +116,7 @@ def start_sensor_runtime(
     client: TcpClient,
     state_worker: NodeStateWorker,
     log: LoggerLike,
+    pull_response_tracker: PullResponseTracker | None = None,
 ) -> tuple[SensorManager, SensorUpdatePublisher]:
     """Start sensors and the outbound replication publisher."""
     sensor_handler = QueueingSensorHandler(event_queue.put)
@@ -135,6 +137,7 @@ def start_sensor_runtime(
         pull_ratio=config.gossip_pull_ratio,
         pull_min_peers=config.gossip_pull_min_peers,
         pull_every_rounds=config.gossip_pull_every_rounds,
+        pull_response_tracker=pull_response_tracker,
     )
     publisher.start()
     log.info("Sensor update publisher started")

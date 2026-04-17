@@ -25,6 +25,7 @@ class RecordMergeStore(Protocol):
         self,
         sensor_id: str,
         update: "SensorRecord",
+        ui_source: str = "unknown",
     ) -> StoreMergeOutcome:
         """Merge one normalized record into the store."""
         ...
@@ -45,6 +46,7 @@ class StateStoreLike(RecordMergeStore, Protocol):
         self,
         remote_full_state: JsonObject | NodeSnapshot,
         reject_partial: bool = False,
+        ui_source: str = "full_sync",
     ) -> int:
         """Merge a remote snapshot into local state."""
         ...

@@ -34,6 +34,7 @@ def make_sensor_update_handler(
     state_worker: StateWorkerLike,
     self_node_id: str,
     peer_table: PeerTable | None = None,
+    source_classifier: Callable[[str], str] | None = None,
 ) -> Callable[[Message], None]:
     """Create a handler for replicated sensor updates."""
     log: LoggerLike = get_logger(__name__, self_node_id)
@@ -45,12 +46,14 @@ def make_sensor_update_handler(
             return
 
         try:
+            source = source_classifier(msg.sender_id) if source_classifier is not None else "push"
             applied = state_worker.merge_update(
                 sensor_id=payload.sensor_id,
                 value=payload.value,
                 ts_ms=payload.ts_ms,
                 origin=payload.origin,
                 meta=payload.meta.to_mapping(),
+                source=source,
             )
         except Exception:
             log.error("Failed to merge SENSOR_UPDATE", exc_info=True)

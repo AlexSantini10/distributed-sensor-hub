@@ -341,14 +341,14 @@ def test_merge_state_is_atomic_against_concurrent_updates() -> None:
     update_finished = threading.Event()
     update_interleaved_inside_merge = {"value": False}
 
-    def wrapped_apply(sensor_id: str, record: SensorRecord) -> None:
+    def wrapped_apply(sensor_id: str, record: SensorRecord, *, ui_source: str) -> None:
         if sensor_id == "s1":
             start_concurrent_update.set()
             # Keep lock held long enough to let the competing thread contend.
             time.sleep(0.05)
         if sensor_id == "s2" and update_finished.is_set():
             update_interleaved_inside_merge["value"] = True
-        original_apply(sensor_id, record)
+        original_apply(sensor_id, record, ui_source=ui_source)
 
     store._apply_winner = wrapped_apply
 
@@ -441,3 +441,12 @@ def test_get_latest_timestamp_for_origin_reads_current_winners() -> None:
     assert w.get_latest_timestamp_for_origin("node-b") == 1000
     assert w.get_latest_timestamp_for_origin("node-c") == 2000
     assert w.get_latest_timestamp_for_origin("node-z") == 0
+
+
+def test_updates_snapshot_includes_sync_source_for_ui_logs() -> None:
+    """Assert UI updates expose sync_source metadata for log attribution."""
+    w = make_worker(node_id="A")
+    w.merge_update("s1", 10, 1000, "node-b", source="pull")
+
+    updates = w.get_updates_snapshot()["A"]
+    assert updates["node-b:s1"]["sync_source"] == "pull"

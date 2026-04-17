@@ -33,6 +33,7 @@ def setup_protocol(
     send_function: SenderLike,
     state_worker: StateWorkerLike | None = None,
     on_peer_discovered: OnPeerDiscovered | None = None,
+    sensor_update_source_classifier: Callable[[str], str] | None = None,
     phi_threshold_suspect: float = 3.0,
     phi_threshold_dead: float = 8.0,
     phi_initial_interval_s: float = 1.0,
@@ -91,6 +92,7 @@ def setup_protocol(
                     state_worker=state_worker,
                     self_node_id=self_node_id,
                     peer_table=peer_table,
+                    source_classifier=sensor_update_source_classifier,
                 )
             ),
         )

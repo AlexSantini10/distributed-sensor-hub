@@ -77,6 +77,17 @@ class DummyLog:
         pass
 
 
+class DummyPullResponseTracker:
+    """Capture peers marked as pending pull responses."""
+
+    def __init__(self) -> None:
+        self.marked: list[str] = []
+
+    def mark_pull_requested(self, peer_id: str, *, window_s: float | None = None) -> None:
+        _ = window_s
+        self.marked.append(peer_id)
+
+
 def test_publisher_uses_ratio_plus_minimum_fanout_for_push_and_pull() -> None:
     """Assert push and pull fanout are scaled from alive peers using ratio+minimum."""
     peers = tuple(
@@ -169,3 +180,36 @@ def test_publisher_targets_alive_peers_only() -> None:
     targeted_peer_ids = {peer_id for peer_id, _ in client.sent}
     assert "node-b" not in targeted_peer_ids
     assert targeted_peer_ids == {"node-a", "node-c"}
+
+
+def test_publisher_marks_pull_requests_for_classification() -> None:
+    """Assert successful GET_DELTA sends mark pull-pending windows."""
+    peers = (
+        DummyPeer(node_id="node-a", host="10.0.0.1", port=9001, status="alive"),
+    )
+    state_worker = DummyStateWorker(
+        batches=((),),
+        origin_latest={"node-a": 900},
+    )
+    client = DummyClient()
+    tracker = DummyPullResponseTracker()
+
+    publisher = SensorUpdatePublisher(
+        self_node_id="node-self",
+        peer_table=DummyPeerTable(peers),
+        tcp_client=client,
+        state_worker=state_worker,
+        log=DummyLog(),
+        push_ratio=0.0,
+        push_min_peers=0,
+        pull_ratio=1.0,
+        pull_min_peers=1,
+        pull_every_rounds=1,
+        pull_response_tracker=tracker,
+        random_seed=1,
+    )
+
+    publisher._round = 1
+    publisher._run_round()
+
+    assert tracker.marked == ["node-a"]

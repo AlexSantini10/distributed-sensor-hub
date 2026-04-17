@@ -133,15 +133,17 @@ class NodeStateStore:
         self._lock = threading.Lock()
         self._state: dict[str, SensorRecord] = {}
         self._updates_ui: dict[str, SensorRecord] = {}
+        self._updates_ui_sources: dict[str, str] = {}
         self._replication_deltas: deque[_ReplicationDelta] = deque(maxlen=replication_delta_maxlen)
         self._replication_next_seq = 0
         self._replication_last_read_seq = 0
         self._merge_policy: MergePolicy = merge_policy or LwwMergePolicy()
 
-    def _apply_winner(self, sensor_id: str, record: SensorRecord) -> None:
+    def _apply_winner(self, sensor_id: str, record: SensorRecord, *, ui_source: str) -> None:
         """Store one winning record across state and incremental buffers."""
         self._state[sensor_id] = record
         self._updates_ui[sensor_id] = record
+        self._updates_ui_sources[sensor_id] = ui_source
         self._replication_deltas.append(
             _ReplicationDelta(
                 seq=self._replication_next_seq,
@@ -268,7 +270,13 @@ class NodeStateStore:
 
         return candidates, invalid_entries
 
-    def _merge_lww(self, sensor_id: str, update: SensorRecord) -> StoreMergeOutcome:
+    def _merge_lww(
+        self,
+        sensor_id: str,
+        update: SensorRecord,
+        *,
+        ui_source: str,
+    ) -> StoreMergeOutcome:
         """Merge one candidate update into the internal LWW register set.
 
         Args:
@@ -282,17 +290,22 @@ class NodeStateStore:
         with self._lock:
             prev = self._state.get(sensor_id)
             if prev is None:
-                self._apply_winner(sensor_id=sensor_id, record=update)
+                self._apply_winner(sensor_id=sensor_id, record=update, ui_source=ui_source)
                 return True, "insert", None
 
             decision = self._decide_merge(current=prev, candidate=update)
             if decision != "stale":
-                self._apply_winner(sensor_id=sensor_id, record=update)
+                self._apply_winner(sensor_id=sensor_id, record=update, ui_source=ui_source)
                 return True, decision, prev
 
             return False, "stale", prev
 
-    def merge_record(self, sensor_id: str, update: SensorRecord) -> StoreMergeOutcome:
+    def merge_record(
+        self,
+        sensor_id: str,
+        update: SensorRecord,
+        ui_source: str = "unknown",
+    ) -> StoreMergeOutcome:
         """Merge one normalized record into the store using the configured policy.
 
         Args:
@@ -303,7 +316,7 @@ class NodeStateStore:
             StoreMergeOutcome: Merge outcome containing the applied flag, reason, and
                 previous winning record when one existed.
         """
-        return self._merge_lww(sensor_id=sensor_id, update=update)
+        return self._merge_lww(sensor_id=sensor_id, update=update, ui_source=ui_source)
 
     def apply_update(
         self,
@@ -345,7 +358,10 @@ class NodeStateStore:
         return applied
 
     def merge_state(
-        self, remote_full_state: JsonObject | NodeSnapshot, reject_partial: bool = False
+        self,
+        remote_full_state: JsonObject | NodeSnapshot,
+        reject_partial: bool = False,
+        ui_source: str = "full_sync",
     ) -> int:
         """Bulk-merge a remote full-state payload under LWW semantics.
 
@@ -373,12 +389,20 @@ class NodeStateStore:
             for sensor_id, candidate in candidates:
                 prev = self._state.get(sensor_id)
                 if prev is None:
-                    self._apply_winner(sensor_id=sensor_id, record=candidate)
+                    self._apply_winner(
+                        sensor_id=sensor_id,
+                        record=candidate,
+                        ui_source=ui_source,
+                    )
                     applied += 1
                     continue
 
                 if self._decide_merge(current=prev, candidate=candidate) != "stale":
-                    self._apply_winner(sensor_id=sensor_id, record=candidate)
+                    self._apply_winner(
+                        sensor_id=sensor_id,
+                        record=candidate,
+                        ui_source=ui_source,
+                    )
                     applied += 1
 
             return applied
@@ -394,7 +418,7 @@ class NodeStateStore:
             None: This method mutates the store in place.
         """
         with self._lock:
-            self._apply_winner(sensor_id=sensor_id, record=record)
+            self._apply_winner(sensor_id=sensor_id, record=record, ui_source="upsert")
 
     def remove(self, sensor_id: str) -> bool:
         """Delete one logical sensor from state and pending buffers.
@@ -409,6 +433,7 @@ class NodeStateStore:
             existed = sensor_id in self._state
             self._state.pop(sensor_id, None)
             self._updates_ui.pop(sensor_id, None)
+            self._updates_ui_sources.pop(sensor_id, None)
             return existed
 
     def clear(self) -> None:
@@ -420,6 +445,7 @@ class NodeStateStore:
         with self._lock:
             self._state.clear()
             self._updates_ui.clear()
+            self._updates_ui_sources.clear()
             self._replication_deltas.clear()
             self._replication_last_read_seq = self._replication_next_seq
 
@@ -469,8 +495,18 @@ class NodeStateStore:
             NodeSnapshot: Incremental snapshot containing only records not yet consumed by the UI.
         """
         with self._lock:
-            snapshot = self._snapshot_grouped_for_ui(dict(self._updates_ui), node_id)
+            per_node: dict[str, SensorRecordDict] = {}
+            for sensor_id, record in self._updates_ui.items():
+                origin = record.origin
+                if not isinstance(origin, str) or origin == "":
+                    origin = node_id
+                global_sensor_id = f"{origin}:{sensor_id}"
+                row = record.to_dict()
+                row["sync_source"] = self._updates_ui_sources.get(sensor_id, "unknown")
+                per_node[global_sensor_id] = row
+            snapshot: NodeSnapshot = {node_id: per_node}
             self._updates_ui.clear()
+            self._updates_ui_sources.clear()
             return snapshot
 
     def pop_replication_updates(self, node_id: str) -> NodeSnapshot:

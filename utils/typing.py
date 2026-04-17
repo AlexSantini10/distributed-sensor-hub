@@ -9,7 +9,7 @@ Responsibilities:
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, TypedDict, runtime_checkable
+from typing import NotRequired, Protocol, TypedDict, runtime_checkable
 
 
 type JsonScalar = None | bool | int | float | str
@@ -65,6 +65,7 @@ class SensorRecordDict(TypedDict):
     ts_ms: int
     origin: str
     meta: SensorMetaDict
+    sync_source: NotRequired[str]
 
 
 type NodeSnapshot = dict[str, dict[str, SensorRecordDict]]
@@ -152,6 +153,7 @@ class StateWorkerLike(Protocol):
         ts_ms: int,
         origin: str,
         meta: JsonObject | SensorMetaDict,
+        source: str = "unknown",
     ) -> bool:
         """Attempt an LWW merge for one sensor update.
 

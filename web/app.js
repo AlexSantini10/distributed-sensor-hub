@@ -27,6 +27,8 @@ const previousSensorState = new Map();
 const LOG_MAX = 300;
 const logSeen = new Set();
 const logBuffer = [];
+const knownLogNodes = new Set();
+let isNodeLogPrimed = false;
 
 function api(path) {
   return currentBaseUrl + path;
@@ -109,6 +111,8 @@ function resetUI() {
   sensorRows.clear();
   logSeen.clear();
   logBuffer.length = 0;
+  knownLogNodes.clear();
+  isNodeLogPrimed = false;
   previousSensorState.clear();
 
   statNodesEl.textContent = "0";
@@ -222,23 +226,55 @@ function normalizeGroupedByOrigin(payload) {
   return grouped;
 }
 
-function pushLog(nodeId, sensorId, data) {
-  const key = `${nodeId}|${sensorId}|${data.ts_ms}`;
+function normalizeSyncSource(data) {
+  const source = data && typeof data.sync_source === "string"
+    ? data.sync_source.toLowerCase()
+    : "unknown";
+  return source;
+}
+
+function pushDataLog(nodeId, sensorId, data) {
+  const source = normalizeSyncSource(data);
+  const key = `data|${source}|${nodeId}|${sensorId}|${data.ts_ms}`;
   if (logSeen.has(key)) {
     return;
   }
 
   logSeen.add(key);
   logBuffer.unshift({
+    kind: "data",
     ts: data.ts_ms,
     nodeId,
+    source,
     sensorId: prettifySensorName(sensorId),
     value: plainValue(data),
+    dedupeKey: key,
   });
 
   while (logBuffer.length > LOG_MAX) {
     const e = logBuffer.pop();
-    logSeen.delete(`${e.nodeId}|${e.sensorId}|${e.ts}`);
+    logSeen.delete(e.dedupeKey);
+  }
+}
+
+function pushNodeDiscoveryLog(nodeId, source, ts) {
+  const key = `node|${source}|${nodeId}`;
+  if (logSeen.has(key)) {
+    return;
+  }
+
+  logSeen.add(key);
+  logBuffer.unshift({
+    kind: "node",
+    ts,
+    nodeId,
+    source,
+    dedupeKey: key,
+  });
+
+  while (logBuffer.length > LOG_MAX) {
+    const e = logBuffer.pop();
+    logSeen.delete(e.dedupeKey);
   }
 }
 
@@ -247,7 +283,11 @@ function flushLog() {
   for (const e of logBuffer) {
     const line = document.createElement("div");
     line.className = "log-entry";
-    line.textContent = `[${fmtTs(e.ts)}] ${e.nodeId} ${e.sensorId} -> ${e.value}`;
+    if (e.kind === "node") {
+      line.textContent = `[${fmtTs(e.ts)}] NEW NODE ${e.nodeId} discovered via ${e.source.toUpperCase()}`;
+    } else {
+      line.textContent = `[${fmtTs(e.ts)}] [${e.source.toUpperCase()}] ${e.nodeId} ${e.sensorId} -> ${e.value}`;
+    }
     logEl.appendChild(line);
   }
 }
@@ -277,7 +317,6 @@ function renderState(rawState) {
 
       if (isUpdated) {
         changedThisPoll.add(key);
-        pushLog(nodeId, sensorId, data);
       }
     }
   }
@@ -285,6 +324,25 @@ function renderState(rawState) {
   statNodesEl.textContent = String(Object.keys(state).length);
   statSensorsEl.textContent = String(sensorCount);
   statChangedEl.textContent = String(changedThisPoll.size);
+}
+
+function processIncrementalUpdates(rawUpdates) {
+  const updates = normalizeGroupedByOrigin(rawUpdates);
+  for (const [nodeId, sensors] of Object.entries(updates)) {
+    for (const [sensorId, data] of Object.entries(sensors)) {
+      const source = normalizeSyncSource(data);
+      if (source !== "push" && source !== "pull") {
+        continue;
+      }
+
+      if (!knownLogNodes.has(nodeId)) {
+        knownLogNodes.add(nodeId);
+        pushNodeDiscoveryLog(nodeId, source, data.ts_ms);
+      }
+
+      pushDataLog(nodeId, sensorId, data);
+    }
+  }
 }
 
 function formatDeltaMs(lastHeartbeatTsMs) {
@@ -358,18 +416,28 @@ function renderMembership(rawMembership) {
 
 async function poll() {
   try {
-    const [stateRes, membershipRes] = await Promise.all([
+    const [stateRes, updatesRes, membershipRes] = await Promise.all([
       fetch(api("/api/state"), { cache: "no-store" }),
+      fetch(api("/api/updates"), { cache: "no-store" }),
       fetch(api("/api/membership"), { cache: "no-store" }),
     ]);
-    if (!stateRes.ok || !membershipRes.ok) {
+    if (!stateRes.ok || !updatesRes.ok || !membershipRes.ok) {
       throw new Error("state fetch failed");
     }
-    const [rawState, rawMembership] = await Promise.all([
+    const [rawState, rawUpdates, rawMembership] = await Promise.all([
       stateRes.json(),
+      updatesRes.json(),
       membershipRes.json(),
     ]);
     renderState(rawState);
+    if (!isNodeLogPrimed) {
+      const state = normalizeGroupedByOrigin(rawState);
+      for (const nodeId of Object.keys(state)) {
+        knownLogNodes.add(nodeId);
+      }
+      isNodeLogPrimed = true;
+    }
+    processIncrementalUpdates(rawUpdates);
     renderMembership(rawMembership);
     flushLog();
     setStatus(true);

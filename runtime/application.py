@@ -31,6 +31,7 @@ from runtime.startup import (
     start_state_worker,
     start_web_api_server,
 )
+from runtime.pull_response_tracker import PullResponseTracker
 
 
 class NodeApplication:
@@ -77,6 +78,7 @@ class NodeApplication:
         self.heartbeat_sender: HeartbeatSender | None = None
         self.web_api: WebAPIServer | None = None
         self.bootstrap_peers: list[TcpPeer] = []
+        self.pull_response_tracker: PullResponseTracker | None = None
         self._lifecycle_lock = threading.Lock()
         self._stopped = False
 
@@ -209,6 +211,7 @@ class NodeApplication:
         self.server = networking.server
         self.peer_table = networking.peer_table
         self.bootstrap_peers = networking.bootstrap_peers
+        self.pull_response_tracker = networking.pull_response_tracker
 
     def _bootstrap_membership(self) -> None:
         """Seed the membership view and send initial ``JOIN_REQUEST`` messages.
@@ -253,6 +256,7 @@ class NodeApplication:
                 client=self.client,
                 state_worker=self.state_worker,
                 log=self.log,
+                pull_response_tracker=self.pull_response_tracker,
             )
         except Exception:
             self.log.critical("Failed to initialize sensors", exc_info=True)

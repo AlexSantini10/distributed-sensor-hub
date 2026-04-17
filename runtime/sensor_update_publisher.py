@@ -34,6 +34,7 @@ class SensorUpdatePublisher(threading.Thread):
         pull_ratio: float = 0.15,
         pull_min_peers: int = 1,
         pull_every_rounds: int = 3,
+        pull_response_tracker: "PullResponseTrackerLike | None" = None,
         random_seed: int | None = None,
     ) -> None:
         """Initialize the publisher thread."""
@@ -62,6 +63,7 @@ class SensorUpdatePublisher(threading.Thread):
         self._pull_ratio = pull_ratio
         self._pull_min_peers = pull_min_peers
         self._pull_every_rounds = pull_every_rounds
+        self._pull_response_tracker = pull_response_tracker
         self._round = 0
         self._rng = random.Random(random_seed)
 
@@ -192,13 +194,15 @@ class SensorUpdatePublisher(threading.Thread):
                 sender_id=self._self_node_id,
                 since_ts_ms=since_ts_ms,
             )
-            self._send_message_to_peer(target, request, op_name="GET_DELTA")
+            sent = self._send_message_to_peer(target, request, op_name="GET_DELTA")
+            if sent and self._pull_response_tracker is not None:
+                self._pull_response_tracker.mark_pull_requested(target.node_id)
 
-    def _send_message_to_peer(self, peer: PeerLike, msg: Message, *, op_name: str) -> None:
+    def _send_message_to_peer(self, peer: PeerLike, msg: Message, *, op_name: str) -> bool:
         """Deliver one replication message to one peer using best-effort transport."""
         try:
             self._client.send_json(peer.node_id, msg)
-            return
+            return True
         except KeyError:
             pass
         except Exception:
@@ -206,17 +210,19 @@ class SensorUpdatePublisher(threading.Thread):
                 f"Failed to send {op_name} to peer_id={peer.node_id}",
                 exc_info=True,
             )
-            return
+            return False
 
         try:
             tcp_peer = TcpPeer(node_id=peer.node_id, host=peer.host, port=peer.port)
             self._client.add_peer(tcp_peer)
             self._client.send_json(peer.node_id, msg)
+            return True
         except Exception:
             self._log.warning(
                 f"Failed to add/connect peer_id={peer.node_id} for {op_name}",
                 exc_info=True,
             )
+            return False
 
 
 class TcpClientLike(Protocol):
@@ -228,4 +234,12 @@ class TcpClientLike(Protocol):
 
     def add_peer(self, peer: TcpPeer) -> None:
         """Register a peer with the outbound client."""
+        ...
+
+
+class PullResponseTrackerLike(Protocol):
+    """Define the pull tracking behavior used by the publisher."""
+
+    def mark_pull_requested(self, peer_id: str, *, window_s: float | None = None) -> None:
+        """Record that ``GET_DELTA`` has been requested from ``peer_id``."""
         ...

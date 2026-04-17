@@ -275,6 +275,7 @@ class NodeStateWorker(threading.Thread):
         ts_ms: int,
         origin: str,
         meta: JsonObject | SensorMetaDict | None = None,
+        source: str = "unknown",
     ) -> bool:
         """Apply one local or remote sensor update under LWW ordering.
 
@@ -299,7 +300,11 @@ class NodeStateWorker(threading.Thread):
             meta=meta,
         )
 
-        applied, reason, previous = self._store.merge_record(sensor_id=sensor_id, update=update)
+        applied, reason, previous = self._store.merge_record(
+            sensor_id=sensor_id,
+            update=update,
+            ui_source=source,
+        )
         self._log_merge_outcome(
             sensor_id=sensor_id,
             value=value,
@@ -329,6 +334,7 @@ class NodeStateWorker(threading.Thread):
             ts_ms=timestamp,
             origin=self.node_id,
             meta={},
+            source="local_sensor",
         )
 
     def merge_state(
@@ -349,6 +355,7 @@ class NodeStateWorker(threading.Thread):
         applied = self._store.merge_state(
             remote_full_state=remote_full_state,
             reject_partial=reject_partial,
+            ui_source="full_sync",
         )
         if applied > 0:
             self._log_msg("info", f"FULL_SYNC merge applied_updates={applied}")
@@ -387,6 +394,7 @@ class NodeStateWorker(threading.Thread):
             ts_ms=normalized_event.ts_ms,
             origin=self.node_id,
             meta=normalized_event.meta,
+            source="local_sensor",
         )
 
     def get_state_snapshot(self) -> NodeSnapshot:
