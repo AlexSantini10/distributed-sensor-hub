@@ -30,7 +30,7 @@ The module should contain coordination code only. Domain logic belongs in the de
 - Start membership bootstrap through `JOIN_REQUEST`.
 - Request initial full synchronization from bootstrap peers.
 - Run periodic heartbeat, membership gossip, and phi-accrual evaluation.
-- Start local sensors and outbound state replication.
+- Start local sensors and outbound push-pull state replication.
 - Start the Web API after the main runtime state is ready.
 - Stop all subsystems in dependency-aware order.
 
@@ -41,6 +41,7 @@ The module should contain coordination code only. Domain logic belongs in the de
 | `application.py` | Defines `NodeApplication`, the lifecycle container for startup, steady state, and shutdown. |
 | `networking.py` | Builds `TcpClient`, `TcpServer`, protocol dispatcher, `PeerTable`, bootstrap peers, and dynamic peer registration. |
 | `heartbeat.py` | Defines `HeartbeatSender`, the background loop for phi evaluation, gossip, and `PING` emission. |
+| `sensor_update_publisher.py` | Runs push-pull state synchronization rounds using `SENSOR_UPDATE` push and `GET_DELTA` pull. |
 | `bootstrap.py` | Configures early logging, global exception hooks, and optional log-file truncation. |
 | `__init__.py` | Package marker and module-level documentation. |
 
@@ -140,10 +141,16 @@ Each round:
 2. logs membership transitions;
 3. builds one `PING`;
 4. reads the current peer snapshot;
-5. publishes membership gossip through `publish_membership_gossip(...)`;
-6. sends `PING` to each known peer.
+5. filters heartbeat targets to outbound-connected peers;
+6. publishes membership gossip through `publish_membership_gossip(...)`;
+7. sends `PING` to each connected peer.
 
 `interval_ms` is converted to seconds and clamped to a minimum of `0.001`.
+
+Direct-failure detection is applied only to peers that have been observed on a
+direct transport path at least once (`PING/PONG` or any non-heartbeat inbound
+frame from that peer). This avoids marking gossip-only peers as locally dead in
+non-full-mesh topologies.
 
 ### Process Bootstrap
 
@@ -191,9 +198,33 @@ Heartbeat:
 ```text
 heartbeat round
   -> evaluate phi
-  -> update alive/suspected/dead status
+  -> update direct alive/suspected/dead status
   -> publish GOSSIP_STATE
   -> send PING
+```
+
+Membership snapshot semantics (`GET /api/membership`):
+
+- `status`: legacy merged membership status kept for backward compatibility.
+- `direct_status`: local direct-reachability classification (`alive|suspected|dead|unknown`).
+- `evidence_status`: freshness of any local evidence for the peer (`active|stale|unknown`).
+- `display_status`: UI-oriented summary (`alive_direct|alive_indirect|suspected|dead|unknown`).
+
+`display_status=alive_indirect` means direct FD is not currently `alive`, but
+the node has recent indirect evidence (for example relayed `SENSOR_UPDATE`,
+gossip status, or full-sync state).
+
+State push-pull replication:
+
+```text
+replication round
+  -> choose random alive push targets (ratio + minimum)
+  -> push local-origin SENSOR_UPDATE deltas to selected targets
+  -> every N rounds:
+      -> choose random alive pull targets (ratio + minimum)
+      -> send GET_DELTA(since_ts_ms=latest known ts for that origin)
+  -> if DELTA_UNAVAILABLE:
+      -> request FULL_SYNC
 ```
 
 If a peer advertises `0.0.0.0`, `resolve_peer_host(...)` uses `node_id` as the connectable host. This supports Docker topologies where service names are routable.
@@ -210,6 +241,12 @@ If a peer advertises `0.0.0.0`, `resolve_peer_host(...)` uses `node_id` as the c
 | `bootstrap_peers` | Initial peer endpoints for join and full sync. |
 | `web_api_port` | HTTP monitoring port. |
 | `heartbeat_interval_ms` | Heartbeat loop interval. |
+| `gossip_sync_interval_ms` | Push-pull replication round interval. |
+| `gossip_push_ratio` | Push fanout ratio over currently alive peers. |
+| `gossip_push_min_peers` | Minimum push fanout per round. |
+| `gossip_pull_ratio` | Pull fanout ratio over currently alive peers. |
+| `gossip_pull_min_peers` | Minimum pull fanout per pull round. |
+| `gossip_pull_every_rounds` | Pull cadence expressed in rounds. |
 | `phi_threshold_suspect` | Phi threshold for `suspected`. |
 | `phi_threshold_dead` | Phi threshold for `dead`. |
 | `phi_initial_interval_s` | Initial expected heartbeat interval. |

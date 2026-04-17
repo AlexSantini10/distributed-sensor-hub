@@ -1,6 +1,7 @@
 """Assemble protocol routing and handler bindings for a runtime node."""
 
 from collections.abc import Callable
+import time
 
 from gossip.handlers import make_gossip_state_handler
 from membership.peer import Peer as MembershipPeer
@@ -20,6 +21,7 @@ from protocol.handlers.state_sync import (
     make_sensor_update_handler,
 )
 from protocol.message_types import MessageType
+from protocol.message import Message
 from utils.typing import SenderLike, StateWorkerLike
 
 
@@ -57,70 +59,114 @@ def setup_protocol(
         self_node_id=self_node_id,
     )
 
-    dispatcher.register(MessageType.JOIN_REQUEST, join_handler)
-    dispatcher.register(MessageType.PEER_LIST, peer_list_handler)
+    def _with_direct_observation(
+        handler: Callable[[Message], None],
+    ) -> Callable[[Message], None]:
+        """Wrap a handler and record direct transport evidence after success."""
+
+        def wrapped(msg: Message) -> None:
+            handler(msg)
+            if msg.sender_id == self_node_id:
+                return
+            if msg.msg_type in {MessageType.PING, MessageType.PONG}:
+                return
+            peer_table.record_direct_message(
+                msg.sender_id,
+                observed_at_wall_s=time.time(),
+                observed_at_monotonic_s=time.monotonic(),
+            )
+
+        return wrapped
+
+    dispatcher.register(MessageType.JOIN_REQUEST, _with_direct_observation(join_handler))
+    dispatcher.register(MessageType.PEER_LIST, _with_direct_observation(peer_list_handler))
     dispatcher.register(MessageType.PING, ping_handler)
     dispatcher.register(MessageType.PONG, pong_handler)
 
     if state_worker is not None:
         dispatcher.register(
             MessageType.SENSOR_UPDATE,
-            make_sensor_update_handler(
-                state_worker=state_worker,
-                self_node_id=self_node_id,
+            _with_direct_observation(
+                make_sensor_update_handler(
+                    state_worker=state_worker,
+                    self_node_id=self_node_id,
+                    peer_table=peer_table,
+                )
             ),
         )
     else:
-        dispatcher.register(MessageType.SENSOR_UPDATE, handle_sensor_update)
+        dispatcher.register(
+            MessageType.SENSOR_UPDATE,
+            _with_direct_observation(handle_sensor_update),
+        )
 
     dispatcher.register(
         MessageType.GOSSIP_STATE,
-        make_gossip_state_handler(
-            peer_table=peer_table,
-            self_node_id=self_node_id,
-            on_peer_discovered=on_peer_discovered,
+        _with_direct_observation(
+            make_gossip_state_handler(
+                peer_table=peer_table,
+                self_node_id=self_node_id,
+                on_peer_discovered=on_peer_discovered,
+            )
         ),
     )
     if state_worker is not None:
         dispatcher.register(
             MessageType.FULL_SYNC_REQUEST,
-            make_full_sync_request_handler(
-                state_worker=state_worker,
-                peer_table=peer_table,
-                send=send_function,
-                self_node_id=self_node_id,
+            _with_direct_observation(
+                make_full_sync_request_handler(
+                    state_worker=state_worker,
+                    peer_table=peer_table,
+                    send=send_function,
+                    self_node_id=self_node_id,
+                )
             ),
         )
         dispatcher.register(
             MessageType.FULL_SYNC_RESPONSE,
-            make_full_sync_response_handler(
-                state_worker=state_worker,
-                peer_table=peer_table,
-                self_node_id=self_node_id,
-                on_peer_discovered=on_peer_discovered,
+            _with_direct_observation(
+                make_full_sync_response_handler(
+                    state_worker=state_worker,
+                    peer_table=peer_table,
+                    self_node_id=self_node_id,
+                    on_peer_discovered=on_peer_discovered,
+                )
             ),
         )
     else:
-        dispatcher.register(MessageType.FULL_SYNC_REQUEST, handle_full_sync_request)
-        dispatcher.register(MessageType.FULL_SYNC_RESPONSE, handle_full_sync_response)
+        dispatcher.register(
+            MessageType.FULL_SYNC_REQUEST,
+            _with_direct_observation(handle_full_sync_request),
+        )
+        dispatcher.register(
+            MessageType.FULL_SYNC_RESPONSE,
+            _with_direct_observation(handle_full_sync_response),
+        )
     dispatcher.register(
         MessageType.DELTA_UNAVAILABLE,
-        make_delta_unavailable_handler(
-            send=send_function,
-            self_node_id=self_node_id,
+        _with_direct_observation(
+            make_delta_unavailable_handler(
+                send=send_function,
+                self_node_id=self_node_id,
+            )
         ),
     )
     if state_worker is not None:
         dispatcher.register(
             MessageType.GET_DELTA,
-            make_get_delta_handler(
-                state_worker=state_worker,
-                send=send_function,
-                self_node_id=self_node_id,
+            _with_direct_observation(
+                make_get_delta_handler(
+                    state_worker=state_worker,
+                    send=send_function,
+                    self_node_id=self_node_id,
+                )
             ),
         )
     else:
-        dispatcher.register(MessageType.GET_DELTA, handle_get_delta)
+        dispatcher.register(
+            MessageType.GET_DELTA,
+            _with_direct_observation(handle_get_delta),
+        )
     dispatcher.register(MessageType.ERROR, _handle_error)
     dispatcher.register(MessageType.ACK, _handle_ack)
     return dispatcher, peer_table

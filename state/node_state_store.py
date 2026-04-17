@@ -530,6 +530,26 @@ class NodeStateStore:
             ]
             return tuple(self._delta_to_dict(delta) for delta in selected)
 
+    def get_latest_timestamp_for_origin(self, origin: str) -> int:
+        """Return the latest winning timestamp known for one origin.
+
+        Args:
+            origin (str): Origin node identifier.
+
+        Returns:
+            int: Maximum ``ts_ms`` among current winners for ``origin``, or ``0``.
+        """
+        if not isinstance(origin, str) or origin == "":
+            return 0
+        with self._lock:
+            latest = 0
+            for record in self._state.values():
+                if record.origin != origin:
+                    continue
+                if record.ts_ms > latest:
+                    latest = record.ts_ms
+            return latest
+
     def _drain_replication_deltas_locked(self) -> list[_ReplicationDelta]:
         """Return unread replication deltas and advance the read cursor.
 

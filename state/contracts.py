@@ -76,3 +76,7 @@ class StateStoreLike(RecordMergeStore, Protocol):
     ) -> ReplicationDeltaBatch | None:
         """Return ordered deltas newer than the supplied timestamp."""
         ...
+
+    def get_latest_timestamp_for_origin(self, origin: str) -> int:
+        """Return the max winning timestamp currently known for one origin."""
+        ...

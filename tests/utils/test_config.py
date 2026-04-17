@@ -58,6 +58,12 @@ def test_load_config_success(monkeypatch: MonkeyPatch) -> None:
     assert config.log_file == "logs/test.log"
     assert config.web_api_port == 10000
     assert config.heartbeat_interval_ms == 1000
+    assert config.gossip_sync_interval_ms == 1000
+    assert config.gossip_push_ratio == 0.3
+    assert config.gossip_push_min_peers == 2
+    assert config.gossip_pull_ratio == 0.15
+    assert config.gossip_pull_min_peers == 1
+    assert config.gossip_pull_every_rounds == 3
     assert config.phi_threshold_suspect == 3.0
     assert config.phi_threshold_dead == 8.0
     assert config.phi_initial_interval_s == 1.0
@@ -136,6 +142,15 @@ def test_invalid_topology_policy(monkeypatch: MonkeyPatch) -> None:
     """Assert unknown topology policy names are rejected."""
     _set_base_env(monkeypatch)
     monkeypatch.setenv("TOPOLOGY_POLICY", "unknown")
+
+    with pytest.raises(RuntimeError):
+        Config.from_env(dict(os.environ))
+
+
+def test_invalid_gossip_push_ratio(monkeypatch: MonkeyPatch) -> None:
+    """Assert gossip push ratio must stay within the closed interval [0, 1]."""
+    _set_base_env(monkeypatch)
+    monkeypatch.setenv("GOSSIP_PUSH_RATIO", "1.4")
 
     with pytest.raises(RuntimeError):
         Config.from_env(dict(os.environ))

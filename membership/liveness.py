@@ -22,18 +22,25 @@ class NodeLiveness:
         phi (float): Current failure-detector score for the peer.
         status (NodeStatus): Derived liveness classification used by membership.
         status_ts_ms (int): LWW timestamp of the last status transition.
+        direct_observed (bool): Whether this node has been observed on a direct transport path.
+        last_evidence_ts_ms (int): Latest locally observed evidence timestamp for this peer.
+        last_evidence_source (str): Source label describing the last evidence update.
     """
 
     last_heartbeat: float
     phi: float
     status: NodeStatus
     status_ts_ms: int
+    direct_observed: bool = False
+    last_evidence_ts_ms: int = 0
+    last_evidence_source: str = "none"
 
     @staticmethod
     def new(
         *,
         now: float | None = None,
         status_ts_ms: int | None = None,
+        direct_observed: bool = False,
     ) -> "NodeLiveness":
         """Create a healthy initial liveness state."""
         heartbeat_now = time.time() if now is None else now
@@ -43,4 +50,7 @@ class NodeLiveness:
             phi=0.0,
             status=NodeStatus.ALIVE,
             status_ts_ms=status_now,
+            direct_observed=direct_observed,
+            last_evidence_ts_ms=status_now if direct_observed else 0,
+            last_evidence_source="direct_bootstrap" if direct_observed else "none",
         )

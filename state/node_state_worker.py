@@ -429,6 +429,10 @@ class NodeStateWorker(threading.Thread):
         """Return ordered deltas newer than ``since_ts_ms`` without draining."""
         return self._store.get_replication_deltas_since(since_ts_ms=since_ts_ms)
 
+    def get_latest_timestamp_for_origin(self, origin: str) -> int:
+        """Return the latest winning timestamp currently known for one origin."""
+        return self._store.get_latest_timestamp_for_origin(origin)
+
     def stop(self) -> None:
         """Request graceful worker termination.
 

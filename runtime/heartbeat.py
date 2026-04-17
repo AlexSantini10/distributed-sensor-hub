@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 
 from gossip.publisher import publish_membership_gossip
 from membership.peer import Peer
@@ -31,6 +32,7 @@ class HeartbeatSender:
         send: SenderLike,
         interval_ms: int,
         log: LoggerLike,
+        connected_peer_ids_provider: Callable[[], tuple[str, ...]] | None = None,
     ) -> None:
         """Initialize a background heartbeat sender."""
         self._self_node_id = self_node_id
@@ -39,6 +41,7 @@ class HeartbeatSender:
         self._interval_s = max(0.001, interval_ms / 1000.0)
         self._log = log
         self._stop_event = threading.Event()
+        self._connected_peer_ids_provider = connected_peer_ids_provider
         self._thread = threading.Thread(
             target=self._run,
             name="heartbeat-sender",
@@ -79,8 +82,9 @@ class HeartbeatSender:
         self._log_membership_transitions(fd_updates)
 
         peers = self._peer_table.snapshot()
+        connected_peers = self._connected_peers_from_snapshot(peers)
         self._publish_membership_gossip(peers)
-        self._send_ping_to_peers(peers)
+        self._send_ping_to_peers(connected_peers)
 
     def _evaluate_failure_detector(self) -> tuple[FailureDetectionUpdateResult, ...]:
         """Apply phi-accrual evaluation to the current membership view."""
@@ -122,7 +126,7 @@ class HeartbeatSender:
         )
 
     def _send_ping_to_peers(self, peers: tuple[Peer, ...]) -> None:
-        """Send one heartbeat probe to each known peer."""
+        """Send one heartbeat probe to each connected peer."""
         ping = self._build_ping()
         for peer in peers:
             try:
@@ -132,3 +136,12 @@ class HeartbeatSender:
                     f"Heartbeat PING failed to {peer.node_id} {peer.host}:{peer.port}",
                     exc_info=True,
                 )
+
+    def _connected_peers_from_snapshot(self, peers: tuple[Peer, ...]) -> tuple[Peer, ...]:
+        """Return peers that are currently registered in outbound transport."""
+        if self._connected_peer_ids_provider is None:
+            return peers
+        connected_ids = set(self._connected_peer_ids_provider())
+        if not connected_ids:
+            return ()
+        return tuple(peer for peer in peers if peer.node_id in connected_ids)

@@ -127,6 +127,12 @@ class MembershipSnapshotPeerDict(TypedDict):
     sample_count: int
     sample_window_size: int
     status_transition_ts_ms: int
+    direct_status: str
+    evidence_status: str
+    display_status: str
+    last_evidence_ts_ms: int
+    last_evidence_source: str
+    direct_observed: bool
 
 
 class MembershipSnapshotDict(TypedDict):
@@ -219,6 +225,14 @@ class StateWorkerLike(Protocol):
         Returns:
             ReplicationDeltaBatch | None: Ordered delta events or ``None`` when
                 the cursor is outside retained bounded history.
+        """
+        ...
+
+    def get_latest_timestamp_for_origin(self, origin: str) -> int:
+        """Return the latest winning timestamp currently known for one origin.
+
+        Returns:
+            int: Maximum ``ts_ms`` for records whose winner origin matches ``origin``.
         """
         ...
 

@@ -59,7 +59,7 @@ The steady-state data flow is:
 
 1. Local sensors emit readings into the shared event queue.
 2. The state worker normalizes events and applies LWW merges.
-3. Replication updates are published to known peers.
+3. Replication updates run in push-pull rounds with scalable fanout over alive peers.
 4. Remote messages are dispatched by protocol handlers and merged locally.
 5. The Web API exposes full state and incremental updates for inspection.
 
@@ -115,6 +115,12 @@ Use [.env.example](.env.example) as the base configuration.
 | `PHI_THRESHOLD_SUSPECT` | Phi threshold for `suspected` status | `3.0` |
 | `PHI_THRESHOLD_DEAD` | Phi threshold for `dead` status | `8.0` |
 | `PHI_INITIAL_INTERVAL_S` | Baseline expected heartbeat interval (seconds) | `1.0` |
+| `GOSSIP_SYNC_INTERVAL_MS` | Push-pull replication round interval (ms) | `1000` |
+| `GOSSIP_PUSH_RATIO` | Push fanout ratio over alive peers (`0..1`) | `0.3` |
+| `GOSSIP_PUSH_MIN_PEERS` | Minimum push fanout per round | `2` |
+| `GOSSIP_PULL_RATIO` | Pull fanout ratio over alive peers (`0..1`) | `0.15` |
+| `GOSSIP_PULL_MIN_PEERS` | Minimum pull fanout when pull runs | `1` |
+| `GOSSIP_PULL_EVERY_ROUNDS` | Run one pull round every N push rounds | `3` |
 | `SENSORS` | Number of sensors configured for the node | `4` |
 | `NETWORK_DELAY_MS` | Base artificial outbound network delay (ms) | `35` |
 | `NETWORK_DELAY_JITTER_MS` | Random delay jitter radius (ms) | `25` |

@@ -429,3 +429,15 @@ def test_replication_delta_since_returns_none_when_cursor_is_too_old() -> None:
     valid = w.get_replication_deltas_since(since_ts_ms=1001)
     assert valid is not None
     assert [d["sensor_id"] for d in valid] == ["s3"]
+
+
+def test_get_latest_timestamp_for_origin_reads_current_winners() -> None:
+    """Assert origin watermark reflects current winning records only."""
+    w = make_worker(node_id="A")
+    w.merge_update("s1", 1, 1000, "node-b")
+    w.merge_update("s2", 2, 1500, "node-b")
+    w.merge_update("s2", 3, 2000, "node-c")
+
+    assert w.get_latest_timestamp_for_origin("node-b") == 1000
+    assert w.get_latest_timestamp_for_origin("node-c") == 2000
+    assert w.get_latest_timestamp_for_origin("node-z") == 0

@@ -1,6 +1,7 @@
 """Handle protocol messages that synchronize replicated state."""
 
 from collections.abc import Callable
+import time
 
 from membership.peer import Peer
 from membership.peer_table import PeerTable
@@ -32,6 +33,7 @@ from utils.typing import (
 def make_sensor_update_handler(
     state_worker: StateWorkerLike,
     self_node_id: str,
+    peer_table: PeerTable | None = None,
 ) -> Callable[[Message], None]:
     """Create a handler for replicated sensor updates."""
     log: LoggerLike = get_logger(__name__, self_node_id)
@@ -55,6 +57,12 @@ def make_sensor_update_handler(
             return
 
         if applied:
+            if peer_table is not None:
+                peer_table.record_indirect_evidence(
+                    payload.origin,
+                    source="sensor_update",
+                    observed_ts_ms=payload.ts_ms,
+                )
             log.info(
                 f"SENSOR_UPDATE applied: sensor={payload.sensor_id} origin={payload.origin} ts={payload.ts_ms}"
             )
@@ -148,11 +156,34 @@ def make_full_sync_response_handler(
         merge_result = peer_table.merge_membership_view(incoming_peers)
         for discovered in merge_result.new_peers:
             _notify_discovered(discovered)
+        now_ms = 0
+        for entry in payload.membership:
+            if now_ms == 0:
+                now_ms = int(time.time() * 1000)
+            peer_table.record_indirect_evidence(
+                entry.node_id,
+                source="full_sync_membership",
+                observed_ts_ms=now_ms,
+            )
 
         applied_updates = state_worker.merge_state(
             remote_full_state=payload.state,
             reject_partial=True,
         )
+        for per_node in payload.state.values():
+            if not isinstance(per_node, dict):
+                continue
+            for record in per_node.values():
+                if not isinstance(record, dict):
+                    continue
+                origin = record.get("origin")
+                ts_ms = record.get("ts_ms")
+                if isinstance(origin, str) and origin != "" and isinstance(ts_ms, int):
+                    peer_table.record_indirect_evidence(
+                        origin,
+                        source="full_sync_state",
+                        observed_ts_ms=ts_ms,
+                    )
 
         log.info(
             "FULL_SYNC_RESPONSE applied: "

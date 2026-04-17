@@ -29,6 +29,9 @@ from membership.status import NodeStatus
 from utils.typing import JsonObject, MembershipSnapshotDict, MembershipSnapshotPeerDict
 
 
+_DEFAULT_EVIDENCE_TTL_MS = 20_000
+
+
 class PeerTable:
     """Store and query known peers for the local node."""
 
@@ -40,11 +43,15 @@ class PeerTable:
         phi_threshold_dead: float = 8.0,
         phi_initial_interval_s: float = 1.0,
         phi_max_intervals_per_peer: int = 128,
+        evidence_ttl_ms: int = _DEFAULT_EVIDENCE_TTL_MS,
     ):
         """Initialize an empty membership table."""
+        if evidence_ttl_ms <= 0:
+            raise ValueError("evidence_ttl_ms must be > 0")
         self._self_node_id = self_node_id
         self._lock = threading.Lock()
         self._peers: Dict[str, Peer] = {}
+        self._evidence_ttl_ms = evidence_ttl_ms
         self._failure_detector = HeartbeatMonitor(
             threshold_suspect=phi_threshold_suspect,
             threshold_dead=phi_threshold_dead,
@@ -70,6 +77,11 @@ class PeerTable:
     def phi_threshold_dead(self) -> float:
         """Expose the configured dead threshold."""
         return self._failure_detector.threshold_dead
+
+    @property
+    def evidence_ttl_ms(self) -> int:
+        """Expose the configured active-evidence time window."""
+        return self._evidence_ttl_ms
 
     def upsert_peer(self, *, node_id: str, host: str, port: int) -> PeerUpsertResult:
         """Insert a peer or refresh its advertised endpoint atomically."""
@@ -152,6 +164,12 @@ class PeerTable:
             new_heartbeat = max(peer.last_heartbeat, heartbeat_at)
             heartbeat_advanced = peer.last_heartbeat != new_heartbeat
             peer.last_heartbeat = new_heartbeat
+            peer.direct_observed = True
+            self._update_evidence_locked(
+                peer=peer,
+                observed_ts_ms=int(heartbeat_at * 1000),
+                source="direct_heartbeat",
+            )
 
             phi_updated = peer.phi != observation.phi
             peer.phi = observation.phi
@@ -194,6 +212,49 @@ class PeerTable:
                 reason=status_result.reason,
             )
 
+    def record_direct_message(
+        self,
+        node_id: str,
+        *,
+        observed_at_wall_s: float,
+        observed_at_monotonic_s: float | None = None,
+    ) -> FailureDetectionUpdateResult:
+        """Treat a directly received frame as liveness evidence for one peer."""
+        return self.record_heartbeat(
+            node_id,
+            heartbeat_at=observed_at_wall_s,
+            arrived_at_monotonic_s=observed_at_monotonic_s,
+            sender_timestamp_ms=None,
+        )
+
+    def record_indirect_evidence(
+        self,
+        node_id: str,
+        *,
+        source: str,
+        observed_ts_ms: int | None = None,
+    ) -> bool:
+        """Record indirect evidence-of-life without mutating direct phi state."""
+        if node_id == self._self_node_id:
+            return False
+        evidence_ts_ms = (
+            int(time.time() * 1000)
+            if observed_ts_ms is None
+            else observed_ts_ms
+        )
+        if evidence_ts_ms < 0:
+            return False
+
+        with self._lock:
+            peer = self._peers.get(node_id)
+            if peer is None:
+                return False
+            return self._update_evidence_locked(
+                peer=peer,
+                observed_ts_ms=evidence_ts_ms,
+                source=source,
+            )
+
     def evaluate_failure_detector(
         self,
         *,
@@ -211,6 +272,8 @@ class PeerTable:
 
         with self._lock:
             for peer_id, peer in self._peers.items():
+                if not peer.direct_observed:
+                    continue
                 evaluation = self._failure_detector.evaluate_peer(
                     peer_id,
                     observed_at_s=monotonic_now,
@@ -337,6 +400,11 @@ class PeerTable:
                     existing.status = candidate.status
                     existing.status_ts_ms = candidate.status_ts_ms
                     peer_changed = True
+                    self._update_evidence_locked(
+                        peer=existing,
+                        observed_ts_ms=candidate.status_ts_ms,
+                        source="gossip_status",
+                    )
 
                 if peer_changed:
                     updated.append(self._clone_peer(existing))
@@ -407,11 +475,21 @@ class PeerTable:
     def membership_snapshot(self) -> MembershipSnapshotDict:
         """Return a thread-safe, read-only Phi-driven membership snapshot."""
         with self._lock:
+            now_ms = int(time.time() * 1000)
             peers = sorted(self._peers.values(), key=lambda peer: peer.node_id)
             snapshot_peers: list[MembershipSnapshotPeerDict] = []
             window_size = self._failure_detector.max_intervals_per_peer
             for peer in peers:
                 sample_count = len(self._failure_detector.get_intervals(peer.node_id))
+                direct_status = self._compute_direct_status_locked(peer=peer)
+                evidence_status = self._compute_evidence_status_locked(
+                    peer=peer,
+                    now_ms=now_ms,
+                )
+                display_status = self._compute_display_status(
+                    direct_status=direct_status,
+                    evidence_status=evidence_status,
+                )
                 snapshot_peers.append(
                     {
                         "peer_id": peer.node_id,
@@ -423,6 +501,12 @@ class PeerTable:
                         "sample_count": sample_count,
                         "sample_window_size": window_size,
                         "status_transition_ts_ms": peer.status_ts_ms,
+                        "direct_status": direct_status,
+                        "evidence_status": evidence_status,
+                        "display_status": display_status,
+                        "last_evidence_ts_ms": peer.last_evidence_ts_ms,
+                        "last_evidence_source": peer.last_evidence_source,
+                        "direct_observed": peer.direct_observed,
                     }
                 )
             return {"local_node_id": self._self_node_id, "peers": snapshot_peers}
@@ -459,6 +543,56 @@ class PeerTable:
             return candidate_ts_ms
         return current_ts_ms + 1
 
+    def _update_evidence_locked(
+        self,
+        *,
+        peer: Peer,
+        observed_ts_ms: int,
+        source: str,
+    ) -> bool:
+        """Update peer evidence metadata. Caller must hold ``_lock``."""
+        if observed_ts_ms < peer.last_evidence_ts_ms:
+            return False
+        changed = (
+            observed_ts_ms != peer.last_evidence_ts_ms
+            or source != peer.last_evidence_source
+        )
+        peer.last_evidence_ts_ms = observed_ts_ms
+        peer.last_evidence_source = source
+        return changed
+
+    def _compute_direct_status_locked(self, *, peer: Peer) -> str:
+        """Compute current direct reachability status for one peer."""
+        if not peer.direct_observed:
+            return "unknown"
+        evaluation = self._failure_detector.evaluate_peer(
+            peer.node_id,
+            observed_at_s=time.monotonic(),
+        )
+        return self._map_failure_status(evaluation.status).to_wire()
+
+    def _compute_evidence_status_locked(self, *, peer: Peer, now_ms: int) -> str:
+        """Compute freshness class for generic peer evidence."""
+        if peer.last_evidence_ts_ms <= 0:
+            return "unknown"
+        if now_ms - peer.last_evidence_ts_ms <= self._evidence_ttl_ms:
+            return "active"
+        return "stale"
+
+    @staticmethod
+    def _compute_display_status(*, direct_status: str, evidence_status: str) -> str:
+        """Compute a human-oriented status derived from direct and indirect signals."""
+        if direct_status == NodeStatus.ALIVE.to_wire():
+            return "alive_direct"
+        if evidence_status == "active":
+            return "alive_indirect"
+        if direct_status in {
+            NodeStatus.SUSPECTED.to_wire(),
+            NodeStatus.DEAD.to_wire(),
+        }:
+            return direct_status
+        return "unknown"
+
     @staticmethod
     def _clone_peer(peer: Peer) -> Peer:
         """Copy a peer record before exposing it outside the lock owner."""
@@ -471,5 +605,8 @@ class PeerTable:
                 phi=peer.phi,
                 status=peer.status,
                 status_ts_ms=peer.status_ts_ms,
+                direct_observed=peer.direct_observed,
+                last_evidence_ts_ms=peer.last_evidence_ts_ms,
+                last_evidence_source=peer.last_evidence_source,
             ),
         )

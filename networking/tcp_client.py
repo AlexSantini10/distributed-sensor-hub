@@ -225,6 +225,15 @@ class TcpClient:
             raise KeyError(f"Unknown peer_id: {peer_id}")
         return worker
 
+    def registered_peer_ids(self) -> tuple[str, ...]:
+        """Return a stable snapshot of outbound-registered peer IDs.
+
+        Returns:
+            tuple[str, ...]: Sorted peer IDs currently registered in this client.
+        """
+        with self._lock:
+            return tuple(sorted(self._workers.keys()))
+
 
 def _serialize_to_bytes(obj: SupportsToBytes) -> bytes:
     """Serialize a typed message object into transport payload bytes.

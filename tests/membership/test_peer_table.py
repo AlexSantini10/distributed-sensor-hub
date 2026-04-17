@@ -539,3 +539,71 @@ def test_membership_snapshot_is_consistent_during_concurrent_updates() -> None:
         thread.join()
 
     assert failures == []
+
+
+def test_snapshot_reports_alive_indirect_when_direct_path_is_dead() -> None:
+    """Assert indirect evidence can keep display status alive while direct FD is dead."""
+    table = PeerTable(
+        self_node_id="node-1",
+        phi_threshold_suspect=0.5,
+        phi_threshold_dead=1.0,
+        phi_initial_interval_s=1.0,
+        evidence_ttl_ms=30_000,
+    )
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+
+    base = time.time() + 1000.0
+    table.record_heartbeat("node-2", heartbeat_at=base, arrived_at_monotonic_s=10.0)
+    table.record_heartbeat("node-2", heartbeat_at=base + 1.0, arrived_at_monotonic_s=11.0)
+    table.evaluate_failure_detector(
+        observed_at_wall_s=base + 4.0,
+        observed_at_monotonic_s=14.0,
+    )
+    table.record_indirect_evidence(
+        "node-2",
+        source="sensor_update",
+        observed_ts_ms=int((base + 4.1) * 1000),
+    )
+
+    snapshot = table.membership_snapshot()["peers"][0]
+    assert snapshot["direct_status"] == "dead"
+    assert snapshot["evidence_status"] == "active"
+    assert snapshot["display_status"] == "alive_indirect"
+
+
+def test_failure_detector_skips_peers_without_direct_observations() -> None:
+    """Assert peers never observed directly are not downgraded by local phi evaluation."""
+    table = PeerTable(
+        self_node_id="node-1",
+        phi_threshold_suspect=0.5,
+        phi_threshold_dead=1.0,
+        phi_initial_interval_s=1.0,
+    )
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+
+    table.evaluate_failure_detector(
+        observed_at_wall_s=time.time() + 10000.0,
+        observed_at_monotonic_s=10000.0,
+    )
+
+    peer = table.get_peer("node-2")
+    assert peer is not None
+    assert peer.direct_observed is False
+    assert peer.status is NodeStatus.ALIVE
+    assert peer.phi == 0.0
+
+
+def test_record_direct_message_marks_peer_as_directly_observed() -> None:
+    """Assert non-heartbeat direct traffic can promote a peer into direct FD tracking."""
+    table = PeerTable(self_node_id="node-1")
+    table.upsert_peer(node_id="node-2", host="127.0.0.1", port=9001)
+
+    table.record_direct_message(
+        "node-2",
+        observed_at_wall_s=time.time() + 1000.0,
+        observed_at_monotonic_s=1.0,
+    )
+    peer = table.get_peer("node-2")
+    assert peer is not None
+    assert peer.direct_observed is True
+    assert peer.last_evidence_source == "direct_heartbeat"

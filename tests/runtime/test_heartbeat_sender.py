@@ -99,3 +99,33 @@ def test_heartbeat_sender_logs_phi_transition(caplog, monkeypatch) -> None:
     assert "Membership transition from phi detector" in caplog.text
     assert "peer=node-b" in caplog.text
     assert "from=alive to=suspected" in caplog.text
+
+
+def test_heartbeat_sender_pings_all_and_only_connected_peers() -> None:
+    """Assert heartbeat probes target exactly the currently connected peer set."""
+    peer_table = PeerTable(self_node_id="node-a")
+    peer_table.upsert_peer(node_id="node-b", host="10.0.0.2", port=9002)
+    peer_table.upsert_peer(node_id="node-c", host="10.0.0.3", port=9003)
+    peer_table.upsert_peer(node_id="node-d", host="10.0.0.4", port=9004)
+
+    sent: list[tuple[str, Message]] = []
+
+    def send(peer_id: str, msg: Message) -> None:
+        sent.append((peer_id, msg))
+
+    sender = HeartbeatSender(
+        self_node_id="node-a",
+        peer_table=peer_table,
+        send=send,
+        interval_ms=100,
+        log=DummyLog(),
+        connected_peer_ids_provider=lambda: ("node-b", "node-d"),
+    )
+    sender._send_heartbeat_round()
+
+    ping_targets = {
+        peer_id
+        for peer_id, msg in sent
+        if msg.msg_type is MessageType.PING
+    }
+    assert ping_targets == {"node-b", "node-d"}

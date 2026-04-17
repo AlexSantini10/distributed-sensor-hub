@@ -313,22 +313,36 @@ function renderMembership(rawMembership) {
   });
 
   for (const peer of ordered) {
-    const status = typeof peer.status === "string" ? peer.status : "unknown";
-    if (status === "suspected") {
+    const directStatus = typeof peer.direct_status === "string"
+      ? peer.direct_status
+      : (typeof peer.status === "string" ? peer.status : "unknown");
+    const evidenceStatus = typeof peer.evidence_status === "string"
+      ? peer.evidence_status
+      : "unknown";
+    const displayStatus = typeof peer.display_status === "string"
+      ? peer.display_status
+      : directStatus;
+    if (directStatus === "suspected") {
       suspected += 1;
-    } else if (status === "dead") {
+    } else if (directStatus === "dead") {
       dead += 1;
     }
 
     const phi = typeof peer.phi === "number" && Number.isFinite(peer.phi) ? peer.phi.toFixed(3) : "-";
     const deltaMs = formatDeltaMs(peer.last_heartbeat_ts_ms);
+    const evidenceSource = typeof peer.last_evidence_source === "string"
+      ? peer.last_evidence_source
+      : "-";
 
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${peer.peer_id || "-"}</td>
-      <td><span class="member-status ${status}">${status}</span></td>
+      <td><span class="member-status ${displayStatus}">${displayStatus}</span></td>
+      <td><span class="member-status ${directStatus}">${directStatus}</span></td>
+      <td><span class="member-status ${evidenceStatus}">${evidenceStatus}</span></td>
       <td>${phi}</td>
-      <td><span class="heartbeat-delta ${status}">${deltaMs}</span></td>
+      <td><span class="heartbeat-delta ${directStatus}">${deltaMs}</span></td>
+      <td>${evidenceSource}</td>
     `;
     membershipBodyEl.appendChild(row);
   }

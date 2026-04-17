@@ -129,6 +129,12 @@ def start_sensor_runtime(
         tcp_client=client,
         state_worker=state_worker,
         log=log,
+        interval_s=config.gossip_sync_interval_ms / 1000.0,
+        push_ratio=config.gossip_push_ratio,
+        push_min_peers=config.gossip_push_min_peers,
+        pull_ratio=config.gossip_pull_ratio,
+        pull_min_peers=config.gossip_pull_min_peers,
+        pull_every_rounds=config.gossip_pull_every_rounds,
     )
     publisher.start()
     log.info("Sensor update publisher started")
@@ -149,6 +155,7 @@ def start_heartbeat_runtime(
         send=client.send_json,
         interval_ms=config.heartbeat_interval_ms,
         log=log,
+        connected_peer_ids_provider=client.registered_peer_ids,
     )
     heartbeat_sender.start()
     log.info(

@@ -28,6 +28,12 @@ class EnvKey(StrEnum):
     CLEAR_LOG = "CLEAR_LOG"
     WEB_API_PORT = "WEB_API_PORT"
     HEARTBEAT_INTERVAL_MS = "HEARTBEAT_INTERVAL_MS"
+    GOSSIP_SYNC_INTERVAL_MS = "GOSSIP_SYNC_INTERVAL_MS"
+    GOSSIP_PUSH_RATIO = "GOSSIP_PUSH_RATIO"
+    GOSSIP_PUSH_MIN_PEERS = "GOSSIP_PUSH_MIN_PEERS"
+    GOSSIP_PULL_RATIO = "GOSSIP_PULL_RATIO"
+    GOSSIP_PULL_MIN_PEERS = "GOSSIP_PULL_MIN_PEERS"
+    GOSSIP_PULL_EVERY_ROUNDS = "GOSSIP_PULL_EVERY_ROUNDS"
     PHI_THRESHOLD_SUSPECT = "PHI_THRESHOLD_SUSPECT"
     PHI_THRESHOLD_DEAD = "PHI_THRESHOLD_DEAD"
     PHI_INITIAL_INTERVAL_S = "PHI_INITIAL_INTERVAL_S"
@@ -187,6 +193,12 @@ class Config:
     clear_log: bool
     web_api_port: int
     heartbeat_interval_ms: int
+    gossip_sync_interval_ms: int
+    gossip_push_ratio: float
+    gossip_push_min_peers: int
+    gossip_pull_ratio: float
+    gossip_pull_min_peers: int
+    gossip_pull_every_rounds: int
     phi_threshold_suspect: float
     phi_threshold_dead: float
     phi_initial_interval_s: float
@@ -248,6 +260,30 @@ class Config:
         heartbeat_interval_ms = _parse_positive_int(
             _get_optional_env(env, EnvKey.HEARTBEAT_INTERVAL_MS, default="1000"),
             EnvKey.HEARTBEAT_INTERVAL_MS.value,
+        )
+        gossip_sync_interval_ms = _parse_positive_int(
+            _get_optional_env(env, EnvKey.GOSSIP_SYNC_INTERVAL_MS, default="1000"),
+            EnvKey.GOSSIP_SYNC_INTERVAL_MS.value,
+        )
+        gossip_push_ratio = _parse_probability(
+            _get_optional_env(env, EnvKey.GOSSIP_PUSH_RATIO, default="0.3"),
+            EnvKey.GOSSIP_PUSH_RATIO.value,
+        )
+        gossip_push_min_peers = _parse_non_negative_int(
+            _get_optional_env(env, EnvKey.GOSSIP_PUSH_MIN_PEERS, default="2"),
+            EnvKey.GOSSIP_PUSH_MIN_PEERS.value,
+        )
+        gossip_pull_ratio = _parse_probability(
+            _get_optional_env(env, EnvKey.GOSSIP_PULL_RATIO, default="0.15"),
+            EnvKey.GOSSIP_PULL_RATIO.value,
+        )
+        gossip_pull_min_peers = _parse_non_negative_int(
+            _get_optional_env(env, EnvKey.GOSSIP_PULL_MIN_PEERS, default="1"),
+            EnvKey.GOSSIP_PULL_MIN_PEERS.value,
+        )
+        gossip_pull_every_rounds = _parse_positive_int(
+            _get_optional_env(env, EnvKey.GOSSIP_PULL_EVERY_ROUNDS, default="3"),
+            EnvKey.GOSSIP_PULL_EVERY_ROUNDS.value,
         )
         phi_threshold_suspect = _parse_positive_float(
             _get_optional_env(env, EnvKey.PHI_THRESHOLD_SUSPECT, default="3.0"),
@@ -314,6 +350,12 @@ class Config:
             clear_log=clear_log,
             web_api_port=web_api_port,
             heartbeat_interval_ms=heartbeat_interval_ms,
+            gossip_sync_interval_ms=gossip_sync_interval_ms,
+            gossip_push_ratio=gossip_push_ratio,
+            gossip_push_min_peers=gossip_push_min_peers,
+            gossip_pull_ratio=gossip_pull_ratio,
+            gossip_pull_min_peers=gossip_pull_min_peers,
+            gossip_pull_every_rounds=gossip_pull_every_rounds,
             phi_threshold_suspect=phi_threshold_suspect,
             phi_threshold_dead=phi_threshold_dead,
             phi_initial_interval_s=phi_initial_interval_s,
@@ -430,6 +472,17 @@ def _parse_positive_int(raw: str, env_name: str) -> int:
         raise RuntimeError(f"{env_name} must be an integer, got: {raw}") from exc
     if value <= 0:
         raise RuntimeError(f"{env_name} must be > 0, got: {value}")
+    return value
+
+
+def _parse_non_negative_int(raw: str, env_name: str) -> int:
+    """Parse a non-negative integer from configuration text."""
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{env_name} must be an integer, got: {raw}") from exc
+    if value < 0:
+        raise RuntimeError(f"{env_name} must be >= 0, got: {value}")
     return value
 
 

@@ -84,3 +84,30 @@ class Peer:
     @status_ts_ms.setter
     def status_ts_ms(self, value: int) -> None:
         self.liveness.status_ts_ms = value
+
+    @property
+    def direct_observed(self) -> bool:
+        """Expose whether this peer has direct transport observations."""
+        return self.liveness.direct_observed
+
+    @direct_observed.setter
+    def direct_observed(self, value: bool) -> None:
+        self.liveness.direct_observed = value
+
+    @property
+    def last_evidence_ts_ms(self) -> int:
+        """Expose latest local evidence timestamp for this peer."""
+        return self.liveness.last_evidence_ts_ms
+
+    @last_evidence_ts_ms.setter
+    def last_evidence_ts_ms(self, value: int) -> None:
+        self.liveness.last_evidence_ts_ms = value
+
+    @property
+    def last_evidence_source(self) -> str:
+        """Expose source of the latest local evidence update."""
+        return self.liveness.last_evidence_source
+
+    @last_evidence_source.setter
+    def last_evidence_source(self, value: str) -> None:
+        self.liveness.last_evidence_source = value
