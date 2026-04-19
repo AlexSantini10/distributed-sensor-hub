@@ -225,6 +225,13 @@ def start_cluster(*, node_count: int = 6, host: str = "127.0.0.1") -> list[NodeH
                     app=app,
                 )
             )
+            # Ensure each node's HTTP surface is reachable before starting the next one.
+            poll_until(
+                lambda: isinstance(fetch_json(started[-1].state_url, timeout_s=0.5), dict),
+                timeout_s=10.0,
+                interval_s=0.1,
+                description=f"node {node_id} Web API readiness",
+            )
     except Exception:
         stop_cluster(started)
         raise
@@ -247,6 +254,9 @@ def stop_cluster(nodes: list[NodeHandle]) -> None:
     for node in reversed(nodes):
         try:
             node.app.stop()
+            web_api = node.app.web_api
+            if web_api is not None and web_api.is_alive():
+                web_api.join(timeout=2.0)
         except Exception:
             continue
 

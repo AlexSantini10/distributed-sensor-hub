@@ -12,7 +12,7 @@ from tests.integration.cluster_harness import (
     NodeHandle,
     attach_finite_sensor,
     fetch_state,
-    start_three_node_cluster,
+    start_cluster,
     stop_cluster,
     wait_for_readiness,
     wait_until,
@@ -115,29 +115,31 @@ def _diagnose_state_mismatch(
 
 
 @pytest.mark.integration
-def test_deterministic_state_convergence_real_cluster() -> None:
-    """Assert 3 real nodes converge to expected LWW winning state."""
+def test_deterministic_state_convergence_real_cluster(
+    record_property: pytest.RecordProperty,
+) -> None:
+    """Assert 6 real nodes converge to expected LWW winning state."""
     cluster_start = time.monotonic()
-    nodes = start_three_node_cluster()
+    nodes = start_cluster(node_count=6)
     try:
-        wait_for_readiness(nodes, timeout_s=25.0, interval_s=0.2)
+        wait_for_readiness(nodes, timeout_s=35.0, interval_s=0.2)
 
         attached: list[tuple[NodeHandle, FiniteTestSensor]] = []
         for index, node in enumerate(nodes):
             shared = attach_finite_sensor(
                 node=node,
                 sensor_id="shared_signal",
-                interval_seconds=0.04,
+                interval_seconds=0.05,
                 seed=101 + index,
-                max_updates=5,
+                max_updates=3,
                 unit="itest",
             )
             unique = attach_finite_sensor(
                 node=node,
                 sensor_id=f"unique_signal_{index}",
-                interval_seconds=0.05,
+                interval_seconds=0.07,
                 seed=201 + index,
-                max_updates=4,
+                max_updates=2,
                 unit="itest",
             )
             attached.append((node, shared))
@@ -145,10 +147,11 @@ def test_deterministic_state_convergence_real_cluster() -> None:
 
         wait_until(
             lambda: all(not sensor.is_running() for _, sensor in attached),
-            timeout_s=10.0,
+            timeout_s=12.0,
             interval_s=0.05,
             description="all finite deterministic sensors to complete",
         )
+        sensors_completed_at = time.monotonic()
 
         emitted = _collect_emitted_updates(attached)
         expected = _build_expected_winning_state(emitted)
@@ -156,6 +159,8 @@ def test_deterministic_state_convergence_real_cluster() -> None:
             raise AssertionError("Expected winning state is empty after sensor completion")
 
         latest_actual_by_node: dict[str, dict[str, dict]] = {}
+        stabilization_timeout_s = 20.0
+        convergence_at: float | None = None
 
         def converged_to_expected() -> bool:
             """Check whether every node has the same state and matches expected winners."""
@@ -179,10 +184,11 @@ def test_deterministic_state_convergence_real_cluster() -> None:
         try:
             wait_until(
                 converged_to_expected,
-                timeout_s=15.0,
+                timeout_s=stabilization_timeout_s,
                 interval_s=0.2,
                 description="state convergence to expected LWW winners",
             )
+            convergence_at = time.monotonic()
         except TimeoutError as exc:
             elapsed_s = time.monotonic() - cluster_start
             diagnostic = _diagnose_state_mismatch(
@@ -191,5 +197,23 @@ def test_deterministic_state_convergence_real_cluster() -> None:
                 elapsed_s=elapsed_s,
             )
             raise AssertionError(f"{exc}\n{diagnostic}") from exc
+
+        injected_updates = len(emitted)
+        assert convergence_at is not None
+        convergence_wall_clock_s = convergence_at - cluster_start
+        stabilization_duration_s = convergence_at - sensors_completed_at
+        metrics = {
+            "node_count": len(nodes),
+            "injected_updates": injected_updates,
+            "convergence_wall_clock_s": round(convergence_wall_clock_s, 3),
+            "stabilization_duration_s": round(stabilization_duration_s, 3),
+            "stabilization_timeout_s": stabilization_timeout_s,
+        }
+        print(f"CI_METRICS {json.dumps(metrics, sort_keys=True)}", flush=True)
+        record_property("node_count", metrics["node_count"])
+        record_property("injected_updates", metrics["injected_updates"])
+        record_property("convergence_wall_clock_s", metrics["convergence_wall_clock_s"])
+        record_property("stabilization_duration_s", metrics["stabilization_duration_s"])
+        record_property("stabilization_timeout_s", metrics["stabilization_timeout_s"])
     finally:
         stop_cluster(nodes)
