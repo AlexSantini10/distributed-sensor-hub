@@ -33,6 +33,42 @@ Available pytest markers are defined in [pytest.ini](../pytest.ini):
 
 ## Integration and Docker smoke checks
 
+### Deterministic state convergence check (real cluster)
+
+This check runs a real in-process cluster and validates **state convergence only**.
+It does not assert membership convergence semantics.
+
+What it validates:
+
+- a 6-node real cluster starts and becomes ready;
+- bounded deterministic sensor updates are injected with fixed seeds;
+- all nodes converge to the same final logical state from `/api/state`;
+- the converged state matches the expected LWW winners on `(ts_ms, origin)`;
+- no expected winning update is missing.
+
+Local command:
+
+```bash
+python -m pytest tests/integration/test_deterministic_state_convergence.py -q -s
+```
+
+CI command:
+
+```bash
+python -m pytest tests/integration/test_deterministic_state_convergence.py -q -s
+```
+
+Expected runtime:
+
+- local developer machine: typically around 10-25 seconds;
+- GitHub Actions runner: typically around 15-40 seconds.
+
+Known limitations:
+
+- timing depends on scheduler/load, so convergence is asserted with deadlines and polling;
+- this check focuses on replicated state (`/api/state`), not on membership status stability;
+- startup uses in-process nodes and local ephemeral ports, so host resource pressure can increase runtime.
+
 ### Base topology
 
 ```bash

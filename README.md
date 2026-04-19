@@ -180,7 +180,7 @@ Per monitorare il cluster si usa normalmente la UI statica in [web/index.html](w
 
 ## Testing
 
-Testing workflows, Docker validation scenarios, and chaos experiments now live in [docs/testing.md](docs/testing.md).
+Testing workflows, deterministic state convergence checks, Docker validation scenarios, and chaos experiments live in [docs/testing.md](docs/testing.md).
 
 ## Notes
 

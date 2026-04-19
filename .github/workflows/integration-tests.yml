@@ -32,6 +32,9 @@ jobs:
               pip install -r requirements.txt
           fi
 
+      - name: Deterministic state convergence check
+        run: python -m pytest tests/integration/test_deterministic_state_convergence.py -q -s
+
       - name: Build and start cluster
         run: docker compose -f docker/docker-compose-base.yml up --build -d
 
