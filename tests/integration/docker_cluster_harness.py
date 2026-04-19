@@ -171,6 +171,37 @@ class DockerClusterHarness:
             f"{type(last_error).__name__}: {last_error}"
         )
 
+    def wait_for_node_readiness(
+        self,
+        node_id: str,
+        *,
+        timeout_s: float = 45.0,
+        interval_s: float = 0.2,
+    ) -> None:
+        """Wait until one node exposes a valid `/api/state` snapshot."""
+        spec = self._resolve_node(node_id)
+        deadline = time.monotonic() + timeout_s
+        last_error: Exception | None = None
+
+        while time.monotonic() < deadline:
+            try:
+                snapshot = _fetch_json(spec.state_url, timeout_s=interval_s)
+                if spec.node_id not in snapshot:
+                    raise AssertionError(
+                        f"{spec.node_id} state snapshot missing root key {spec.node_id}: {snapshot}"
+                    )
+                return
+            except Exception as exc:  # pragma: no cover - diagnostics path
+                last_error = exc
+                time.sleep(interval_s)
+
+        if last_error is None:
+            raise TimeoutError(f"Timed out waiting for node readiness node_id={node_id}")
+        raise TimeoutError(
+            f"Timed out waiting for node readiness node_id={node_id}: "
+            f"{type(last_error).__name__}: {last_error}"
+        )
+
     def fetch_state(self, node_id: str, *, timeout_s: float = 1.0) -> JsonObject:
         """Fetch one node `/api/state` payload."""
         spec = self._resolve_node(node_id)
@@ -282,6 +313,18 @@ class DockerClusterHarness:
                 network_name=shared_network,
                 container_id=container_id,
             )
+
+    def kill_service(self, service: str, *, signal: str = "SIGKILL") -> None:
+        """Abruptly kill one compose service container."""
+        self._run_compose(["kill", "-s", signal, service])
+
+    def start_service(self, service: str) -> None:
+        """Start one stopped/killed compose service container."""
+        self._run_compose(["start", service])
+
+    def restart_service(self, service: str) -> None:
+        """Restart one compose service container."""
+        self._run_compose(["restart", service])
 
     def dump_compose_logs(self, *, output_file: Path | str | None = None) -> str:
         """Return compose logs and optionally persist them to a file."""
