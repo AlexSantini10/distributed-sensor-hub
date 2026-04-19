@@ -157,10 +157,12 @@ class NodeHandle:
 
     @property
     def state_url(self) -> str:
+        """Return the ``/api/state`` URL for this node."""
         return f"http://{self.host}:{self.web_api_port}/api/state"
 
     @property
     def membership_url(self) -> str:
+        """Return the ``/api/membership`` URL for this node."""
         return f"http://{self.host}:{self.web_api_port}/api/membership"
 
     def fetch_state(self, *, timeout_s: float = 1.0) -> JsonObject:
@@ -259,6 +261,7 @@ def wait_for_readiness(
     node_ids = tuple(node.node_id for node in nodes)
 
     def all_state_endpoints_ready() -> bool:
+        """Check whether all nodes expose a valid state snapshot root."""
         for node in nodes:
             snapshot = node.fetch_state(timeout_s=interval_s)
             if node.node_id not in snapshot:
@@ -322,10 +325,10 @@ def attach_finite_sensor(
 
 
 def fetch_state(node: NodeHandle, *, timeout_s: float = 1.0) -> JsonObject:
-    """Helper to fetch ``/api/state`` from a node handle."""
+    """Fetch ``/api/state`` from a node handle."""
     return node.fetch_state(timeout_s=timeout_s)
 
 
 def fetch_membership(node: NodeHandle, *, timeout_s: float = 1.0) -> JsonObject:
-    """Helper to fetch ``/api/membership`` from a node handle."""
+    """Fetch ``/api/membership`` from a node handle."""
     return node.fetch_membership(timeout_s=timeout_s)

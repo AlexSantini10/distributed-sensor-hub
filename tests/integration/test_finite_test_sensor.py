@@ -14,6 +14,7 @@ class RecordingHandler:
     """Record emitted readings for assertions."""
 
     def __init__(self) -> None:
+        """Initialize an empty reading capture buffer."""
         self.readings: list[SensorReading] = []
 
     def handle(self, reading: SensorReading) -> None:
@@ -22,6 +23,7 @@ class RecordingHandler:
 
 
 def _wait_until_stopped(sensor: FiniteTestSensor, timeout_s: float = 2.0) -> None:
+    """Wait until a finite sensor stops or fail with timeout diagnostics."""
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if not sensor.is_running():

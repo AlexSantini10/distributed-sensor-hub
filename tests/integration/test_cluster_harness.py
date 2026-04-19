@@ -45,6 +45,7 @@ def test_harness_starts_cluster_and_exposes_state_and_membership() -> None:
         node_ids = {node.node_id for node in nodes}
 
         def all_nodes_expose_all_origins() -> bool:
+            """Check that each node contains replicated winners from every origin."""
             for node in nodes:
                 state = fetch_state(node, timeout_s=0.5)
                 per_node = state.get(node.node_id)
