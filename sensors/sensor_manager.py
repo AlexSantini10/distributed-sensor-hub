@@ -16,6 +16,7 @@ from sensors.contracts import SensorHandler, SensorProvider
 from sensors.providers.base_sensor import BaseSensor
 from sensors.providers.boolean_sensor import BooleanSensor
 from sensors.providers.categorical_sensor import CategoricalSensor
+from sensors.providers.finite_test_sensor import FiniteTestSensor
 from sensors.providers.incremental_sensor import IncrementalSensor
 from sensors.providers.noise_sensor import NoiseSensor
 from sensors.providers.numeric_sensor import NumericSensor
@@ -68,6 +69,7 @@ class SensorManager:
             SensorType.SPIKE: self._build_spike_sensor,
             SensorType.WAVE: self._build_wave_sensor,
             SensorType.NOISE: self._build_noise_sensor,
+            SensorType.FINITE_TEST: self._build_finite_test_sensor,
         }
 
     def load(self, sensor_configs: tuple[SensorConfig, ...]) -> None:
@@ -280,6 +282,28 @@ class SensorManager:
             base,
             noise,
             sensor_config.period_ms,
+            handler=None,
+            unit=sensor_config.unit,
+        )
+
+    def _build_finite_test_sensor(self, sensor_config: SensorConfig) -> SensorProvider:
+        """Build a deterministic finite provider from config."""
+        seed = sensor_config.finite_seed
+        max_updates = sensor_config.finite_max_updates
+        start_ts_ms = sensor_config.finite_start_ts_ms
+        if seed is None:
+            raise RuntimeError("Missing required sensor config field: finite_seed")
+        if max_updates is None:
+            raise RuntimeError("Missing required sensor config field: finite_max_updates")
+        if start_ts_ms is None:
+            raise RuntimeError("Missing required sensor config field: finite_start_ts_ms")
+
+        return FiniteTestSensor(
+            sensor_id=sensor_config.sensor_id,
+            period_ms=sensor_config.period_ms,
+            seed=seed,
+            max_updates=max_updates,
+            start_ts_ms=start_ts_ms,
             handler=None,
             unit=sensor_config.unit,
         )

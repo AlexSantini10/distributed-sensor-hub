@@ -126,24 +126,24 @@ def test_deterministic_state_convergence_real_cluster(
 
         attached: list[tuple[NodeHandle, FiniteTestSensor]] = []
         for index, node in enumerate(nodes):
-            shared = attach_finite_sensor(
+            first_unique = attach_finite_sensor(
                 node=node,
-                sensor_id="shared_signal",
+                sensor_id=f"unique_signal_a_{index}",
                 interval_seconds=0.05,
                 seed=101 + index,
                 max_updates=3,
                 unit="itest",
             )
-            unique = attach_finite_sensor(
+            second_unique = attach_finite_sensor(
                 node=node,
-                sensor_id=f"unique_signal_{index}",
+                sensor_id=f"unique_signal_b_{index}",
                 interval_seconds=0.07,
                 seed=201 + index,
                 max_updates=2,
                 unit="itest",
             )
-            attached.append((node, shared))
-            attached.append((node, unique))
+            attached.append((node, first_unique))
+            attached.append((node, second_unique))
 
         wait_until(
             lambda: all(not sensor.is_running() for _, sensor in attached),

@@ -1,0 +1,184 @@
+services:
+  node1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    environment:
+      NODE_ID: node1
+      HOST: 0.0.0.0
+      PORT: 9100
+      BOOTSTRAP_PEERS: node2:9101,node3:9102
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node1-deterministic.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 11000
+      HEARTBEAT_INTERVAL_MS: 400
+      GOSSIP_SYNC_INTERVAL_MS: 300
+      GOSSIP_PUSH_RATIO: 1.0
+      GOSSIP_PUSH_MIN_PEERS: 1
+      GOSSIP_PULL_RATIO: 1.0
+      GOSSIP_PULL_MIN_PEERS: 1
+      GOSSIP_PULL_EVERY_ROUNDS: 1
+      NETWORK_DELAY_MS: 0
+      NETWORK_DELAY_JITTER_MS: 0
+      NETWORK_DELAY_SPIKE_PROB: 0
+      NETWORK_DELAY_SPIKE_MS: 0
+      NETWORK_PACKET_LOSS_PROB: 0
+      SENSORS: 2
+      SENSOR_0_TYPE: finite_test
+      SENSOR_0_NAME: unique_node1
+      SENSOR_0_PERIOD_MS: 20
+      SENSOR_0_SEED: 11
+      SENSOR_0_MAX_UPDATES: 4
+      SENSOR_0_START_TS_MS: 1700000000000
+      SENSOR_0_UNIT: itest
+      SENSOR_1_TYPE: finite_test
+      SENSOR_1_NAME: unique_aux_node1
+      SENSOR_1_PERIOD_MS: 30
+      SENSOR_1_SEED: 101
+      SENSOR_1_MAX_UPDATES: 3
+      SENSOR_1_START_TS_MS: 1700000001000
+      SENSOR_1_UNIT: itest
+    ports:
+      - "9100:9100"
+      - "11000:11000"
+    volumes:
+      - ../logs:/app/logs
+
+  node2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    environment:
+      NODE_ID: node2
+      HOST: 0.0.0.0
+      PORT: 9101
+      BOOTSTRAP_PEERS: node1:9100,node4:9103
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node2-deterministic.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 11001
+      HEARTBEAT_INTERVAL_MS: 400
+      GOSSIP_SYNC_INTERVAL_MS: 300
+      GOSSIP_PUSH_RATIO: 1.0
+      GOSSIP_PUSH_MIN_PEERS: 1
+      GOSSIP_PULL_RATIO: 1.0
+      GOSSIP_PULL_MIN_PEERS: 1
+      GOSSIP_PULL_EVERY_ROUNDS: 1
+      NETWORK_DELAY_MS: 0
+      NETWORK_DELAY_JITTER_MS: 0
+      NETWORK_DELAY_SPIKE_PROB: 0
+      NETWORK_DELAY_SPIKE_MS: 0
+      NETWORK_PACKET_LOSS_PROB: 0
+      SENSORS: 2
+      SENSOR_0_TYPE: finite_test
+      SENSOR_0_NAME: unique_node2
+      SENSOR_0_PERIOD_MS: 20
+      SENSOR_0_SEED: 12
+      SENSOR_0_MAX_UPDATES: 4
+      SENSOR_0_START_TS_MS: 1700000000000
+      SENSOR_0_UNIT: itest
+      SENSOR_1_TYPE: finite_test
+      SENSOR_1_NAME: unique_aux_node2
+      SENSOR_1_PERIOD_MS: 30
+      SENSOR_1_SEED: 102
+      SENSOR_1_MAX_UPDATES: 3
+      SENSOR_1_START_TS_MS: 1700000001000
+      SENSOR_1_UNIT: itest
+    ports:
+      - "9101:9101"
+      - "11001:11001"
+    volumes:
+      - ../logs:/app/logs
+
+  node3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    environment:
+      NODE_ID: node3
+      HOST: 0.0.0.0
+      PORT: 9102
+      BOOTSTRAP_PEERS: node1:9100,node4:9103
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node3-deterministic.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 11002
+      HEARTBEAT_INTERVAL_MS: 400
+      GOSSIP_SYNC_INTERVAL_MS: 300
+      GOSSIP_PUSH_RATIO: 1.0
+      GOSSIP_PUSH_MIN_PEERS: 1
+      GOSSIP_PULL_RATIO: 1.0
+      GOSSIP_PULL_MIN_PEERS: 1
+      GOSSIP_PULL_EVERY_ROUNDS: 1
+      NETWORK_DELAY_MS: 0
+      NETWORK_DELAY_JITTER_MS: 0
+      NETWORK_DELAY_SPIKE_PROB: 0
+      NETWORK_DELAY_SPIKE_MS: 0
+      NETWORK_PACKET_LOSS_PROB: 0
+      SENSORS: 2
+      SENSOR_0_TYPE: finite_test
+      SENSOR_0_NAME: unique_node3
+      SENSOR_0_PERIOD_MS: 20
+      SENSOR_0_SEED: 13
+      SENSOR_0_MAX_UPDATES: 4
+      SENSOR_0_START_TS_MS: 1700000000000
+      SENSOR_0_UNIT: itest
+      SENSOR_1_TYPE: finite_test
+      SENSOR_1_NAME: unique_aux_node3
+      SENSOR_1_PERIOD_MS: 30
+      SENSOR_1_SEED: 103
+      SENSOR_1_MAX_UPDATES: 3
+      SENSOR_1_START_TS_MS: 1700000001000
+      SENSOR_1_UNIT: itest
+    ports:
+      - "9102:9102"
+      - "11002:11002"
+    volumes:
+      - ../logs:/app/logs
+
+  node4:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    environment:
+      NODE_ID: node4
+      HOST: 0.0.0.0
+      PORT: 9103
+      BOOTSTRAP_PEERS: node2:9101,node3:9102
+      LOG_LEVEL: INFO
+      LOG_FILE: /app/logs/node4-deterministic.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 11003
+      HEARTBEAT_INTERVAL_MS: 400
+      GOSSIP_SYNC_INTERVAL_MS: 300
+      GOSSIP_PUSH_RATIO: 1.0
+      GOSSIP_PUSH_MIN_PEERS: 1
+      GOSSIP_PULL_RATIO: 1.0
+      GOSSIP_PULL_MIN_PEERS: 1
+      GOSSIP_PULL_EVERY_ROUNDS: 1
+      NETWORK_DELAY_MS: 0
+      NETWORK_DELAY_JITTER_MS: 0
+      NETWORK_DELAY_SPIKE_PROB: 0
+      NETWORK_DELAY_SPIKE_MS: 0
+      NETWORK_PACKET_LOSS_PROB: 0
+      SENSORS: 2
+      SENSOR_0_TYPE: finite_test
+      SENSOR_0_NAME: unique_node4
+      SENSOR_0_PERIOD_MS: 20
+      SENSOR_0_SEED: 14
+      SENSOR_0_MAX_UPDATES: 4
+      SENSOR_0_START_TS_MS: 1700000000000
+      SENSOR_0_UNIT: itest
+      SENSOR_1_TYPE: finite_test
+      SENSOR_1_NAME: unique_aux_node4
+      SENSOR_1_PERIOD_MS: 30
+      SENSOR_1_SEED: 104
+      SENSOR_1_MAX_UPDATES: 3
+      SENSOR_1_START_TS_MS: 1700000001000
+      SENSOR_1_UNIT: itest
+    ports:
+      - "9103:9103"
+      - "11003:11003"
+    volumes:
+      - ../logs:/app/logs

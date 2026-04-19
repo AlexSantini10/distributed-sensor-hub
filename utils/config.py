@@ -70,6 +70,9 @@ class SensorEnvSuffix(StrEnum):
     BASE = "BASE"
     LATENCY_MS = "LATENCY_MS"
     LATENCY_JITTER_MS = "LATENCY_JITTER_MS"
+    SEED = "SEED"
+    MAX_UPDATES = "MAX_UPDATES"
+    START_TS_MS = "START_TS_MS"
 
 
 class LogLevel(StrEnum):
@@ -93,6 +96,7 @@ class SensorType(StrEnum):
     SPIKE = "spike"
     WAVE = "wave"
     NOISE = "noise"
+    FINITE_TEST = "finite_test"
 
 
 class TopologyPolicyName(StrEnum):
@@ -150,6 +154,9 @@ class SensorConfig:
     base: float | None = None
     latency_ms: float = 0.0
     latency_jitter_ms: float = 0.0
+    finite_seed: int | None = None
+    finite_max_updates: int | None = None
+    finite_start_ts_ms: int | None = None
 
     @property
     def sensor_id(self) -> str:
@@ -807,6 +814,44 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
                     SensorEnvSuffix.FREQUENCY,
                     default="1",
                 )
+            ),
+        )
+
+    if sensor_type == SensorType.FINITE_TEST:
+        max_updates_raw = _get_sensor_value(env, index, SensorEnvSuffix.MAX_UPDATES)
+        if max_updates_raw is None:
+            raise ValueError(
+                f"Missing {_sensor_key(index, SensorEnvSuffix.MAX_UPDATES)}"
+            )
+        start_ts_ms_raw = _get_sensor_value(env, index, SensorEnvSuffix.START_TS_MS)
+        if start_ts_ms_raw is None:
+            raise ValueError(
+                f"Missing {_sensor_key(index, SensorEnvSuffix.START_TS_MS)}"
+            )
+
+        return SensorConfig(
+            index=index,
+            sensor_type=sensor_type,
+            name=name,
+            period_ms=period_ms,
+            unit=unit,
+            latency_ms=latency_ms,
+            latency_jitter_ms=latency_jitter_ms,
+            finite_seed=int(
+                _get_sensor_value_or_default(
+                    env,
+                    index,
+                    SensorEnvSuffix.SEED,
+                    default="0",
+                )
+            ),
+            finite_max_updates=_parse_positive_int(
+                max_updates_raw,
+                _sensor_key(index, SensorEnvSuffix.MAX_UPDATES),
+            ),
+            finite_start_ts_ms=_parse_non_negative_int(
+                start_ts_ms_raw,
+                _sensor_key(index, SensorEnvSuffix.START_TS_MS),
             ),
         )
 
