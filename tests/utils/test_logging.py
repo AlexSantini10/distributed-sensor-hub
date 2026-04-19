@@ -7,9 +7,9 @@ from utils.config import LogLevel
 from utils.logging import get_logger, setup_logging
 
 
-def test_setup_logging_uses_loglevel_enum() -> None:
+def test_setup_logging_uses_loglevel_enum(tmp_path: Path) -> None:
     """Assert that logging setup accepts and applies ``LogLevel`` values."""
-    log_file = Path("logs/test-setup-logging-enum.log")
+    log_file = tmp_path / "test-setup-logging-enum.log"
     if log_file.exists():
         log_file.unlink()
     root = logging.getLogger()
