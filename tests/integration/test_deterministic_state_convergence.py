@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from collections.abc import Callable
 
 import pytest
 
@@ -116,7 +117,7 @@ def _diagnose_state_mismatch(
 
 @pytest.mark.integration
 def test_deterministic_state_convergence_real_cluster(
-    record_property: pytest.RecordProperty,
+    record_property: Callable[[str, object], None],
 ) -> None:
     """Assert 6 real nodes converge to expected LWW winning state."""
     cluster_start = time.monotonic()

@@ -166,7 +166,7 @@ def _extract_node_state(snapshot: JsonObject, *, node_id: str) -> JsonObject:
 
 
 def _build_expected_winning_state() -> JsonObject:
-    winners: dict[str, tuple[str, float, int, dict[str, object]]] = {}
+    winners: dict[str, tuple[str, float, int, JsonObject]] = {}
 
     for node_plan in NODE_PLANS:
         origin = node_plan.node_id
@@ -176,7 +176,7 @@ def _build_expected_winning_state() -> JsonObject:
                 value = round(rng.uniform(0.0, 100.0), 6)
                 ts_ms = sensor.start_ts_ms + (index * sensor.period_ms)
                 logical_sensor_id = sensor.logical_sensor_id
-                meta = {"unit": sensor.unit, "period_ms": sensor.period_ms}
+                meta: JsonObject = {"unit": sensor.unit, "period_ms": sensor.period_ms}
 
                 current = winners.get(logical_sensor_id)
                 if current is None:
@@ -189,15 +189,16 @@ def _build_expected_winning_state() -> JsonObject:
                 if ts_ms == current_ts_ms and origin > current_origin:
                     winners[logical_sensor_id] = (origin, value, ts_ms, meta)
 
-    expected: dict[str, dict[str, object]] = {}
+    expected: JsonObject = {}
     for logical_sensor_id, (origin, value, ts_ms, meta) in winners.items():
         global_sensor_id = f"{origin}:{logical_sensor_id}"
-        expected[global_sensor_id] = {
+        row: JsonObject = {
             "value": value,
             "ts_ms": ts_ms,
             "origin": origin,
             "meta": meta,
         }
+        expected[global_sensor_id] = row
 
     return dict(sorted(expected.items(), key=lambda kv: kv[0]))
 

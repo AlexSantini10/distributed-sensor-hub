@@ -70,15 +70,16 @@ def _build_expected_winners(updates: tuple[_InjectedUpdate, ...]) -> JsonObject:
         if update.ts_ms == current.ts_ms and update.origin > current.origin:
             winners[update.sensor_id] = update
 
-    expected: dict[str, JsonObject] = {}
+    expected: JsonObject = {}
     for sensor_id, winner in winners.items():
         key = f"{winner.origin}:{sensor_id}"
-        expected[key] = {
+        row: JsonObject = {
             "value": winner.value,
             "ts_ms": winner.ts_ms,
             "origin": winner.origin,
             "meta": winner.meta,
         }
+        expected[key] = row
     return dict(sorted(expected.items(), key=lambda kv: kv[0]))
 
 
