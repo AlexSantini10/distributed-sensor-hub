@@ -1,311 +1,62 @@
-# Runtime Module
-
-`runtime` is the node orchestration layer. It wires process bootstrap, local state, TCP networking, protocol handlers, membership, heartbeat, sensors, replication, and the monitoring API into one runnable node.
-
-The module should contain coordination code only. Domain logic belongs in the dedicated packages: `state/`, `protocol/`, `membership/`, `networking/`, `sensors/`, `gossip/`, and `webapi/`.
-
-## Table of Contents
-
-- [Responsibilities](#responsibilities)
-- [Files](#files)
-- [Startup Order](#startup-order)
-- [Shutdown Order](#shutdown-order)
-- [Main Components](#main-components)
-  - [`NodeApplication`](#nodeapplication)
-  - [`setup_node_networking(...)`](#setup_node_networking)
-  - [Bootstrap Membership](#bootstrap-membership)
-  - [`HeartbeatSender`](#heartbeatsender)
-  - [Process Bootstrap](#process-bootstrap)
-- [Runtime Flows](#runtime-flows)
-- [Runtime Configuration](#runtime-configuration)
-- [Programmatic Use](#programmatic-use)
-- [Tests](#tests)
-- [Maintenance Notes](#maintenance-notes)
+# runtime
 
-## Responsibilities
+## Purpose
 
-- Configure early process behavior before the node is built.
-- Assemble the runtime TCP/protocol stack.
-- Register configured bootstrap peers.
-- Start membership bootstrap through `JOIN_REQUEST`.
-- Request initial full synchronization from bootstrap peers.
-- Run periodic heartbeat, membership gossip, and phi-accrual evaluation.
-- Start local sensors and outbound push-pull state replication.
-- Start the Web API after the main runtime state is ready.
-- Stop all subsystems in dependency-aware order.
+The `runtime` module is the node-level orchestration layer. It assembles and coordinates transport, protocol dispatch, membership management, state replication, sensor ingestion, and monitoring services into one executable runtime.
 
-## Files
+In the overall system, it acts as the **composition boundary** between domain subsystems (state, membership, gossip, protocol, sensors) and the process lifecycle (startup, steady state, shutdown).
 
-| File | Purpose |
-|------|---------|
-| `application.py` | Defines `NodeApplication`, the lifecycle container for startup, steady state, and shutdown. |
-| `networking.py` | Builds `TcpClient`, `TcpServer`, protocol dispatcher, `PeerTable`, bootstrap peers, and dynamic peer registration. |
-| `heartbeat.py` | Defines `HeartbeatSender`, the background loop for phi evaluation, gossip, and `PING` emission. |
-| `sensor_update_publisher.py` | Runs push-pull state synchronization rounds using `SENSOR_UPDATE` push and `GET_DELTA` pull. |
-| `bootstrap.py` | Configures early logging, global exception hooks, and optional log-file truncation. |
-| `__init__.py` | Package marker and module-level documentation. |
+## File Overview
 
-## Startup Order
+- `application.py`: defines `NodeApplication`, the lifecycle container that starts and stops subsystems in dependency-safe order.
+- `startup.py`: provides startup helpers that instantiate and connect state worker, networking stack, membership bootstrap, sensor pipeline, heartbeat loop, and Web API server.
+- `networking.py`: builds runtime networking context (TCP client/server, dispatcher, peer table), applies topology policy to peer registration, and performs membership bootstrap messaging.
+- `heartbeat.py`: runs periodic heartbeat rounds (`PING`) and membership gossip publication; triggers phi-accrual evaluation through `PeerTable`.
+- `sensor_update_publisher.py`: executes periodic <u>push-pull replication</u> rounds, sending `SENSOR_UPDATE` deltas and `GET_DELTA` requests to sampled alive peers.
+- `pull_response_tracker.py`: tracks short-lived pull windows to classify inbound updates as pull responses versus unsolicited push traffic.
+- `bootstrap.py`: configures early process logging, global exception hooks, and optional log truncation before full runtime initialization.
+- `__init__.py`: package-level module descriptor for runtime assembly responsibilities.
 
-`node.py` loads configuration, initializes logging, constructs `NodeApplication`, and calls `start()`.
+## Main Dependencies
 
-Startup sequence:
+### Internal
 
-1. Start `NodeStateWorker`.
-2. Build networking with `setup_node_networking(...)`.
-3. Start `TcpServer`.
-4. Seed membership and send `JOIN_REQUEST` to bootstrap peers.
-5. Send `FULL_SYNC_REQUEST` to bootstrap peers.
-6. Start `HeartbeatSender`.
-7. Load and start configured sensors.
-8. Start `SensorUpdatePublisher`.
-9. Start `WebAPIServer`.
+- `state.node_state_worker`: authoritative local state worker; provides merge, snapshot, and delta interfaces consumed by runtime threads.
+- `networking.tcp_client` and `networking.tcp_server`: outbound/inbound TCP transport primitives used by protocol messaging.
+- `protocol.setup` and `protocol.factory`: protocol dispatcher wiring and message construction (`JOIN_REQUEST`, `PING`, `SENSOR_UPDATE`, `GET_DELTA`, `FULL_SYNC_REQUEST`).
+- `membership.peer_table`: shared membership/failure-detection state used by bootstrap, heartbeat, and peer selection.
+- `sensors.sensor_manager` and `sensors.handler`: local sensor event production and queue-based ingestion into state processing.
+- `gossip.publisher`: membership dissemination during heartbeat rounds.
+- `topology.resolver` and `topology.policy`: topology-aware peer connection decisions during bootstrap and discovery.
+- `webapi.http_api`: read-only HTTP exposure of state/update/membership snapshots.
+- `utils.config` and `utils.typing`: runtime configuration contract and protocol-like type interfaces.
 
-This order ensures state processing is available before network or sensor input can arrive. If startup fails, `start()` calls `stop()` and re-raises the original exception.
+### External
 
-## Shutdown Order
+- Python standard library (`threading`, `time`, `dataclasses`, `http.server`, `logging`): concurrency control, timing, structured context objects, lightweight HTTP serving, and process-level diagnostics.
 
-`NodeApplication.stop()` is idempotent and best-effort. Each subsystem is stopped even if an earlier stop step fails.
+## High-Level Design
 
-Shutdown sequence:
+### Core Responsibilities
 
-1. `HeartbeatSender`
-2. `SensorUpdatePublisher`
-3. `SensorManager`
-4. `WebAPIServer`
-5. `NodeStateWorker`
-6. `TcpServer` and `TcpClient`
+- Enforce deterministic startup/shutdown sequencing across concurrent subsystems.
+- Maintain continuous node participation in membership and liveness detection.
+- Drive eventual state dissemination via periodic push-pull rounds.
+- Bridge local sensor production to replicated state and external observability.
 
-Traffic-producing components are stopped before state and transport components.
+### Main Data Flow
 
-## Main Components
+1. Local sensors emit events to `SensorEventQueue`.
+2. `NodeStateWorker` consumes events and materializes LWW state plus replication deltas.
+3. `SensorUpdatePublisher` periodically samples alive peers and disseminates deltas (`SENSOR_UPDATE`), with scheduled pull rounds (`GET_DELTA`).
+4. Incoming protocol messages are dispatched through the runtime-configured `MessageDispatcher` into membership/state handlers.
+5. `HeartbeatSender` periodically evaluates phi-accrual status, gossips membership state, and sends direct heartbeat probes.
+6. `WebAPIServer` exposes snapshot views for monitoring without mutating replicated state.
 
-### `NodeApplication`
+### Interactions With Other Modules
 
-Owns the runtime instances for one node:
-
-- `SensorEventQueue`
-- `NodeStateWorker`
-- `TcpClient`
-- `TcpServer`
-- `PeerTable`
-- `SensorManager`
-- `SensorUpdatePublisher`
-- `HeartbeatSender`
-- `WebAPIServer`
-- bootstrap peer list
-
-Main methods:
-
-| Method | Purpose |
-|--------|---------|
-| `start()` | Starts all subsystems in dependency order. |
-| `run_forever()` | Keeps the process alive until interruption or fatal error. |
-| `stop()` | Stops all started subsystems. |
-
-### `setup_node_networking(...)`
-
-Creates the node communication stack:
-
-- outbound `TcpClient`;
-- `ClientPeerRegistry` for duplicate-safe peer registration;
-- configured bootstrap peers;
-- protocol dispatcher and handlers through `protocol.setup.setup_protocol(...)`;
-- shared `PeerTable`;
-- inbound `TcpServer`.
-
-The `on_peer_discovered(...)` callback registers newly discovered peers in the TCP client and sends a reciprocal `JOIN_REQUEST`.
-
-### Bootstrap Membership
-
-Bootstrap has two separate concerns:
-
-1. `build_bootstrap_peers(...)` registers configured `host:port` endpoints in `TcpClient`.
-2. `bootstrap_membership(...)` sends `JOIN_REQUEST` messages to those endpoints.
-
-Endpoint-only bootstrap peers use placeholder IDs:
-
-```text
-bootstrap@host:port
-```
-
-`seed_peer_table(...)` skips those placeholders so temporary bootstrap identities do not enter membership state.
-
-### `HeartbeatSender`
-
-Runs in a daemon thread named `heartbeat-sender`.
-
-Each round:
-
-1. evaluates phi-accrual status through `PeerTable.evaluate_failure_detector(...)`;
-2. logs membership transitions;
-3. builds one `PING`;
-4. reads the current peer snapshot;
-5. filters heartbeat targets to outbound-connected peers;
-6. publishes membership gossip through `publish_membership_gossip(...)`;
-7. sends `PING` to each connected peer.
-
-`interval_ms` is converted to seconds and clamped to a minimum of `0.001`.
-
-Direct-failure detection is applied only to peers that have been observed on a
-direct transport path at least once (`PING/PONG` or any non-heartbeat inbound
-frame from that peer). This avoids marking gossip-only peers as locally dead in
-non-full-mesh topologies.
-
-### Process Bootstrap
-
-`bootstrap.py` must run before `NodeApplication` construction:
-
-| Function | Purpose |
-|----------|---------|
-| `setup_bootstrap_logging()` | Installs minimal stderr logging for early failures. |
-| `install_global_exception_hooks()` | Logs unhandled main-thread and worker-thread exceptions. |
-| `clear_log_file_if_requested(...)` | Truncates the configured log file when enabled. |
-
-## Runtime Flows
-
-Node startup:
-
-```text
-node.py
-  -> load_config()
-  -> setup_logging(...)
-  -> NodeApplication.start()
-      -> NodeStateWorker.start()
-      -> setup_node_networking(...)
-      -> TcpServer.start()
-      -> JOIN_REQUEST to bootstrap peers
-      -> FULL_SYNC_REQUEST to bootstrap peers
-      -> HeartbeatSender.start()
-      -> SensorManager.start_all()
-      -> SensorUpdatePublisher.start()
-      -> WebAPIServer.start()
-  -> NodeApplication.run_forever()
-```
-
-Peer discovery:
-
-```text
-discovered peer
-  -> on_peer_discovered(peer)
-  -> ClientPeerRegistry.ensure_peer(...)
-  -> TcpClient.add_peer(...)
-  -> reciprocal JOIN_REQUEST
-```
-
-Heartbeat:
-
-```text
-heartbeat round
-  -> evaluate phi
-  -> update direct alive/suspected/dead status
-  -> publish GOSSIP_STATE
-  -> send PING
-```
-
-Membership snapshot semantics (`GET /api/membership`):
-
-- `status`: legacy merged membership status kept for backward compatibility.
-- `direct_status`: local direct-reachability classification (`alive|suspected|dead|unknown`).
-- `evidence_status`: freshness of any local evidence for the peer (`active|stale|unknown`).
-- `display_status`: UI-oriented summary (`alive_direct|alive_indirect|suspected|dead|unknown`).
-
-`display_status=alive_indirect` means direct FD is not currently `alive`, but
-the node has recent indirect evidence (for example relayed `SENSOR_UPDATE`,
-gossip status, or full-sync state).
-
-State push-pull replication:
-
-```text
-replication round
-  -> choose random alive push targets (ratio + minimum)
-  -> push local-origin SENSOR_UPDATE deltas to selected targets
-  -> every N rounds:
-      -> choose random alive pull targets (ratio + minimum)
-      -> send GET_DELTA(since_ts_ms=latest known ts for that origin)
-  -> if DELTA_UNAVAILABLE:
-      -> request FULL_SYNC
-```
-
-If a peer advertises `0.0.0.0`, `resolve_peer_host(...)` uses `node_id` as the connectable host. This supports Docker topologies where service names are routable.
-
-## Runtime Configuration
-
-`runtime` consumes a validated `utils.config.Config`.
-
-| Field | Runtime use |
-|-------|-------------|
-| `node_id` | Local identity for messages, membership, and state origin. |
-| `host` | Bind address for TCP and HTTP servers. |
-| `port` | Peer-to-peer TCP port. |
-| `bootstrap_peers` | Initial peer endpoints for join and full sync. |
-| `web_api_port` | HTTP monitoring port. |
-| `heartbeat_interval_ms` | Heartbeat loop interval. |
-| `gossip_sync_interval_ms` | Push-pull replication round interval. |
-| `gossip_push_ratio` | Push fanout ratio over currently alive peers. |
-| `gossip_push_min_peers` | Minimum push fanout per round. |
-| `gossip_pull_ratio` | Pull fanout ratio over currently alive peers. |
-| `gossip_pull_min_peers` | Minimum pull fanout per pull round. |
-| `gossip_pull_every_rounds` | Pull cadence expressed in rounds. |
-| `phi_threshold_suspect` | Phi threshold for `suspected`. |
-| `phi_threshold_dead` | Phi threshold for `dead`. |
-| `phi_initial_interval_s` | Initial expected heartbeat interval. |
-| `replication_delta_maxlen` | Replication delta buffer size. |
-| `network_delay_ms` | Base artificial outbound delay. |
-| `network_delay_jitter_ms` | Artificial delay jitter. |
-| `network_delay_spike_prob` | Delay spike probability. |
-| `network_delay_spike_ms` | Extra delay during a spike. |
-| `network_packet_loss_prob` | Outbound packet drop probability. |
-| `sensors` | Local sensor definitions. |
-
-## Programmatic Use
-
-Normal execution should use:
-
-```bash
-python node.py
-```
-
-Controlled tests can instantiate the application directly:
-
-```python
-from runtime.application import NodeApplication
-from utils.config import load_config
-from utils.logging import get_logger, setup_logging
-
-config = load_config()
-setup_logging(config.node_id, config.log_level, config.log_file)
-
-log = get_logger(__name__, config.node_id)
-app = NodeApplication(config=config, log=log)
-
-try:
-    app.start()
-    app.run_forever()
-finally:
-    app.stop()
-```
-
-## Tests
-
-Runtime-specific tests live in `tests/runtime/`.
-
-```bash
-pytest tests/runtime -q
-pytest -m runtime
-```
-
-Current coverage:
-
-- bootstrap placeholder filtering in `seed_peer_table(...)`;
-- non-blocking heartbeat startup;
-- `PING` and `GOSSIP_STATE` emission;
-- phi transition logging.
-
-## Maintenance Notes
-
-- Keep runtime code focused on wiring and lifecycle.
-- Add a matching shutdown step for every subsystem started by `NodeApplication`.
-- Stop traffic producers before stopping transport.
-- Start state consumers before accepting network or sensor input.
-- Let startup failures propagate after cleanup.
+- With `protocol`: runtime provides transport/send callbacks, state worker hooks, and peer-discovery callbacks used by handlers.
+- With `membership` and `gossip`: runtime seeds peers, updates peer connectivity, and performs periodic membership dissemination.
+- With `state`: runtime delegates all merge and snapshot semantics to the state worker/store layer.
+- With `sensors`: runtime converts sensor stream output into queued events for deterministic state ingestion.
+- With `webapi`: runtime exports read paths for system observability while keeping replication logic internal.
