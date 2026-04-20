@@ -22,6 +22,8 @@ from protocol.handlers.state_sync import (
 )
 from protocol.message_types import MessageType
 from protocol.message import Message
+from protocol.messages import AckPayload, ErrorPayload
+from utils.logging import get_logger
 from utils.typing import SenderLike, StateWorkerLike
 
 
@@ -189,11 +191,31 @@ def setup_protocol(
     return dispatcher, peer_table
 
 
-def _handle_error(_msg: object) -> None:
-    """Reject processing of an unimplemented protocol error message."""
-    raise NotImplementedError("ERROR not implemented yet")
+def _handle_error(msg: object) -> None:
+    """Log an inbound protocol ``ERROR`` message without crashing dispatch."""
+    if not isinstance(msg, Message):
+        return
+    log = get_logger(__name__, msg.sender_id)
+    payload = msg.payload
+    if isinstance(payload, ErrorPayload):
+        log.warning(
+            "Protocol ERROR received: "
+            f"sender={msg.sender_id} reason={payload.reason}"
+        )
+        return
+    log.warning(f"Protocol ERROR received with invalid payload from {msg.sender_id}")
 
 
-def _handle_ack(_msg: object) -> None:
-    """Reject processing of an unimplemented acknowledgement message."""
-    raise NotImplementedError("ACK not implemented yet")
+def _handle_ack(msg: object) -> None:
+    """Log an inbound protocol ``ACK`` message without crashing dispatch."""
+    if not isinstance(msg, Message):
+        return
+    log = get_logger(__name__, msg.sender_id)
+    payload = msg.payload
+    if isinstance(payload, AckPayload):
+        log.debug(
+            "Protocol ACK received: "
+            f"sender={msg.sender_id} acked_type={payload.acked_type}"
+        )
+        return
+    log.warning(f"Protocol ACK received with invalid payload from {msg.sender_id}")

@@ -154,3 +154,27 @@ def test_invalid_gossip_push_ratio(monkeypatch: MonkeyPatch) -> None:
 
     with pytest.raises(RuntimeError):
         Config.from_env(dict(os.environ))
+
+
+def test_invalid_boolean_sensor_probability(monkeypatch: MonkeyPatch) -> None:
+    """Assert boolean sensor probability must stay within [0, 1]."""
+    _set_base_env(monkeypatch)
+    monkeypatch.setenv("SENSORS", "1")
+    monkeypatch.setenv("SENSOR_0_TYPE", "boolean")
+    monkeypatch.setenv("SENSOR_0_PERIOD_MS", "1000")
+    monkeypatch.setenv("SENSOR_0_P_TRUE", "1.2")
+
+    with pytest.raises(RuntimeError):
+        Config.from_env(dict(os.environ))
+
+
+def test_invalid_spike_sensor_probability(monkeypatch: MonkeyPatch) -> None:
+    """Assert spike sensor probability must stay within [0, 1]."""
+    _set_base_env(monkeypatch)
+    monkeypatch.setenv("SENSORS", "1")
+    monkeypatch.setenv("SENSOR_0_TYPE", "spike")
+    monkeypatch.setenv("SENSOR_0_PERIOD_MS", "1000")
+    monkeypatch.setenv("SENSOR_0_P_SPIKE", "1.1")
+
+    with pytest.raises(RuntimeError):
+        Config.from_env(dict(os.environ))

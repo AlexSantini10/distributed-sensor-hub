@@ -177,11 +177,13 @@ class ClientPeerRegistry:
                     port=port,
                 )
             )
-        except RuntimeError:
+        except RuntimeError as exc:
             with self._lock:
                 self._pending_peer_ids.discard(node_id)
-                self._known_peer_ids.add(node_id)
-            return
+                if "already exists" in str(exc).lower():
+                    self._known_peer_ids.add(node_id)
+                    return
+            raise
         except Exception:
             with self._lock:
                 self._pending_peer_ids.discard(node_id)
@@ -198,7 +200,9 @@ class ClientPeerRegistry:
             tuple[str, ...]: Stable sorted peer IDs known by the registry.
         """
         with self._lock:
-            return tuple(sorted(self._known_peer_ids))
+            known = set(self._known_peer_ids)
+        known.update(self._client.registered_peer_ids())
+        return tuple(sorted(known))
 
 
 def _to_topology_peer(*, node_id: str, host: str, port: int) -> TopologyPeer:

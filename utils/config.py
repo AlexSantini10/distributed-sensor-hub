@@ -648,6 +648,15 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
         )
 
     if sensor_type == SensorType.BOOLEAN:
+        p_true = _parse_probability(
+            _get_sensor_value_or_default(
+                env,
+                index,
+                SensorEnvSuffix.P_TRUE,
+                default="0.5",
+            ),
+            _sensor_key(index, SensorEnvSuffix.P_TRUE),
+        )
         return SensorConfig(
             index=index,
             sensor_type=sensor_type,
@@ -656,14 +665,7 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
             unit=unit,
             latency_ms=latency_ms,
             latency_jitter_ms=latency_jitter_ms,
-            p_true=float(
-                _get_sensor_value_or_default(
-                    env,
-                    index,
-                    SensorEnvSuffix.P_TRUE,
-                    default="0.5",
-                )
-            ),
+            p_true=p_true,
         )
 
     if sensor_type == SensorType.CATEGORICAL:
@@ -756,6 +758,15 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
         )
 
     if sensor_type == SensorType.SPIKE:
+        p_spike = _parse_probability(
+            _get_sensor_value_or_default(
+                env,
+                index,
+                SensorEnvSuffix.P_SPIKE,
+                default="0.2",
+            ),
+            _sensor_key(index, SensorEnvSuffix.P_SPIKE),
+        )
         return SensorConfig(
             index=index,
             sensor_type=sensor_type,
@@ -780,14 +791,7 @@ def _parse_sensor(env: Mapping[str, str], index: int) -> SensorConfig:
                     default="10",
                 )
             ),
-            p_spike=float(
-                _get_sensor_value_or_default(
-                    env,
-                    index,
-                    SensorEnvSuffix.P_SPIKE,
-                    default="0.2",
-                )
-            ),
+            p_spike=p_spike,
         )
 
     if sensor_type == SensorType.WAVE:
