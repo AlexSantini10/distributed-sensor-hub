@@ -1,62 +1,34 @@
-# Module: gossip
+# gossip
 
-## Responsibility
-Best-effort dissemination of membership state across the cluster. The module publishes `GOSSIP_STATE` snapshots and merges inbound gossip into the local `PeerTable`.
+## Purpose
+The `gossip` module implements **best-effort dissemination** of membership liveness metadata using `GOSSIP_STATE` messages.
 
-## How It Works
-- Each gossip round builds a snapshot from `peer_table.build_gossip_state()`.
-- The snapshot is wrapped in a `GOSSIP_STATE` message and sent to known peers.
-- On receipt, valid peer entries are parsed and merged through `peer_table.merge_gossip_state(...)`.
-- Merge is last-write-wins on `status_ts_ms`: newer status information overrides older information, stale gossip is ignored.
+Its system role is to propagate peer status observations between nodes and to support eventual membership convergence at cluster scale. The module does not compute failure-detector outputs; it only transports and merges membership state produced by other components.
 
-## Intuition
-- Gossip is used to spread the current membership view without requiring a central coordinator.
-- Nodes do not need to hear directly from every other node all the time: status information can propagate hop by hop.
-- Delivery is best-effort: a failed send to one peer does not abort the round.
-- Convergence comes from repeated dissemination plus LWW merge semantics.
+## File Overview
+- `publisher.py`: Builds one membership snapshot per round and broadcasts it to known peers via the transport sender callback.
+- `handlers.py`: Validates inbound gossip payloads, parses peer entries, and merges them into `PeerTable` with timestamp-based conflict resolution.
+- `__init__.py`: Exposes the public module surface (`publish_membership_gossip`, `make_gossip_state_handler`, fallback handler).
 
-## Payload Shape
-`GOSSIP_STATE` carries a JSON object like:
+## Main Dependencies
+- `membership.peer_table.PeerTable`: Source of outbound gossip snapshots and merge target for inbound membership updates.
+- `membership.peer.Peer` and `membership.status.NodeStatus`: Typed representation of peer endpoints and liveness states.
+- `protocol.factory.build_gossip_state`: Constructs protocol-compliant `GOSSIP_STATE` messages for transmission.
+- `protocol.message.Message` and `protocol.messages.GossipStatePayload`: Typed inbound envelope/payload used for safe handler validation.
+- `runtime.heartbeat.HeartbeatSender` (integration point): Invokes periodic gossip publication during heartbeat rounds.
+- Python standard library (`time`, `collections.abc`): Timestamping parsed liveness evidence and typing callback/iterable contracts.
 
-```json
-{
-  "membership": {
-    "peers": [
-      {
-        "node_id": "node-b",
-        "host": "10.0.0.2",
-        "port": 9002,
-        "status": "alive",
-        "status_ts_ms": 1710000000000
-      }
-    ]
-  }
-}
-```
-
-## Inbound Validation
-- `state.membership` must be an object when present.
-- `state.membership.peers` must be a list.
-- Each peer entry must contain valid `node_id`, `host`, `port`, `status`, and `status_ts_ms`.
-- Malformed entries are skipped individually.
-- Unknown status values are skipped.
-- Gossip about the local node is ignored by `PeerTable.merge_gossip_state(...)`.
-
-## Public API
-### `publish_membership_gossip`
-- Builds one `GOSSIP_STATE` snapshot and sends it to the provided peers.
-- Send failures are logged at debug level and do not stop publication to other peers.
-
-### `make_gossip_state_handler`
-- Builds a configured inbound handler for `GOSSIP_STATE`.
-- Parses membership entries, merges them into `PeerTable`, and optionally notifies `on_peer_discovered(peer)` for newly discovered peers.
-- Callback failures are caught and logged without aborting the merge.
-
-### `handle_gossip_state`
-- Fallback handler used when gossip handling has not been wired for the node.
-- Logs a warning instead of processing the message.
-
-## Integration
-- Outbound gossip is published by the runtime heartbeat loop.
-- Inbound gossip is routed through protocol handlers to `make_gossip_state_handler(...)`.
-- `gossip` does not own liveness computation; it only disseminates membership status already maintained by `membership` and `fd`.
+## High-Level Design
+- **Core responsibilities**:
+  - Serialize local membership view into `GOSSIP_STATE`.
+  - Disseminate snapshots in a best-effort broadcast pattern.
+  - Validate and merge received snapshots into local membership state.
+- Main data flow:
+  - Outbound path: `PeerTable.build_gossip_state()` -> `build_gossip_state(...)` -> send to each peer.
+  - Inbound path: dispatcher routes `GOSSIP_STATE` -> handler validates payload shape -> valid peer records are converted and merged through `PeerTable.merge_gossip_state(...)`.
+  - Merge policy: <u>last-write-wins on `status_ts_ms`</u>; stale status updates are ignored.
+- Interactions with other modules:
+  - `runtime` triggers periodic dissemination.
+  - `protocol` performs message routing and payload typing.
+  - `membership` owns authoritative local storage and merge semantics.
+  - Optional discovery callback notifies runtime when gossip reveals previously unknown peers.
