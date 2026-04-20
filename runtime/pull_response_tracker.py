@@ -19,6 +19,7 @@ class PullResponseTracker:
         _default_window_s (float): Default pull classification window in seconds.
         _lock (threading.Lock): Mutex guarding concurrent window updates/lookups.
         _pending_until_by_peer (dict[str, float]): Per-peer monotonic deadlines.
+        _last_seq_by_peer (dict[str, int]): Latest pull cursor observed per peer.
     """
 
     def __init__(self, *, default_window_s: float = 1.5) -> None:
@@ -36,6 +37,7 @@ class PullResponseTracker:
         self._default_window_s = default_window_s
         self._lock = threading.Lock()
         self._pending_until_by_peer: dict[str, float] = {}
+        self._last_seq_by_peer: dict[str, int] = {}
 
     def mark_pull_requested(self, peer_id: str, *, window_s: float | None = None) -> None:
         """Mark that we requested deltas from ``peer_id`` just now.
@@ -82,3 +84,39 @@ class PullResponseTracker:
                 return "pull"
 
         return "push"
+
+    def observe_replication_seq(self, sender_id: str, source: str, seq: int) -> None:
+        """Record a replication sequence observed from an inbound update.
+
+        Args:
+            sender_id (str): Transport sender id of the inbound update.
+            source (str): Classified source label (``pull`` or ``push``).
+            seq (int): Replication sequence carried by the update.
+
+        Returns:
+            None: This method updates in-memory pull cursors only.
+        """
+        if source != "pull":
+            return
+        if not isinstance(sender_id, str) or sender_id == "":
+            return
+        if not isinstance(seq, int):
+            return
+        with self._lock:
+            previous = self._last_seq_by_peer.get(sender_id, -1)
+            if seq > previous:
+                self._last_seq_by_peer[sender_id] = seq
+
+    def get_last_seq_for_peer(self, peer_id: str) -> int:
+        """Return the latest pull cursor observed for ``peer_id``.
+
+        Args:
+            peer_id (str): Remote peer identifier.
+
+        Returns:
+            int: Last observed pull cursor, or ``-1`` when unknown.
+        """
+        if not isinstance(peer_id, str) or peer_id == "":
+            return -1
+        with self._lock:
+            return self._last_seq_by_peer.get(peer_id, -1)

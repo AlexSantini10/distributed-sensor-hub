@@ -46,6 +46,6 @@ Its system role is to maintain **authoritative local winners** for each logical 
     - bounded ordered replication delta buffer (`_replication_deltas`).
 
 - Interactions with other modules:
-  - `protocol.handlers.state_sync` writes remote updates into the worker/store and requests deltas using timestamp cursors (`since_ts_ms`); if history is too old, state signals unavailability (`None`) so the protocol layer can trigger full sync.
-  - `runtime.sensor_update_publisher` drains deltas for push dissemination and uses per-origin latest timestamps to request missing updates (pull).
+  - `protocol.handlers.state_sync` writes remote updates into the worker/store and requests deltas using sequence cursors (`from_seq`); if history is too old, state signals unavailability (`None`) so the protocol layer can trigger full sync.
+  - `runtime.sensor_update_publisher` drains deltas for push dissemination and uses per-origin latest replication sequences to request missing updates (pull).
   - `runtime.startup` wires the state worker as a shared dependency for networking, replication, and Web API snapshot providers.

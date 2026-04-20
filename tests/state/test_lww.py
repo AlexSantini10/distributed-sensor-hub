@@ -378,7 +378,7 @@ def test_merge_state_is_atomic_against_concurrent_updates() -> None:
 
 
 def test_replication_delta_buffer_keeps_last_n_in_order() -> None:
-    """Assert replication deltas retain append order and bounded last-N behavior."""
+    """Assert replication deltas retain ``seq`` order and bounded last-N behavior."""
     w = NodeStateWorker(
         node_id="A",
         event_queue=_event_queue(),
@@ -392,6 +392,7 @@ def test_replication_delta_buffer_keeps_last_n_in_order() -> None:
     w.merge_update("s4", 4, 1003, "A")
 
     deltas = w.pop_replication_deltas()
+    assert [d["seq"] for d in deltas] == [1, 2, 3]
     assert [d["sensor_id"] for d in deltas] == ["s2", "s3", "s4"]
     assert [d["ts_ms"] for d in deltas] == [1001, 1002, 1003]
 
@@ -425,22 +426,47 @@ def test_replication_delta_since_returns_none_when_cursor_is_too_old() -> None:
     w.merge_update("s2", 2, 1001, "A")
     w.merge_update("s3", 3, 1002, "A")
 
-    assert w.get_replication_deltas_since(since_ts_ms=999) is None
-    valid = w.get_replication_deltas_since(since_ts_ms=1001)
+    assert w.get_replication_deltas_since(from_seq=-1) is None
+    valid = w.get_replication_deltas_since(from_seq=1)
     assert valid is not None
+    assert [d["seq"] for d in valid] == [2]
     assert [d["sensor_id"] for d in valid] == ["s3"]
 
 
-def test_get_latest_timestamp_for_origin_reads_current_winners() -> None:
-    """Assert origin watermark reflects current winning records only."""
+def test_replication_delta_since_has_no_gap_and_no_duplicate_across_consecutive_reads() -> None:
+    """Assert consecutive ``from_seq`` reads are contiguous and non-duplicated."""
     w = make_worker(node_id="A")
     w.merge_update("s1", 1, 1000, "node-b")
-    w.merge_update("s2", 2, 1500, "node-b")
-    w.merge_update("s2", 3, 2000, "node-c")
+    w.merge_update("s2", 2, 1001, "node-b")
+    w.merge_update("s3", 3, 1002, "node-b")
 
-    assert w.get_latest_timestamp_for_origin("node-b") == 1000
-    assert w.get_latest_timestamp_for_origin("node-c") == 2000
-    assert w.get_latest_timestamp_for_origin("node-z") == 0
+    first = w.get_replication_deltas_since(from_seq=-1)
+    assert first is not None
+    assert [d["seq"] for d in first] == [0, 1, 2]
+
+    second = w.get_replication_deltas_since(from_seq=first[-1]["seq"])
+    assert second is not None
+    assert second == ()
+
+    w.merge_update("s4", 4, 1003, "node-b")
+    third = w.get_replication_deltas_since(from_seq=first[-1]["seq"])
+    assert third is not None
+    assert [d["seq"] for d in third] == [3]
+    assert [d["sensor_id"] for d in third] == ["s4"]
+
+
+def test_latest_replication_seq_for_origin_tracks_only_monotonic_updates() -> None:
+    """Assert per-origin replication cursor tracking is monotonic."""
+    w = make_worker(node_id="A")
+    assert w.get_latest_replication_seq_for_origin("node-b") == -1
+    w.note_replication_seq_for_origin("node-b", 4)
+    w.note_replication_seq_for_origin("node-b", 3)
+    w.note_replication_seq_for_origin("node-b", 8)
+    w.note_replication_seq_for_origin("node-c", 2)
+
+    assert w.get_latest_replication_seq_for_origin("node-b") == 8
+    assert w.get_latest_replication_seq_for_origin("node-c") == 2
+    assert w.get_latest_replication_seq_for_origin("node-z") == -1
 
 
 def test_updates_snapshot_includes_sync_source_for_ui_logs() -> None:

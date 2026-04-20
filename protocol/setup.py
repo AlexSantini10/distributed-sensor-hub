@@ -36,6 +36,7 @@ def setup_protocol(
     state_worker: StateWorkerLike | None = None,
     on_peer_discovered: OnPeerDiscovered | None = None,
     sensor_update_source_classifier: Callable[[str], str] | None = None,
+    sensor_update_seq_observer: Callable[[str, str, int], None] | None = None,
     phi_threshold_suspect: float = 3.0,
     phi_threshold_dead: float = 8.0,
     phi_initial_interval_s: float = 1.0,
@@ -49,6 +50,8 @@ def setup_protocol(
         on_peer_discovered (OnPeerDiscovered | None): Optional callback notified for new peers.
         sensor_update_source_classifier (Callable[[str], str] | None): Optional
             sender classifier used to tag inbound ``SENSOR_UPDATE`` source.
+        sensor_update_seq_observer (Callable[[str, str, int], None] | None): Optional
+            observer notified with ``(sender_id, source, seq)`` for inbound updates.
         phi_threshold_suspect (float): Phi threshold for ``suspected`` transitions.
         phi_threshold_dead (float): Phi threshold for ``dead`` transitions.
         phi_initial_interval_s (float): Initial heartbeat interval estimate in seconds.
@@ -110,6 +113,7 @@ def setup_protocol(
                     self_node_id=self_node_id,
                     peer_table=peer_table,
                     source_classifier=sensor_update_source_classifier,
+                    on_seq_observed=sensor_update_seq_observer,
                 )
             ),
         )

@@ -12,12 +12,14 @@ from protocol.factory import (
     build_full_sync_request,
     build_full_sync_response,
     build_get_delta,
+    build_sensor_update,
 )
 from protocol.handlers.state_sync import (
     make_delta_unavailable_handler,
     make_full_sync_request_handler,
     make_full_sync_response_handler,
     make_get_delta_handler,
+    make_sensor_update_handler,
 )
 from protocol.message_types import MessageType
 from protocol.messages import Message, PeerDescriptor
@@ -190,7 +192,7 @@ def test_get_delta_handler_streams_sensor_updates() -> None:
         send=send,
         self_node_id="node-a",
     )
-    handler(build_get_delta(sender_id="node-b", since_ts_ms=1000))
+    handler(build_get_delta(sender_id="node-b", from_seq=0))
 
     assert len(sent) == 1
     target, msg = sent[0]
@@ -198,6 +200,7 @@ def test_get_delta_handler_streams_sensor_updates() -> None:
     assert msg.msg_type is MessageType.SENSOR_UPDATE
     assert msg.payload.sensor_id == "s2"
     assert msg.payload.ts_ms == 1001
+    assert msg.payload.seq == 1
 
 
 def test_get_delta_handler_returns_delta_unavailable_for_stale_cursor() -> None:
@@ -222,7 +225,7 @@ def test_get_delta_handler_returns_delta_unavailable_for_stale_cursor() -> None:
         send=send,
         self_node_id="node-a",
     )
-    handler(build_get_delta(sender_id="node-b", since_ts_ms=999))
+    handler(build_get_delta(sender_id="node-b", from_seq=-1))
 
     assert len(sent) == 1
     target, msg = sent[0]
@@ -237,13 +240,14 @@ def test_get_delta_handler_skips_malformed_entries_and_sends_only_valid_updates(
         def get_replication_deltas_since(
             self,
             *,
-            since_ts_ms: int,
+            from_seq: int,
         ) -> ReplicationDeltaBatch | None:
-            assert since_ts_ms == 1000
+            assert from_seq == 7
             return cast(
                 ReplicationDeltaBatch,
                 (
                 {
+                    "seq": 8,
                     "sensor_id": "s-good",
                     "value": 42,
                     "ts_ms": 1001,
@@ -251,6 +255,7 @@ def test_get_delta_handler_skips_malformed_entries_and_sends_only_valid_updates(
                     "meta": {"unit": "C", "period_ms": 1000},
                 },
                 {
+                    "seq": 9,
                     "sensor_id": "",
                     "value": 1,
                     "ts_ms": 1002,
@@ -258,6 +263,7 @@ def test_get_delta_handler_skips_malformed_entries_and_sends_only_valid_updates(
                     "meta": {},
                 },
                 {
+                    "seq": 10,
                     "sensor_id": "s-bad-origin",
                     "value": 2,
                     "ts_ms": 1003,
@@ -265,9 +271,17 @@ def test_get_delta_handler_skips_malformed_entries_and_sends_only_valid_updates(
                     "meta": {},
                 },
                 {
+                    "seq": 11,
                     "sensor_id": "s-bad-ts",
                     "value": 3,
                     "ts_ms": "1004",
+                    "origin": "node-a",
+                    "meta": {},
+                },
+                {
+                    "sensor_id": "s-bad-seq",
+                    "value": 4,
+                    "ts_ms": 1005,
                     "origin": "node-a",
                     "meta": {},
                 },
@@ -284,7 +298,7 @@ def test_get_delta_handler_skips_malformed_entries_and_sends_only_valid_updates(
         send=send,
         self_node_id="node-a",
     )
-    handler(build_get_delta(sender_id="node-b", since_ts_ms=1000))
+    handler(build_get_delta(sender_id="node-b", from_seq=7))
 
     assert len(sent) == 1
     target, msg = sent[0]
@@ -294,8 +308,34 @@ def test_get_delta_handler_skips_malformed_entries_and_sends_only_valid_updates(
     assert msg.payload.value == 42
     assert msg.payload.ts_ms == 1001
     assert msg.payload.origin == "node-a"
+    assert msg.payload.seq == 8
     assert msg.payload.meta.unit == "C"
     assert msg.payload.meta.period_ms == 1000
+
+
+def test_sensor_update_handler_reports_observed_seq_with_source() -> None:
+    """Assert SENSOR_UPDATE can report inbound sequence with source classification."""
+    state_worker = make_worker("node-a")
+    observed: list[tuple[str, str, int]] = []
+
+    handler = make_sensor_update_handler(
+        state_worker=state_worker,
+        self_node_id="node-a",
+        source_classifier=lambda sender_id: "pull" if sender_id == "node-b" else "push",
+        on_seq_observed=lambda sender_id, source, seq: observed.append((sender_id, source, seq)),
+    )
+    handler(
+        build_sensor_update(
+            sender_id="node-b",
+            sensor_id="s1",
+            value=1,
+            ts_ms=1000,
+            origin="node-b",
+            seq=9,
+        )
+    )
+
+    assert observed == [("node-b", "pull", 9)]
 
 
 def test_full_sync_response_merges_membership_even_when_state_is_rejected() -> None:

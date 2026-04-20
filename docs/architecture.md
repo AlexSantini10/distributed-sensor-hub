@@ -53,6 +53,7 @@ Dependency overview diagram: [module-dependencies.puml](module-dependencies.puml
 ## Consistency and liveness model
 
 - State convergence uses **LWW** ordering `(ts_ms, origin)`.
+- Incremental replication cursors use monotonic per-node `seq` values (transport only, not conflict resolution).
 - Replication is periodic push/pull and best-effort.
 - Membership convergence uses gossip merge with _last-write-wins on `status_ts_ms`_.
 - Liveness suspicion is local phi-accrual (`alive`, `suspected`, `dead`) and then disseminated.

@@ -320,22 +320,28 @@ class SensorUpdatePayload(PayloadModel):
     ts_ms: int
     origin: str
     meta: SensorMeta = field(default_factory=SensorMeta)
+    seq: int | None = None
 
     def __post_init__(self) -> None:
         """Validate required sensor-update fields."""
         _require_non_empty_string(self.sensor_id, SensorUpdateField.SENSOR_ID.value)
         _require_int(self.ts_ms, SensorUpdateField.TS_MS.value)
         _require_non_empty_string(self.origin, SensorUpdateField.ORIGIN.value)
+        if self.seq is not None:
+            _require_int(self.seq, "seq")
 
     def to_mapping(self) -> JsonObject:
         """Serialize the sensor update into protocol payload mapping."""
-        return {
+        payload: JsonObject = {
             SensorUpdateField.SENSOR_ID.value: self.sensor_id,
             SensorUpdateField.VALUE.value: self.value,
             SensorUpdateField.TS_MS.value: self.ts_ms,
             SensorUpdateField.ORIGIN.value: self.origin,
             SensorUpdateField.META.value: self.meta.to_mapping(),
         }
+        if self.seq is not None:
+            payload["seq"] = self.seq
+        return payload
 
     @classmethod
     def from_mapping(cls, raw: object) -> "SensorUpdatePayload":
@@ -357,6 +363,7 @@ class SensorUpdatePayload(PayloadModel):
                 SensorUpdateField.ORIGIN.value,
             ),
             meta=SensorMeta.from_mapping(meta_value),
+            seq=_require_int(data.get("seq"), "seq") if "seq" in data else None,
         )
 
 
@@ -490,25 +497,25 @@ class GetStatePayload(EmptyPayload):
 
 @dataclass(frozen=True)
 class GetDeltaPayload(PayloadModel):
-    """Represent a request for state delta since a timestamp."""
+    """Represent a request for state delta since a replication sequence."""
 
     message_type: ClassVar[MessageType] = MessageType.GET_DELTA
 
-    since_ts_ms: int
+    from_seq: int
 
     def __post_init__(self) -> None:
-        """Validate required delta cursor timestamp."""
-        _require_int(self.since_ts_ms, "since_ts_ms")
+        """Validate required delta cursor."""
+        _require_int(self.from_seq, "from_seq")
 
     def to_mapping(self) -> JsonObject:
         """Serialize delta request payload into protocol mapping."""
-        return {"since_ts_ms": self.since_ts_ms}
+        return {"from_seq": self.from_seq}
 
     @classmethod
     def from_mapping(cls, raw: object) -> "GetDeltaPayload":
         """Build and validate delta request payload from raw mapping."""
         data = _require_mapping(raw, MessageField.PAYLOAD.value)
-        return cls(since_ts_ms=_require_int(data.get("since_ts_ms"), "since_ts_ms"))
+        return cls(from_seq=_require_int(data.get("from_seq"), "from_seq"))
 
 
 @dataclass(frozen=True)

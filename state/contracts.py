@@ -86,11 +86,15 @@ class StateStoreLike(RecordMergeStore, Protocol):
     def get_replication_deltas_since(
         self,
         *,
-        since_ts_ms: int,
+        from_seq: int,
     ) -> ReplicationDeltaBatch | None:
-        """Return ordered deltas newer than the supplied timestamp."""
+        """Return ordered deltas newer than the supplied replication sequence."""
         ...
 
-    def get_latest_timestamp_for_origin(self, origin: str) -> int:
-        """Return the max winning timestamp currently known for one origin."""
+    def get_latest_replication_seq_for_origin(self, origin: str) -> int:
+        """Return the latest known pull cursor for one origin."""
+        ...
+
+    def note_replication_seq_for_origin(self, origin: str, seq: int) -> None:
+        """Track one observed replication sequence for one origin."""
         ...

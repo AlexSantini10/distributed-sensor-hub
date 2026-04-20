@@ -196,6 +196,7 @@ class SensorUpdatePublisher(threading.Thread):
                 ts_ms=update.get("ts_ms"),
                 origin=origin,
                 meta=meta,
+                seq=update.get("seq") if isinstance(update.get("seq"), int) else None,
             )
 
             for target in push_targets:
@@ -209,10 +210,12 @@ class SensorUpdatePublisher(threading.Thread):
             min_peers=self._pull_min_peers,
         )
         for target in pull_targets:
-            since_ts_ms = self._state_worker.get_latest_timestamp_for_origin(target.node_id)
+            from_seq = -1
+            if self._pull_response_tracker is not None:
+                from_seq = self._pull_response_tracker.get_last_seq_for_peer(target.node_id)
             request = build_get_delta(
                 sender_id=self._self_node_id,
-                since_ts_ms=since_ts_ms,
+                from_seq=from_seq,
             )
             sent = self._send_message_to_peer(target, request, op_name="GET_DELTA")
             if sent and self._pull_response_tracker is not None:
@@ -271,4 +274,8 @@ class PullResponseTrackerLike(Protocol):
 
     def mark_pull_requested(self, peer_id: str, *, window_s: float | None = None) -> None:
         """Record that ``GET_DELTA`` has been requested from ``peer_id``."""
+        ...
+
+    def get_last_seq_for_peer(self, peer_id: str) -> int:
+        """Return the latest pull cursor known for ``peer_id``."""
         ...

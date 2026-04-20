@@ -417,6 +417,7 @@ def setup_node_networking(
         state_worker=state_worker,
         on_peer_discovered=on_peer_discovered,
         sensor_update_source_classifier=pull_response_tracker.classify_sender,
+        sensor_update_seq_observer=pull_response_tracker.observe_replication_seq,
         phi_threshold_suspect=config.phi_threshold_suspect,
         phi_threshold_dead=config.phi_threshold_dead,
         phi_initial_interval_s=config.phi_initial_interval_s,

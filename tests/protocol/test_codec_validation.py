@@ -51,6 +51,12 @@ from protocol.messages import ProtocolValidationError
             "payload": {"unexpected": True},
         },
         {
+            "type": "GET_DELTA",
+            "sender_id": "node-1",
+            "timestamp": 1,
+            "payload": {"since_ts_ms": 10},
+        },
+        {
             "type": "FULL_SYNC_RESPONSE",
             "sender_id": "node-1",
             "timestamp": 1,

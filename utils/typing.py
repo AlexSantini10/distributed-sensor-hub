@@ -74,6 +74,7 @@ type NodeSnapshot = dict[str, dict[str, SensorRecordDict]]
 class ReplicationDeltaDict(TypedDict):
     """Represent one ordered replication delta event."""
 
+    seq: int
     sensor_id: str
     value: JsonValue
     ts_ms: int
@@ -114,6 +115,7 @@ class SensorUpdatePayload(TypedDict):
     ts_ms: int
     origin: str
     meta: SensorMetaDict
+    seq: NotRequired[int]
 
 
 class MembershipSnapshotPeerDict(TypedDict):
@@ -221,9 +223,9 @@ class StateWorkerLike(Protocol):
     def get_replication_deltas_since(
         self,
         *,
-        since_ts_ms: int,
+        from_seq: int,
     ) -> ReplicationDeltaBatch | None:
-        """Return ordered deltas newer than ``since_ts_ms`` without draining.
+        """Return ordered deltas newer than ``from_seq`` without draining.
 
         Returns:
             ReplicationDeltaBatch | None: Ordered delta events or ``None`` when
@@ -231,12 +233,16 @@ class StateWorkerLike(Protocol):
         """
         ...
 
-    def get_latest_timestamp_for_origin(self, origin: str) -> int:
-        """Return the latest winning timestamp currently known for one origin.
+    def get_latest_replication_seq_for_origin(self, origin: str) -> int:
+        """Return the latest received replication sequence for one origin.
 
         Returns:
-            int: Maximum ``ts_ms`` for records whose winner origin matches ``origin``.
+            int: Last known cursor for pull requests targeting ``origin``.
         """
+        ...
+
+    def note_replication_seq_for_origin(self, origin: str, seq: int) -> None:
+        """Track one observed replication sequence for one origin."""
         ...
 
     def start(self) -> None:
@@ -325,8 +331,8 @@ class ReplicationDeltaSourceLike(Protocol):
     def get_replication_deltas_since(
         self,
         *,
-        since_ts_ms: int,
+        from_seq: int,
     ) -> ReplicationDeltaBatch | None:
-        """Return ordered deltas newer than ``since_ts_ms`` without draining."""
+        """Return ordered deltas newer than ``from_seq`` without draining."""
         ...
 

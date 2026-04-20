@@ -94,6 +94,7 @@ def build_sensor_update(
     origin: str,
     *,
     meta: SensorMeta | None = None,
+    seq: int | None = None,
     timestamp: int | None = None,
 ) -> Message[SensorUpdatePayload]:
     """Build a ``SENSOR_UPDATE`` message."""
@@ -106,6 +107,7 @@ def build_sensor_update(
             ts_ms=ts_ms,
             origin=origin,
             meta=meta if meta is not None else SensorMeta(),
+            seq=seq,
         ),
         timestamp=timestamp,
     )
@@ -176,7 +178,7 @@ def build_get_state(
 
 def build_get_delta(
     sender_id: str,
-    since_ts_ms: int,
+    from_seq: int,
     *,
     timestamp: int | None = None,
 ) -> Message[GetDeltaPayload]:
@@ -184,7 +186,7 @@ def build_get_delta(
     return Message(
         msg_type=MessageType.GET_DELTA,
         sender_id=sender_id,
-        payload=GetDeltaPayload(since_ts_ms=since_ts_ms),
+        payload=GetDeltaPayload(from_seq=from_seq),
         timestamp=timestamp,
     )
 

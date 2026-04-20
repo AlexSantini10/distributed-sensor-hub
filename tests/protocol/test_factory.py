@@ -124,9 +124,9 @@ from protocol.messages import PeerDescriptor, SensorMeta
             {},
         ),
         (
-            build_get_delta("sender", since_ts_ms=13, timestamp=14),
+            build_get_delta("sender", from_seq=13, timestamp=14),
             "GET_DELTA",
-            {"since_ts_ms": 13},
+            {"from_seq": 13},
         ),
         (
             build_delta_unavailable("sender", "stale", timestamp=15),

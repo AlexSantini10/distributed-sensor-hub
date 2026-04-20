@@ -434,14 +434,18 @@ class NodeStateWorker(threading.Thread):
     def get_replication_deltas_since(
         self,
         *,
-        since_ts_ms: int,
+        from_seq: int,
     ) -> ReplicationDeltaBatch | None:
-        """Return ordered deltas newer than ``since_ts_ms`` without draining."""
-        return self._store.get_replication_deltas_since(since_ts_ms=since_ts_ms)
+        """Return ordered deltas newer than ``from_seq`` without draining."""
+        return self._store.get_replication_deltas_since(from_seq=from_seq)
 
-    def get_latest_timestamp_for_origin(self, origin: str) -> int:
-        """Return the latest winning timestamp currently known for one origin."""
-        return self._store.get_latest_timestamp_for_origin(origin)
+    def get_latest_replication_seq_for_origin(self, origin: str) -> int:
+        """Return the latest pull cursor currently known for one origin."""
+        return self._store.get_latest_replication_seq_for_origin(origin)
+
+    def note_replication_seq_for_origin(self, origin: str, seq: int) -> None:
+        """Track one observed replication sequence for a remote origin."""
+        self._store.note_replication_seq_for_origin(origin=origin, seq=seq)
 
     def stop(self) -> None:
         """Request graceful worker termination.

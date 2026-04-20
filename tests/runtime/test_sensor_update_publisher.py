@@ -45,18 +45,13 @@ class DummyClient:
 class DummyStateWorker:
     """Provide deterministic deltas and origin watermarks for tests."""
 
-    def __init__(self, *, batches, origin_latest: dict[str, int] | None = None) -> None:
+    def __init__(self, *, batches) -> None:
         self._batches = list(batches)
-        self._origin_latest = {} if origin_latest is None else dict(origin_latest)
 
     def pop_replication_deltas(self):
         if not self._batches:
             return ()
         return self._batches.pop(0)
-
-    def get_latest_timestamp_for_origin(self, origin: str) -> int:
-        return self._origin_latest.get(origin, 0)
-
 
 class DummyLog:
     """Provide the minimal logger surface consumed by the publisher."""
@@ -82,10 +77,14 @@ class DummyPullResponseTracker:
 
     def __init__(self) -> None:
         self.marked: list[str] = []
+        self.last_seq_by_peer: dict[str, int] = {}
 
     def mark_pull_requested(self, peer_id: str, *, window_s: float | None = None) -> None:
         _ = window_s
         self.marked.append(peer_id)
+
+    def get_last_seq_for_peer(self, peer_id: str) -> int:
+        return self.last_seq_by_peer.get(peer_id, -1)
 
 
 def test_publisher_uses_ratio_plus_minimum_fanout_for_push_and_pull() -> None:
@@ -98,6 +97,7 @@ def test_publisher_uses_ratio_plus_minimum_fanout_for_push_and_pull() -> None:
         batches=(
             (
                 {
+                    "seq": 1,
                     "sensor_id": "s1",
                     "value": 10,
                     "ts_ms": 1000,
@@ -107,7 +107,6 @@ def test_publisher_uses_ratio_plus_minimum_fanout_for_push_and_pull() -> None:
             ),
             (),
         ),
-        origin_latest={"node-1": 900},
     )
     client = DummyClient()
 
@@ -148,6 +147,7 @@ def test_publisher_targets_alive_peers_only() -> None:
         batches=(
             (
                 {
+                    "seq": 1,
                     "sensor_id": "s1",
                     "value": 1,
                     "ts_ms": 1000,
@@ -156,7 +156,6 @@ def test_publisher_targets_alive_peers_only() -> None:
                 },
             ),
         ),
-        origin_latest={"node-a": 999, "node-b": 999, "node-c": 999},
     )
     client = DummyClient()
 
@@ -189,10 +188,10 @@ def test_publisher_marks_pull_requests_for_classification() -> None:
     )
     state_worker = DummyStateWorker(
         batches=((),),
-        origin_latest={"node-a": 900},
     )
     client = DummyClient()
     tracker = DummyPullResponseTracker()
+    tracker.last_seq_by_peer["node-a"] = 900
 
     publisher = SensorUpdatePublisher(
         self_node_id="node-self",
@@ -213,3 +212,6 @@ def test_publisher_marks_pull_requests_for_classification() -> None:
     publisher._run_round()
 
     assert tracker.marked == ["node-a"]
+    pull_msgs = [item for item in client.sent if item[1].msg_type is MessageType.GET_DELTA]
+    assert len(pull_msgs) == 1
+    assert pull_msgs[0][1].payload.from_seq == 900

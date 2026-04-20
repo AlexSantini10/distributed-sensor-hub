@@ -116,6 +116,7 @@ class NodeStateStore:
         _replication_deltas (deque[_ReplicationDelta]): Ordered bounded replication delta buffer.
         _replication_next_seq (int): Monotonic sequence assigned to appended delta entries.
         _replication_last_read_seq (int): Sequence cursor for drain operations.
+        _latest_replication_seq_by_origin (dict[str, int]): Latest observed pull cursor by origin.
     """
 
     def __init__(
@@ -137,6 +138,7 @@ class NodeStateStore:
         self._replication_deltas: deque[_ReplicationDelta] = deque(maxlen=replication_delta_maxlen)
         self._replication_next_seq = 0
         self._replication_last_read_seq = 0
+        self._latest_replication_seq_by_origin: dict[str, int] = {}
         self._merge_policy: MergePolicy = merge_policy or LwwMergePolicy()
 
     def _apply_winner(self, sensor_id: str, record: SensorRecord, *, ui_source: str) -> None:
@@ -461,6 +463,7 @@ class NodeStateStore:
             self._updates_ui_sources.clear()
             self._replication_deltas.clear()
             self._replication_last_read_seq = self._replication_next_seq
+            self._latest_replication_seq_by_origin.clear()
 
     def _snapshot_grouped_for_ui(
         self,
@@ -558,9 +561,9 @@ class NodeStateStore:
     def get_replication_deltas_since(
         self,
         *,
-        since_ts_ms: int,
+        from_seq: int,
     ) -> ReplicationDeltaBatch | None:
-        """Return ordered deltas newer than ``since_ts_ms`` without draining.
+        """Return ordered deltas newer than ``from_seq`` without draining.
 
         Returns ``None`` when the requested cursor is older than the retained
         bounded history and a full sync is required.
@@ -569,36 +572,49 @@ class NodeStateStore:
             if not self._replication_deltas:
                 return ()
 
-            oldest_ts_ms = self._replication_deltas[0].record.ts_ms
-            if since_ts_ms < oldest_ts_ms:
+            oldest_seq = self._replication_deltas[0].seq
+            if from_seq < (oldest_seq - 1):
                 return None
 
             selected = [
                 delta
                 for delta in self._replication_deltas
-                if delta.record.ts_ms > since_ts_ms
+                if delta.seq > from_seq
             ]
             return tuple(self._delta_to_dict(delta) for delta in selected)
 
-    def get_latest_timestamp_for_origin(self, origin: str) -> int:
-        """Return the latest winning timestamp known for one origin.
+    def get_latest_replication_seq_for_origin(self, origin: str) -> int:
+        """Return the latest pull cursor observed for one origin.
 
         Args:
             origin (str): Origin node identifier.
 
         Returns:
-            int: Maximum ``ts_ms`` among current winners for ``origin``, or ``0``.
+            int: Latest replication sequence observed for ``origin``, or ``-1``.
         """
         if not isinstance(origin, str) or origin == "":
-            return 0
+            return -1
         with self._lock:
-            latest = 0
-            for record in self._state.values():
-                if record.origin != origin:
-                    continue
-                if record.ts_ms > latest:
-                    latest = record.ts_ms
-            return latest
+            return self._latest_replication_seq_by_origin.get(origin, -1)
+
+    def note_replication_seq_for_origin(self, origin: str, seq: int) -> None:
+        """Track the latest pull cursor observed for one origin.
+
+        Args:
+            origin (str): Remote origin node identifier.
+            seq (int): Sequence value observed from that origin.
+
+        Returns:
+            None: This method updates in-memory cursor tracking only.
+        """
+        if not isinstance(origin, str) or origin == "":
+            return
+        if not isinstance(seq, int):
+            return
+        with self._lock:
+            previous = self._latest_replication_seq_by_origin.get(origin, -1)
+            if seq > previous:
+                self._latest_replication_seq_by_origin[origin] = seq
 
     def _drain_replication_deltas_locked(self) -> list[_ReplicationDelta]:
         """Return unread replication deltas and advance the read cursor.
@@ -619,6 +635,7 @@ class NodeStateStore:
     def _delta_to_dict(delta: _ReplicationDelta) -> ReplicationDeltaDict:
         """Serialize one internal replication delta entry."""
         return {
+            "seq": delta.seq,
             "sensor_id": delta.sensor_id,
             "value": delta.record.value,
             "ts_ms": delta.record.ts_ms,

@@ -35,6 +35,7 @@ def make_sensor_update_handler(
     self_node_id: str,
     peer_table: PeerTable | None = None,
     source_classifier: Callable[[str], str] | None = None,
+    on_seq_observed: Callable[[str, str, int], None] | None = None,
 ) -> Callable[[Message], None]:
     """Create a handler for replicated sensor updates.
 
@@ -44,6 +45,8 @@ def make_sensor_update_handler(
         peer_table (PeerTable | None): Optional membership table for indirect evidence.
         source_classifier (Callable[[str], str] | None): Optional classifier that
             maps message sender id to update source labels (for example ``push``/``pull``).
+        on_seq_observed (Callable[[str, str, int], None] | None): Optional callback
+            invoked with ``(sender_id, source, seq)`` when a valid sequence is present.
 
     Returns:
         Callable[[Message], None]: Message handler bound to the supplied dependencies.
@@ -69,6 +72,14 @@ def make_sensor_update_handler(
         except Exception:
             log.error("Failed to merge SENSOR_UPDATE", exc_info=True)
             return
+        if isinstance(payload.seq, int) and on_seq_observed is not None:
+            try:
+                on_seq_observed(msg.sender_id, source, payload.seq)
+            except Exception:
+                log.warning(
+                    "Failed to record SENSOR_UPDATE sequence observation",
+                    exc_info=True,
+                )
 
         if applied:
             if peer_table is not None:
@@ -261,7 +272,7 @@ def make_get_delta_handler(
 
         requester_id = msg.sender_id
         deltas = state_worker.get_replication_deltas_since(
-            since_ts_ms=payload.since_ts_ms
+            from_seq=payload.from_seq
         )
         if deltas is None:
             unavailable = build_delta_unavailable(
@@ -272,7 +283,7 @@ def make_get_delta_handler(
                 send(requester_id, unavailable)
                 log.info(
                     "GET_DELTA unavailable: "
-                    f"requester={requester_id} since_ts_ms={payload.since_ts_ms}"
+                    f"requester={requester_id} from_seq={payload.from_seq}"
                 )
             except Exception:
                 log.warning(
@@ -286,12 +297,14 @@ def make_get_delta_handler(
             sensor_id = delta.get("sensor_id")
             origin = delta.get("origin")
             ts_ms = delta.get("ts_ms")
+            seq = delta.get("seq")
             if (
                 not isinstance(sensor_id, str)
                 or sensor_id == ""
                 or not isinstance(origin, str)
                 or origin == ""
                 or not isinstance(ts_ms, int)
+                or not isinstance(seq, int)
             ):
                 continue
 
@@ -303,6 +316,7 @@ def make_get_delta_handler(
                     ts_ms=ts_ms,
                     origin=origin,
                     meta=SensorMeta.from_mapping(delta.get("meta", {})),
+                    seq=seq,
                 )
                 send(requester_id, message)
                 sent_count += 1
@@ -315,7 +329,7 @@ def make_get_delta_handler(
 
         log.info(
             "GET_DELTA served: "
-            f"requester={requester_id} since_ts_ms={payload.since_ts_ms} "
+            f"requester={requester_id} from_seq={payload.from_seq} "
             f"sent_updates={sent_count}"
         )
 
