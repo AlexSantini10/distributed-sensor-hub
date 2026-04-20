@@ -312,6 +312,7 @@ class DockerClusterHarness:
             self._docker_network_connect(
                 network_name=shared_network,
                 container_id=container_id,
+                aliases=(spec.service,),
             )
 
     def kill_service(self, service: str, *, signal: str = "SIGKILL") -> None:
@@ -470,10 +471,20 @@ class DockerClusterHarness:
             f"stdout={result.stdout}\nstderr={result.stderr}"
         )
 
-    def _docker_network_connect(self, *, network_name: str, container_id: str) -> None:
+    def _docker_network_connect(
+        self,
+        *,
+        network_name: str,
+        container_id: str,
+        aliases: tuple[str, ...] = (),
+    ) -> None:
         """Connect container to network, ignoring already-connected cases."""
+        args = ["network", "connect"]
+        for alias in aliases:
+            args.extend(["--alias", alias])
+        args.extend([network_name, container_id])
         result = self._run_docker(
-            ["network", "connect", network_name, container_id],
+            args,
             check=False,
             capture_output=True,
         )

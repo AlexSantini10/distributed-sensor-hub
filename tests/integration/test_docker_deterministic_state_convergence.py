@@ -10,6 +10,7 @@ import time
 import pytest
 
 from tests.integration.docker_cluster_harness import DockerClusterHarness
+from tests.integration.docker_requirements import skip_unless_docker_accessible
 from utils.typing import JsonObject
 
 
@@ -206,6 +207,7 @@ def _build_expected_winning_state() -> JsonObject:
 @pytest.mark.integration
 def test_docker_deterministic_state_convergence() -> None:
     """Assert deterministic LWW convergence over real Dockerized nodes."""
+    skip_unless_docker_accessible()
     harness = DockerClusterHarness(compose_file=DETERMINISTIC_COMPOSE)
     expected = _build_expected_winning_state()
 

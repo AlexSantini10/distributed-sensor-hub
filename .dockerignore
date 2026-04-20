@@ -5,9 +5,14 @@ __pycache__/
 .pytest_cache/
 .pytest-tmp/
 .pytest-temp/
+.codex-tmp/
+.tmp/
+tmp-pytest/
 .ruff_cache/
 .tmp-pytest/
 **/pytest-cache*/
+**/pytest-temp*/
+**/test-logging-*/
 
 .git/
 .gitignore

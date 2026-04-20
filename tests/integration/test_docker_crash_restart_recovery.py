@@ -9,6 +9,7 @@ import time
 import pytest
 
 from tests.integration.docker_cluster_harness import DockerClusterHarness
+from tests.integration.docker_requirements import skip_unless_docker_accessible
 from utils.typing import JsonObject
 
 
@@ -143,6 +144,7 @@ def _assert_membership_recovers(harness: DockerClusterHarness, *, restarted_node
 @pytest.mark.integration
 def test_docker_crash_restart_full_sync_recovery() -> None:
     """Assert crash/restart recovery converges state and membership again."""
+    skip_unless_docker_accessible()
     harness = DockerClusterHarness(compose_file=CRASH_COMPOSE)
 
     pre_crash_updates: tuple[_InjectedUpdate, ...] = (

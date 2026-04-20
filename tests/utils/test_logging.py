@@ -2,14 +2,17 @@
 
 import logging
 from pathlib import Path
+import uuid
 
 from utils.config import LogLevel
 from utils.logging import get_logger, setup_logging
 
 
-def test_setup_logging_uses_loglevel_enum(tmp_path: Path) -> None:
+def test_setup_logging_uses_loglevel_enum() -> None:
     """Assert that logging setup accepts and applies ``LogLevel`` values."""
-    log_file = tmp_path / "test-setup-logging-enum.log"
+    tmp_dir = Path(".codex-tmp") / "test-logging"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    log_file = tmp_dir / f"test-setup-logging-enum-{uuid.uuid4().hex}.log"
     if log_file.exists():
         log_file.unlink()
     root = logging.getLogger()
