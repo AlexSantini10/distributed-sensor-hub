@@ -1,73 +1,43 @@
-# Module: fd
+# Purpose
 
-## Responsibility
-Heartbeat-based phi-accrual failure detection for peer liveness. The module tracks heartbeat arrivals, computes a suspicion score (`phi`), and classifies peers as `alive`, `suspected`, or `dead`.
+The `fd` module implements **heartbeat-based phi-accrual failure detection** for peer liveness assessment.
 
-## How It Works
-- For each peer, the detector stores the last heartbeat arrival time and a bounded window of recent inter-arrival intervals.
-- At evaluation time, it computes:
-  `phi = -log10(P(T > t))`
-  where `t` is the elapsed time since the last heartbeat.
-- The default estimator assumes an exponential distribution with:
-  `lambda = 1 / mean_interval`
-- `mean_interval` comes from the peer's recent heartbeat history, but is never allowed to go below `initial_interval_s`.
+Its role in the overall system is to provide a detector-local suspicion signal (`phi`) and liveness classification (`alive`, `suspected`, `dead`) that is consumed by membership management (`membership.PeerTable`) to drive status transitions and subsequent gossip dissemination.
 
-## Intuition
-- `phi` is a suspicion score, not a fixed timeout.
-- The detector asks: "Given this peer's usual heartbeat rhythm, how surprising is the current silence?"
-- A peer that usually sends heartbeats every `1.0s` becomes suspicious after a shorter silence than a peer that usually sends them every `1.8s`.
-- The detector measures heartbeat timing, not request/response latency.
+# File Overview
 
-## Standard Classification
-- `phi < 3.0` -> `alive`
-- `3.0 <= phi < 8.0` -> `suspected`
-- `phi >= 8.0` -> `dead`
+- `heartbeat.py`  
+  Defines `HeartbeatMonitor` and immutable evaluation/observation records; maintains per-peer heartbeat history, computes phi through a pluggable estimator, and maps phi to detector-local failure classes.
+- `phi_estimator.py`  
+  Defines the estimator contract (`PhiEstimator`) and the default `ExponentialPhiEstimator` implementing `phi = -log10(P(T > t))` under an exponential inter-arrival model.
+- `status.py`  
+  Defines `FailureStatus`, the detector-local liveness enum (`ALIVE`, `SUSPECTED`, `DEAD`) intentionally decoupled from membership-domain status types.
+- `__init__.py`  
+  Exposes the module public surface (`HeartbeatMonitor`, estimators, status enum, result dataclasses) for integration by upper layers.
 
-## Public API
-### `HeartbeatMonitor`
-- Tracks per-peer heartbeats and computes `phi`.
-- Main methods:
-  - `initialize_peer(...)`
-  - `remove_peer(...)`
-  - `record_heartbeat(...)`
-  - `get_intervals(...)`
-  - `evaluate_peer(...)`
-  - `evaluate_all(...)`
-  - `classify_phi(...)`
-- Exposed properties:
-  - `threshold_suspect`
-  - `threshold_dead`
-  - `max_intervals_per_peer`
+# Main Dependencies
 
-### `HeartbeatObservation`
-- Immutable result returned by `record_heartbeat(...)`.
-- Fields: `peer_id`, `arrived_at_s`, `interval_s`, `sender_timestamp_ms`, `phi`, `status`.
-- `status` is a detector-local `FailureStatus`, not `membership.NodeStatus`.
+- Internal: `fd.phi_estimator`  
+  Supplies the statistical phi computation strategy used by `HeartbeatMonitor`.
+- Internal: `fd.status`  
+  Supplies detector-local status semantics returned by classification/evaluation operations.
+- External: Python standard library (`time`, `threading`, `math`, `dataclasses`, `typing.Protocol`)  
+  Provides monotonic timing, concurrency safety, numerical primitives, and typed structural contracts.
 
-### `PhiEvaluation`
-- Immutable result returned by `evaluate_peer(...)` and `evaluate_all(...)`.
-- Fields: `peer_id`, `phi`, `status`.
-- `status` is a detector-local `FailureStatus`, not `membership.NodeStatus`.
+# High-Level Design
 
-### `FailureStatus`
-- Detector-local enum with `ALIVE`, `SUSPECTED`, and `DEAD`.
-- `membership.PeerTable` maps it to `membership.NodeStatus` when applying detector results.
+- **Core responsibilities**
+  - Track per-peer last heartbeat arrival time.
+  - Maintain a bounded sliding window of heartbeat inter-arrival intervals.
+  - Compute `phi` from elapsed silence since last heartbeat.
+  - Classify each peer into detector-local liveness classes using configurable thresholds.
 
-### `PhiEstimator`
-- Protocol for pluggable phi computation.
-- Method: `compute_phi(elapsed_s, intervals_s, initial_interval_s)`.
+- **Main data flow**
+  - On heartbeat arrival, `record_heartbeat` updates arrival state, appends the new interval sample, and emits an observation with `phi = 0` and `alive` status.
+  - During periodic checks, `evaluate_peer`/`evaluate_all` compute elapsed silence from monotonic time and invoke the configured phi estimator.
+  - The estimator derives a survival probability and converts it to a suspicion score (`phi`), then classification maps that score to `alive` / `suspected` / `dead`.
 
-### `ExponentialPhiEstimator`
-- Default `PhiEstimator` implementation based on exponential survival.
-
-## Defaults
-- `max_intervals_per_peer = 128`
-- `threshold_suspect = 3.0`
-- `threshold_dead = 8.0`
-- `initial_interval_s = 1.0`
-
-## Integration
-- `fd` is used by `membership.PeerTable`.
-- `fd` is domain-local: it does not import `membership.NodeStatus`.
-- `record_heartbeat(...)` resets the peer to `alive` with `phi = 0.0`.
-- Periodic evaluation recomputes `phi`; `PeerTable` maps the resulting `FailureStatus` to `NodeStatus` and updates membership state when thresholds are crossed.
+- **Interactions with other modules**
+  - `membership.PeerTable` is the primary consumer: it initializes/removes detector state, records direct heartbeat evidence, and applies periodic phi evaluations to membership status.
+  - Runtime heartbeat loops and protocol heartbeat handlers interact with `fd` indirectly through `PeerTable`; `fd` remains transport-agnostic and does not depend on TCP or message codec internals.
+  - Detector-local `FailureStatus` is translated by membership to replicated membership status, preserving separation between local failure suspicion and distributed membership state.
