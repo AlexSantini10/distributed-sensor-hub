@@ -25,6 +25,8 @@ const state = {
   baseUrl: "http://localhost:10000",
   pollMs: 1000,
   timer: null,
+  isPolling: false,
+  pollSession: 0,
   selectedNodeId: null,
   cluster: null,
   endpointByNodeId: new Map(),
@@ -550,9 +552,28 @@ function eventPriority(eventType) {
   return 0;
 }
 
+function isSensorDataTimelineEvent(item) {
+  const eventType = String(item && item.event_type ? item.event_type : "").toLowerCase();
+  const details = item && item.details && typeof item.details === "object" ? item.details : {};
+
+  if (eventType.includes("sensor")) {
+    return true;
+  }
+
+  if (typeof details.sensor_id === "string" && details.sensor_id !== "") {
+    return true;
+  }
+  if (typeof details.global_sensor_id === "string" && details.global_sensor_id !== "") {
+    return true;
+  }
+
+  return false;
+}
+
 function renderTimeline(cluster) {
   const items = Array.isArray(cluster.events.items) ? cluster.events.items.slice() : [];
-  items.sort((a, b) => {
+  const filtered = items.filter((item) => isSensorDataTimelineEvent(item));
+  filtered.sort((a, b) => {
     const pa = eventPriority(a.event_type);
     const pb = eventPriority(b.event_type);
     if (pa !== pb) {
@@ -565,10 +586,9 @@ function renderTimeline(cluster) {
 
   els.timeline.innerHTML = "";
   const maxRows = 140;
-  for (const item of items.slice(0, maxRows)) {
+  for (const item of filtered.slice(0, maxRows)) {
     const row = document.createElement("article");
-    const prio = eventPriority(item.event_type);
-    row.className = `event-row ${prio > 0 ? "important" : "normal"}`;
+    row.className = "event-row";
     const sender = item.sender_id || "-";
     const target = item.target_id || "-";
     const detail = item.details && typeof item.details === "object"
@@ -962,8 +982,16 @@ async function switchConnectionToNode(nodeId) {
 }
 
 async function pollOnce() {
+  if (state.isPolling) {
+    return;
+  }
+  const session = state.pollSession;
+  state.isPolling = true;
   try {
     const cluster = await fetchClusterSnapshot();
+    if (session !== state.pollSession) {
+      return;
+    }
     state.cluster = cluster;
     const localNodeId = cluster.membership && typeof cluster.membership.local_node_id === "string"
       ? cluster.membership.local_node_id
@@ -979,12 +1007,18 @@ async function pollOnce() {
     els.snapshotTime.textContent = formatTimestamp(cluster.generatedAtMs);
     setConnection(true, "Connected");
   } catch (error) {
+    if (session !== state.pollSession) {
+      return;
+    }
     const message = error instanceof Error ? error.message : "fetch failed";
     setConnection(false, `Disconnected (${message})`);
+  } finally {
+    state.isPolling = false;
   }
 }
 
 function restartPolling() {
+  state.pollSession += 1;
   if (state.timer) {
     clearInterval(state.timer);
     state.timer = null;

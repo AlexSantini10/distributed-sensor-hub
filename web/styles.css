@@ -521,8 +521,8 @@ tbody tr:hover {
 }
 
 .event-row.important {
-  border-color: rgba(246, 176, 77, 0.9);
-  background: rgba(51, 39, 21, 0.38);
+  border-color: var(--border);
+  background: rgba(30, 53, 76, 0.78);
 }
 
 .event-head {
