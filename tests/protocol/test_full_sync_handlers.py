@@ -231,6 +231,123 @@ def test_get_delta_handler_returns_delta_unavailable_for_stale_cursor() -> None:
     target, msg = sent[0]
     assert target == "node-b"
     assert msg.msg_type is MessageType.DELTA_UNAVAILABLE
+    assert msg.payload.reason == "stale_cursor"
+
+
+def test_get_delta_handler_consecutive_seq_pulls_have_no_gap_and_no_duplicate() -> None:
+    """Assert consecutive GET_DELTA pulls are contiguous and deduplicated by ``from_seq``."""
+    state_worker = make_worker("node-a")
+    state_worker.merge_update("s1", 10, 1000, "node-a")
+    state_worker.merge_update("s2", 20, 1001, "node-a")
+    state_worker.merge_update("s3", 30, 1002, "node-a")
+
+    sent: list[tuple[str, Message]] = []
+
+    def send(peer_id: str, msg: Message) -> None:
+        sent.append((peer_id, msg))
+
+    handler = make_get_delta_handler(
+        state_worker=state_worker,
+        send=send,
+        self_node_id="node-a",
+    )
+
+    handler(build_get_delta(sender_id="node-b", from_seq=-1))
+    first_seq = [
+        item[1].payload.seq
+        for item in sent
+        if item[1].msg_type is MessageType.SENSOR_UPDATE
+    ]
+    assert first_seq == [0, 1, 2]
+
+    sent.clear()
+    handler(build_get_delta(sender_id="node-b", from_seq=2))
+    assert sent == []
+
+    state_worker.merge_update("s4", 40, 1003, "node-a")
+
+    sent.clear()
+    handler(build_get_delta(sender_id="node-b", from_seq=2))
+    third_seq = [
+        item[1].payload.seq
+        for item in sent
+        if item[1].msg_type is MessageType.SENSOR_UPDATE
+    ]
+    assert third_seq == [3]
+    assert sent[0][1].payload.sensor_id == "s4"
+
+
+def test_recovery_flow_preserves_seq_delta_behavior_after_full_sync() -> None:
+    """Assert DELTA_UNAVAILABLE fallback to FULL_SYNC preserves later seq-based delta pulls."""
+    requester_worker = make_worker("node-a")
+    provider_worker = NodeStateWorker(
+        node_id="node-b",
+        event_queue=_event_queue(),
+        log=DummyLog(),
+        replication_delta_maxlen=2,
+    )
+    provider_worker.merge_update("s1", 1, 1000, "node-b")
+    provider_worker.merge_update("s2", 2, 1001, "node-b")
+    provider_worker.merge_update("s3", 3, 1002, "node-b")
+
+    requester_peer_table = PeerTable(self_node_id="node-a")
+    provider_peer_table = PeerTable(self_node_id="node-b")
+
+    sent_from_provider: list[tuple[str, Message]] = []
+    sent_from_requester: list[tuple[str, Message]] = []
+
+    def send_from_provider(peer_id: str, msg: Message) -> None:
+        sent_from_provider.append((peer_id, msg))
+
+    def send_from_requester(peer_id: str, msg: Message) -> None:
+        sent_from_requester.append((peer_id, msg))
+
+    provider_get_delta = make_get_delta_handler(
+        state_worker=provider_worker,
+        send=send_from_provider,
+        self_node_id="node-b",
+    )
+    requester_delta_unavailable = make_delta_unavailable_handler(
+        send=send_from_requester,
+        self_node_id="node-a",
+    )
+    provider_full_sync_request = make_full_sync_request_handler(
+        state_worker=provider_worker,
+        peer_table=provider_peer_table,
+        send=send_from_provider,
+        self_node_id="node-b",
+    )
+    requester_full_sync_response = make_full_sync_response_handler(
+        state_worker=requester_worker,
+        peer_table=requester_peer_table,
+        self_node_id="node-a",
+    )
+
+    provider_get_delta(build_get_delta(sender_id="node-a", from_seq=-1))
+    assert len(sent_from_provider) == 1
+    assert sent_from_provider[0][1].msg_type is MessageType.DELTA_UNAVAILABLE
+
+    requester_delta_unavailable(sent_from_provider[0][1])
+    assert len(sent_from_requester) == 1
+    assert sent_from_requester[0][1].msg_type is MessageType.FULL_SYNC_REQUEST
+
+    provider_full_sync_request(sent_from_requester[0][1])
+    assert len(sent_from_provider) == 2
+    assert sent_from_provider[1][1].msg_type is MessageType.FULL_SYNC_RESPONSE
+
+    requester_full_sync_response(sent_from_provider[1][1])
+    requester_state = requester_worker.get_state_snapshot()["node-a"]
+    assert requester_state["node-b:s1"]["value"] == 1
+    assert requester_state["node-b:s2"]["value"] == 2
+    assert requester_state["node-b:s3"]["value"] == 3
+
+    provider_worker.merge_update("s4", 4, 1003, "node-b")
+    sent_from_provider.clear()
+    provider_get_delta(build_get_delta(sender_id="node-a", from_seq=2))
+    assert len(sent_from_provider) == 1
+    assert sent_from_provider[0][1].msg_type is MessageType.SENSOR_UPDATE
+    assert sent_from_provider[0][1].payload.seq == 3
+    assert sent_from_provider[0][1].payload.sensor_id == "s4"
 
 
 def test_get_delta_handler_skips_malformed_entries_and_sends_only_valid_updates() -> None:

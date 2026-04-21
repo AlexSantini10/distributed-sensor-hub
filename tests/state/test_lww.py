@@ -455,6 +455,34 @@ def test_replication_delta_since_has_no_gap_and_no_duplicate_across_consecutive_
     assert [d["sensor_id"] for d in third] == ["s4"]
 
 
+def test_replication_delta_cursor_remains_coherent_after_restart() -> None:
+    """Assert restart resets seq history and keeps cursor progression coherent."""
+    before_restart = NodeStateWorker(
+        node_id="A",
+        event_queue=_event_queue(),
+        log=DummyLog(),
+        replication_delta_maxlen=2,
+    )
+    before_restart.merge_update("s1", 1, 1000, "A")
+    before_restart.merge_update("s2", 2, 1001, "A")
+    before_restart.merge_update("s3", 3, 1002, "A")
+    assert before_restart.get_replication_deltas_since(from_seq=-1) is None
+
+    after_restart = NodeStateWorker(
+        node_id="A",
+        event_queue=_event_queue(),
+        log=DummyLog(),
+        replication_delta_maxlen=2,
+    )
+    assert after_restart.get_replication_deltas_since(from_seq=-1) == ()
+
+    after_restart.merge_update("s4", 4, 1003, "A")
+    first = after_restart.get_replication_deltas_since(from_seq=-1)
+    assert first is not None
+    assert [d["seq"] for d in first] == [0]
+    assert [d["sensor_id"] for d in first] == ["s4"]
+
+
 def test_latest_replication_seq_for_origin_tracks_only_monotonic_updates() -> None:
     """Assert per-origin replication cursor tracking is monotonic."""
     w = make_worker(node_id="A")
