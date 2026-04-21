@@ -12,6 +12,8 @@ Each node runs sensors, state merge, membership/liveness, TCP protocol handling,
 - [Docs index](docs/README.md)
 - [Architecture](docs/architecture.md)
 - [Testing](docs/testing.md)
+- [Introspection API](docs/introspection-api.md)
+- [Observability UI](web/README.md)
 - [Module dependencies diagram (PlantUML)](docs/module-dependencies.puml)
 
 ## Module map
@@ -21,7 +23,7 @@ Each node runs sensors, state merge, membership/liveness, TCP protocol handling,
 | `runtime/` | Startup, wiring, lifecycle | [runtime/README.md](runtime/README.md) |
 | `protocol/` | Message contracts, codec, dispatcher, handlers | [protocol/README.md](protocol/README.md) |
 | `networking/` | TCP client/server and framing | [networking/README.md](networking/README.md) |
-| `membership/` | Peer table, liveness state, membership merge | [membership/README.md](membership/README.md) |
+| `membership/` | Peer table, liveness metadata, membership merge | [membership/README.md](membership/README.md) |
 | `fd/` | Phi-accrual failure detection | [fd/README.md](fd/README.md) |
 | `gossip/` | Membership dissemination (`GOSSIP_STATE`) | [gossip/README.md](gossip/README.md) |
 | `state/` | Local authoritative state and LWW merge | [state/README.md](state/README.md) |
@@ -36,7 +38,7 @@ Each node runs sensors, state merge, membership/liveness, TCP protocol handling,
 3. Runtime runs periodic push/pull replication (`SENSOR_UPDATE`, `GET_DELTA`).
 4. Protocol handlers merge inbound deltas/snapshots.
 5. Membership is updated via `JOIN_REQUEST`, `PEER_LIST`, `PING/PONG`, `GOSSIP_STATE`.
-6. Web API exposes snapshots (`/api/state`, `/api/updates`, `/api/membership`).
+6. Web API exposes snapshots (`/api/state`, `/api/updates`, `/api/membership`, `/api/introspection`).
 
 ## Setup
 
@@ -87,6 +89,15 @@ docker compose -f docker/docker-compose-base.yml up --build -d
 docker compose -f docker/docker-compose-6-nodes.yml up --build -d
 docker compose -f docker/docker-compose-12-nodes.yml up --build -d
 ```
+
+Observability UI:
+
+```powershell
+cd web
+python -m http.server 8080
+```
+
+Then open `http://localhost:8080` and set the API base URL to a node endpoint (for example `http://localhost:10000`).
 
 ## Validation
 

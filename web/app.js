@@ -1,462 +1,982 @@
 "use strict";
 
-const statusEl = document.getElementById("status");
-const nodesLocalEl = document.getElementById("nodes-local");
-const nodesRemoteEl = document.getElementById("nodes-remote");
-const membershipBodyEl = document.getElementById("membership-body");
-const logEl = document.getElementById("log-entries");
-const statNodesEl = document.getElementById("stat-nodes");
-const statSensorsEl = document.getElementById("stat-sensors");
-const statPeersEl = document.getElementById("stat-peers");
-const statSuspectedEl = document.getElementById("stat-suspected");
-const statDeadEl = document.getElementById("stat-dead");
-const statChangedEl = document.getElementById("stat-changed");
+const IMPORTANT_EVENT_PATTERNS = [
+  "full_sync",
+  "delta_unavailable",
+  "dead",
+  "suspected",
+  "join",
+  "leave",
+  "error",
+  "timeout",
+  "reconcile",
+  "partition",
+];
 
-const baseUrlInput = document.getElementById("base-url");
-const refreshMsInput = document.getElementById("refresh-ms");
-const applyBtn = document.getElementById("apply");
+const METRIC_KEYS = [
+  "replication_rounds_total",
+  "sensor_updates_applied_total",
+  "sensor_updates_pushed_total",
+  "gossip_messages_received_total",
+  "gossip_messages_sent_total",
+  "get_delta_requests_sent_total",
+  "get_delta_unavailable_total",
+  "full_sync_requests_sent_total",
+  "full_sync_responses_received_total",
+];
 
-let timer = null;
-let currentBaseUrl = null;
-let currentLocalNodeId = null;
+const state = {
+  baseUrl: "http://localhost:10000",
+  pollMs: 1000,
+  timer: null,
+  selectedNodeId: null,
+  cluster: null,
+  endpointByNodeId: new Map(),
+  layoutPositions: new Map(),
+  lastRenderBounds: null,
+};
 
-const nodeCards = new Map();
-const sensorRows = new Map();
-const previousSensorState = new Map();
+const els = {
+  status: document.getElementById("connection-status"),
+  baseUrl: document.getElementById("base-url"),
+  pollMs: document.getElementById("poll-ms"),
+  apply: document.getElementById("apply"),
+  snapshotTime: document.getElementById("snapshot-time"),
+  metricsStrip: document.getElementById("metrics-strip"),
+  topologyHint: document.getElementById("topology-hint"),
+  topologyCanvas: document.getElementById("topology-canvas"),
+  inspectorSummary: document.getElementById("inspector-summary"),
+  inspectorPeers: document.getElementById("inspector-peers"),
+  globalStateSummary: document.getElementById("global-state-summary"),
+  globalStateCards: document.getElementById("global-state-cards"),
+  sensorCount: document.getElementById("sensor-count"),
+  sensorTable: document.getElementById("sensor-table"),
+  timeline: document.getElementById("timeline"),
+};
 
-const LOG_MAX = 300;
-const logSeen = new Set();
-const logBuffer = [];
-const knownLogNodes = new Set();
-let isNodeLogPrimed = false;
-
-function api(path) {
-  return currentBaseUrl + path;
+function setConnection(ok, message) {
+  els.status.className = `status ${ok ? "connected" : "disconnected"}`;
+  els.status.textContent = message;
 }
 
-function setStatus(ok) {
-  statusEl.textContent = ok ? "Connected" : "Disconnected";
-  statusEl.style.color = ok ? "var(--accent)" : "var(--danger)";
+function formatTimestamp(tsMs) {
+  if (typeof tsMs !== "number" || !Number.isFinite(tsMs)) {
+    return "-";
+  }
+  return new Date(tsMs).toLocaleString();
 }
 
-function fmtTs(ts) {
-  return new Date(ts).toLocaleTimeString();
-}
-
-function formatNumber(value) {
+function formatCompactNumber(value) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    return value;
+    return "-";
   }
-  return Number(value.toFixed(2));
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(value);
 }
 
-function prettifySensorName(sensorId) {
-  if (typeof sensorId !== "string" || sensorId.length === 0) {
-    return String(sensorId);
-  }
-
-  const withoutIndex = sensorId.replace(/@\d+$/g, "");
-  const normalized = withoutIndex
-    .replace(/_/g, " ")
-    .replace(/@/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (normalized.length === 0) {
-    return sensorId;
-  }
-
-  return normalized
-    .split(" ")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+function updateTopologyHintText(baseText) {
+  els.topologyHint.textContent = `${baseText} | click a node to switch API target`;
 }
 
-function formatValue(data) {
-  const unit = data && data.meta && data.meta.unit ? String(data.meta.unit) : "";
-  const rawValue = data ? data.value : null;
-  const main = String(formatNumber(rawValue));
-  if (!unit) {
-    return `<span class="val-main">${main}</span>`;
-  }
-  return `<span class="val-main">${main}</span> <span class="val-unit">${unit}</span>`;
+function toStatusClass(raw) {
+  const text = String(raw || "unknown").toLowerCase();
+  return text.replace(/[^a-z0-9]+/g, "-");
 }
 
-function plainValue(data) {
-  const unit = data && data.meta && data.meta.unit ? " " + String(data.meta.unit) : "";
-  const rawValue = data ? data.value : null;
-  return String(formatNumber(rawValue)) + unit;
+function renderStatusPill(statusText) {
+  const label = statusText || "unknown";
+  const cls = toStatusClass(label);
+  return `<span class="status-pill ${cls}">${label}</span>`;
 }
 
-function sensorSignature(data) {
-  const meta = data && data.meta && typeof data.meta === "object" ? data.meta : {};
-  return JSON.stringify({
-    value: data ? formatNumber(data.value) : null,
-    unit: meta.unit ?? null,
-    period_ms: meta.period_ms ?? null,
-  });
+function nodeSort(a, b) {
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
 }
 
-function resetUI() {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
-
-  nodesLocalEl.innerHTML = "";
-  nodesRemoteEl.innerHTML = "";
-  logEl.innerHTML = "";
-
-  nodeCards.clear();
-  sensorRows.clear();
-  logSeen.clear();
-  logBuffer.length = 0;
-  knownLogNodes.clear();
-  isNodeLogPrimed = false;
-  previousSensorState.clear();
-
-  statNodesEl.textContent = "0";
-  statSensorsEl.textContent = "0";
-  statPeersEl.textContent = "0";
-  statSuspectedEl.textContent = "0";
-  statDeadEl.textContent = "0";
-  statChangedEl.textContent = "0";
-  membershipBodyEl.innerHTML = "";
-  currentLocalNodeId = null;
-
-  setStatus(false);
-}
-
-function placeNodeCard(nodeId, card) {
-  const target = currentLocalNodeId && nodeId === currentLocalNodeId ? nodesLocalEl : nodesRemoteEl;
-  if (target && card.parentElement !== target) {
-    target.appendChild(card);
-  }
-}
-
-function getNodeCard(nodeId) {
-  let card = nodeCards.get(nodeId);
-  if (card) {
-    placeNodeCard(nodeId, card);
-    return card;
-  }
-
-  card = document.createElement("div");
-  card.className = "node-card";
-  card.innerHTML = `
-    <div class="node-header">
-      <h2>${nodeId}</h2>
-    </div>
-    <div class="sensors"></div>
-  `;
-
-  nodeCards.set(nodeId, card);
-  placeNodeCard(nodeId, card);
-  return card;
-}
-
-function getSensorRow(nodeId, sensorId) {
-  const key = nodeId + "|" + sensorId;
-  let row = sensorRows.get(key);
-  if (row) {
-    return row;
-  }
-
-  const card = getNodeCard(nodeId);
-  const container = card.querySelector(".sensors");
-
-  row = document.createElement("div");
-  row.className = "sensor";
-  row.innerHTML = `
-    <span class="id"></span>
-    <span class="val"></span>
-    <span class="ts"></span>
-  `;
-
-  sensorRows.set(key, row);
-  container.appendChild(row);
-  return row;
-}
-
-function splitGlobalSensorId(globalId) {
-  if (typeof globalId !== "string") {
-    return null;
-  }
-  const idx = globalId.indexOf(":");
-  if (idx <= 0) {
-    return null;
-  }
+function normalizeCluster(payload) {
+  const root = payload && typeof payload === "object" ? payload : {};
+  const cluster = root.cluster && typeof root.cluster === "object" ? root.cluster : {};
+  const topology = cluster.topology && typeof cluster.topology === "object" ? cluster.topology : {};
+  const membership = cluster.membership && typeof cluster.membership === "object" ? cluster.membership : {};
+  const sensorState = cluster.sensor_state && typeof cluster.sensor_state === "object" ? cluster.sensor_state : {};
+  const events = cluster.events && typeof cluster.events === "object" ? cluster.events : {};
+  const metrics = cluster.metrics && typeof cluster.metrics === "object" ? cluster.metrics : {};
   return {
-    origin: globalId.slice(0, idx),
-    sensorId: globalId.slice(idx + 1),
+    schemaVersion: root.schema_version || "unknown",
+    generatedAtMs: root.generated_at_ms,
+    topology,
+    membership,
+    sensorState,
+    events,
+    metrics,
   };
 }
 
-function normalizeGroupedByOrigin(payload) {
-  if (!payload || typeof payload !== "object") {
-    return {};
-  }
-
-  const topValues = Object.values(payload);
-  let flatMap = null;
-
-  if (topValues.length === 1 && topValues[0] && typeof topValues[0] === "object") {
-    flatMap = topValues[0];
-  } else {
-    flatMap = {};
-    for (const v of topValues) {
-      if (v && typeof v === "object") {
-        Object.assign(flatMap, v);
-      }
-    }
-  }
-
-  const grouped = {};
-  for (const [globalId, rec] of Object.entries(flatMap)) {
-    const parts = splitGlobalSensorId(globalId);
-    if (!parts) {
+function createMembershipMap(membership) {
+  const map = new Map();
+  const peers = Array.isArray(membership.peers) ? membership.peers : [];
+  for (const peer of peers) {
+    if (!peer || typeof peer !== "object") {
       continue;
     }
-    if (!grouped[parts.origin]) {
-      grouped[parts.origin] = {};
+    const peerId = typeof peer.peer_id === "string" ? peer.peer_id : "";
+    if (!peerId) {
+      continue;
     }
-    grouped[parts.origin][parts.sensorId] = rec;
+    map.set(peerId, peer);
   }
-
-  return grouped;
+  return map;
 }
 
-function normalizeSyncSource(data) {
-  const source = data && typeof data.sync_source === "string"
-    ? data.sync_source.toLowerCase()
-    : "unknown";
-  return source;
+function getNodeStatus(nodeId, localNodeId, membershipMap) {
+  if (nodeId === localNodeId) {
+    return "local";
+  }
+  const peer = membershipMap.get(nodeId);
+  if (!peer) {
+    return "unknown";
+  }
+  const display = typeof peer.display_status === "string" ? peer.display_status : "unknown";
+  if (display === "alive_direct") {
+    return "alive-direct";
+  }
+  if (display === "alive_indirect") {
+    return "alive-indirect";
+  }
+  if (display === "suspected") {
+    return "suspected";
+  }
+  if (display === "dead") {
+    return "dead";
+  }
+  return "unknown";
 }
 
-function pushDataLog(nodeId, sensorId, data) {
-  const source = normalizeSyncSource(data);
-  const key = `data|${source}|${nodeId}|${sensorId}|${data.ts_ms}`;
-  if (logSeen.has(key)) {
-    return;
-  }
+function buildGraphModel(cluster) {
+  const topology = cluster.topology;
+  const adjacency = topology && typeof topology.adjacency === "object" ? topology.adjacency : {};
+  const localNodeId = typeof cluster.membership.local_node_id === "string" ? cluster.membership.local_node_id : "";
+  const membershipMap = createMembershipMap(cluster.membership);
+  const nodeSet = new Set();
 
-  logSeen.add(key);
-  logBuffer.unshift({
-    kind: "data",
-    ts: data.ts_ms,
-    nodeId,
-    source,
-    sensorId: prettifySensorName(sensorId),
-    value: plainValue(data),
-    dedupeKey: key,
-  });
-
-  while (logBuffer.length > LOG_MAX) {
-    const e = logBuffer.pop();
-    logSeen.delete(e.dedupeKey);
-  }
-}
-
-function pushNodeDiscoveryLog(nodeId, source, ts) {
-  const key = `node|${source}|${nodeId}`;
-  if (logSeen.has(key)) {
-    return;
-  }
-
-  logSeen.add(key);
-  logBuffer.unshift({
-    kind: "node",
-    ts,
-    nodeId,
-    source,
-    dedupeKey: key,
-  });
-
-  while (logBuffer.length > LOG_MAX) {
-    const e = logBuffer.pop();
-    logSeen.delete(e.dedupeKey);
-  }
-}
-
-function flushLog() {
-  logEl.innerHTML = "";
-  for (const e of logBuffer) {
-    const line = document.createElement("div");
-    line.className = "log-entry";
-    if (e.kind === "node") {
-      line.textContent = `[${fmtTs(e.ts)}] NEW NODE ${e.nodeId} discovered via ${e.source.toUpperCase()}`;
-    } else {
-      line.textContent = `[${fmtTs(e.ts)}] [${e.source.toUpperCase()}] ${e.nodeId} ${e.sensorId} -> ${e.value}`;
-    }
-    logEl.appendChild(line);
-  }
-}
-
-function renderState(rawState) {
-  const state = normalizeGroupedByOrigin(rawState);
-  const changedThisPoll = new Set();
-  let sensorCount = 0;
-
-  for (const [nodeId, sensors] of Object.entries(state)) {
-    const card = getNodeCard(nodeId);
-    placeNodeCard(nodeId, card);
-    for (const [sensorId, data] of Object.entries(sensors)) {
-      const row = getSensorRow(nodeId, sensorId);
-      const key = nodeId + "|" + sensorId;
-      const signature = sensorSignature(data);
-      const prev = previousSensorState.get(key);
-      const isUpdated = !prev || prev !== signature;
-      sensorCount += 1;
-
-      previousSensorState.set(key, signature);
-
-      row.querySelector(".id").textContent = prettifySensorName(sensorId);
-      row.querySelector(".val").innerHTML = formatValue(data);
-      row.querySelector(".ts").textContent = fmtTs(data.ts_ms);
-      row.classList.toggle("updated", isUpdated);
-
-      if (isUpdated) {
-        changedThisPoll.add(key);
+  for (const nodeId of Object.keys(adjacency)) {
+    nodeSet.add(nodeId);
+    const neighbors = Array.isArray(adjacency[nodeId]) ? adjacency[nodeId] : [];
+    for (const nb of neighbors) {
+      if (typeof nb === "string" && nb) {
+        nodeSet.add(nb);
       }
     }
   }
 
-  statNodesEl.textContent = String(Object.keys(state).length);
-  statSensorsEl.textContent = String(sensorCount);
-  statChangedEl.textContent = String(changedThisPoll.size);
-}
+  if (localNodeId) {
+    nodeSet.add(localNodeId);
+  }
 
-function processIncrementalUpdates(rawUpdates) {
-  const updates = normalizeGroupedByOrigin(rawUpdates);
-  for (const [nodeId, sensors] of Object.entries(updates)) {
-    for (const [sensorId, data] of Object.entries(sensors)) {
-      const source = normalizeSyncSource(data);
-      if (source !== "push" && source !== "pull") {
+  for (const peerId of membershipMap.keys()) {
+    nodeSet.add(peerId);
+  }
+
+  const nodes = Array.from(nodeSet).sort(nodeSort).map((id) => ({
+    id,
+    status: getNodeStatus(id, localNodeId, membershipMap),
+  }));
+
+  const linkKey = new Set();
+  const links = [];
+
+  for (const [from, neighborsRaw] of Object.entries(adjacency)) {
+    const neighbors = Array.isArray(neighborsRaw) ? neighborsRaw : [];
+    for (const to of neighbors) {
+      if (typeof to !== "string" || !to) {
         continue;
       }
-
-      if (!knownLogNodes.has(nodeId)) {
-        knownLogNodes.add(nodeId);
-        pushNodeDiscoveryLog(nodeId, source, data.ts_ms);
+      const left = from < to ? from : to;
+      const right = from < to ? to : from;
+      const key = `${left}::${right}`;
+      if (linkKey.has(key)) {
+        continue;
       }
-
-      pushDataLog(nodeId, sensorId, data);
+      linkKey.add(key);
+      links.push({ source: left, target: right });
     }
   }
-}
 
-function formatDeltaMs(lastHeartbeatTsMs) {
-  if (typeof lastHeartbeatTsMs !== "number" || !Number.isFinite(lastHeartbeatTsMs)) {
-    return "-";
-  }
-  const delta = Math.max(0, Date.now() - lastHeartbeatTsMs);
-  return String(Math.round(delta));
-}
-
-function renderMembership(rawMembership) {
-  const peers = rawMembership && Array.isArray(rawMembership.peers) ? rawMembership.peers : [];
-  const localNodeId = rawMembership && typeof rawMembership.local_node_id === "string"
-    ? rawMembership.local_node_id
-    : null;
-  currentLocalNodeId = localNodeId;
-  membershipBodyEl.innerHTML = "";
-
-  let suspected = 0;
-  let dead = 0;
-
-  const ordered = peers.slice().sort((a, b) => {
-    const left = String(a && a.peer_id ? a.peer_id : "");
-    const right = String(b && b.peer_id ? b.peer_id : "");
-    return left.localeCompare(right);
+  links.sort((a, b) => {
+    const x = `${a.source}|${a.target}`;
+    const y = `${b.source}|${b.target}`;
+    return x.localeCompare(y, undefined, { numeric: true, sensitivity: "base" });
   });
 
-  for (const peer of ordered) {
-    const directStatus = typeof peer.direct_status === "string"
-      ? peer.direct_status
-      : (typeof peer.status === "string" ? peer.status : "unknown");
-    const evidenceStatus = typeof peer.evidence_status === "string"
-      ? peer.evidence_status
-      : "unknown";
-    const displayStatus = typeof peer.display_status === "string"
-      ? peer.display_status
-      : directStatus;
-    if (directStatus === "suspected") {
-      suspected += 1;
-    } else if (directStatus === "dead") {
-      dead += 1;
+  return { nodes, links, localNodeId, membershipMap };
+}
+
+function getCanvasSize(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(640, Math.floor(rect.width));
+  const height = Math.max(420, Math.floor(rect.height));
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.floor(width * ratio);
+  canvas.height = Math.floor(height * ratio);
+  return { width, height, ratio };
+}
+
+function layoutNodes(graph, width, height) {
+  const margin = 30;
+  const nodes = graph.nodes;
+  const count = nodes.length;
+  if (count === 0) {
+    return new Map();
+  }
+
+  const positions = new Map();
+  const cx = width / 2;
+  const cy = height / 2;
+  const innerW = Math.max(120, width - margin * 2);
+  const innerH = Math.max(120, height - margin * 2);
+
+  if (count <= 20) {
+    const radius = Math.min(innerW, innerH) * 0.44;
+    for (let i = 0; i < count; i += 1) {
+      const angle = (2 * Math.PI * i) / count - Math.PI / 2;
+      positions.set(nodes[i].id, {
+        x: cx + Math.cos(angle) * radius,
+        y: cy + Math.sin(angle) * radius,
+      });
+    }
+    return positions;
+  }
+
+  if (count <= 80) {
+    const perRing = Math.max(10, Math.ceil(count / 3));
+    for (let i = 0; i < count; i += 1) {
+      const ring = Math.floor(i / perRing);
+      const idxInRing = i % perRing;
+      const ringCount = Math.min(perRing, count - ring * perRing);
+      const angle = (2 * Math.PI * idxInRing) / Math.max(1, ringCount) - Math.PI / 2;
+      const radius = Math.min(innerW, innerH) * (0.22 + ring * 0.18);
+      positions.set(nodes[i].id, {
+        x: cx + Math.cos(angle) * radius,
+        y: cy + Math.sin(angle) * radius,
+      });
+    }
+    return positions;
+  }
+
+  const cols = Math.max(8, Math.ceil(Math.sqrt(count * 1.7)));
+  const rows = Math.ceil(count / cols);
+  const cellW = innerW / cols;
+  const cellH = innerH / Math.max(1, rows);
+
+  for (let i = 0; i < count; i += 1) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    positions.set(nodes[i].id, {
+      x: margin + col * cellW + cellW / 2,
+      y: margin + row * cellH + cellH / 2,
+    });
+  }
+
+  return positions;
+}
+
+function pickLinksToDraw(links, selectedNodeId, localNodeId, nodeCount) {
+  const maxLinks = nodeCount > 120 ? 350 : nodeCount > 60 ? 550 : 900;
+  if (links.length <= maxLinks) {
+    return { visible: links, hiddenCount: 0 };
+  }
+
+  const priority = [];
+  const secondary = [];
+  for (const link of links) {
+    const touchesSelected = selectedNodeId && (link.source === selectedNodeId || link.target === selectedNodeId);
+    const touchesLocal = localNodeId && (link.source === localNodeId || link.target === localNodeId);
+    if (touchesSelected || touchesLocal) {
+      priority.push(link);
+    } else {
+      secondary.push(link);
+    }
+  }
+
+  const visible = priority.slice(0, maxLinks);
+  if (visible.length < maxLinks) {
+    const remaining = maxLinks - visible.length;
+    const stride = Math.max(1, Math.floor(secondary.length / remaining));
+    for (let i = 0; i < secondary.length && visible.length < maxLinks; i += stride) {
+      visible.push(secondary[i]);
+    }
+  }
+
+  return { visible, hiddenCount: links.length - visible.length };
+}
+
+function statusColor(status) {
+  switch (status) {
+    case "local":
+      return "#f7f7f2";
+    case "alive-direct":
+      return "#5fb98a";
+    case "alive-indirect":
+      return "#8fd3bc";
+    case "suspected":
+      return "#f6b04d";
+    case "dead":
+      return "#d96f66";
+    default:
+      return "#8f9aa8";
+  }
+}
+
+function drawTopology(graph) {
+  const canvas = els.topologyCanvas;
+  const ctx = canvas.getContext("2d");
+  const { width, height, ratio } = getCanvasSize(canvas);
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const layout = layoutNodes(graph, width, height);
+  state.layoutPositions = layout;
+
+  const picked = pickLinksToDraw(graph.links, state.selectedNodeId, graph.localNodeId, graph.nodes.length);
+
+  ctx.strokeStyle = "rgba(139, 164, 191, 0.46)";
+  ctx.lineWidth = graph.nodes.length <= 20 ? 2 : 1;
+  for (const link of picked.visible) {
+    const a = layout.get(link.source);
+    const b = layout.get(link.target);
+    if (!a || !b) {
+      continue;
+    }
+    const touchesSelected = state.selectedNodeId && (link.source === state.selectedNodeId || link.target === state.selectedNodeId);
+    if (touchesSelected) {
+      ctx.strokeStyle = "rgba(255, 245, 191, 0.92)";
+      ctx.lineWidth = graph.nodes.length <= 20 ? 3 : 2;
+    } else {
+      ctx.strokeStyle = "rgba(139, 164, 191, 0.43)";
+      ctx.lineWidth = graph.nodes.length <= 20 ? 2 : 1;
+    }
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+
+  const showLabels = graph.nodes.length <= 60;
+  for (const node of graph.nodes) {
+    const pos = layout.get(node.id);
+    if (!pos) {
+      continue;
     }
 
-    const phi = typeof peer.phi === "number" && Number.isFinite(peer.phi) ? peer.phi.toFixed(3) : "-";
-    const deltaMs = formatDeltaMs(peer.last_heartbeat_ts_ms);
-    const evidenceSource = typeof peer.last_evidence_source === "string"
-      ? peer.last_evidence_source
-      : "-";
+    const isSelected = node.id === state.selectedNodeId;
+    const radius = graph.nodes.length <= 20
+      ? (isSelected ? 11 : 9)
+      : (isSelected ? 8 : 6);
 
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${peer.peer_id || "-"}</td>
-      <td><span class="member-status ${displayStatus}">${displayStatus}</span></td>
-      <td><span class="member-status ${directStatus}">${directStatus}</span></td>
-      <td><span class="member-status ${evidenceStatus}">${evidenceStatus}</span></td>
-      <td>${phi}</td>
-      <td><span class="heartbeat-delta ${directStatus}">${deltaMs}</span></td>
-      <td>${evidenceSource}</td>
+    ctx.fillStyle = statusColor(node.status);
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (isSelected) {
+      ctx.strokeStyle = "#fff5bf";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius + 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (showLabels || isSelected || node.id === graph.localNodeId) {
+      ctx.fillStyle = "#d7e2f0";
+      ctx.font = graph.nodes.length <= 20 ? "14px 'IBM Plex Mono'" : "12px 'IBM Plex Mono'";
+      ctx.fillText(node.id, pos.x + 12, pos.y - 12);
+    }
+  }
+
+  const hintBase = picked.hiddenCount > 0
+    ? `${graph.nodes.length} nodes, ${graph.links.length} links (${picked.visible.length} links rendered)`
+    : `${graph.nodes.length} nodes, ${graph.links.length} links`;
+  updateTopologyHintText(hintBase);
+
+  state.lastRenderBounds = { width, height };
+}
+
+function findClosestNode(canvasX, canvasY) {
+  let best = null;
+  for (const [nodeId, pos] of state.layoutPositions.entries()) {
+    const dx = pos.x - canvasX;
+    const dy = pos.y - canvasY;
+    const distSq = dx * dx + dy * dy;
+    if (best === null || distSq < best.distSq) {
+      best = { nodeId, distSq };
+    }
+  }
+  if (!best || best.distSq > 18 * 18) {
+    return null;
+  }
+  return best.nodeId;
+}
+
+function extractSeqVersion(record) {
+  const meta = record && typeof record.meta === "object" ? record.meta : {};
+  const candidates = [
+    meta.seq,
+    meta.version,
+    meta.cursor,
+    meta.last_seq,
+    meta.seq_no,
+    record.seq,
+    record.version,
+  ];
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === undefined) {
+      continue;
+    }
+    if (typeof candidate === "number" || typeof candidate === "string") {
+      return String(candidate);
+    }
+  }
+  return "-";
+}
+
+function renderSensorTable(cluster) {
+  const records = Array.isArray(cluster.sensorState.records) ? cluster.sensorState.records : [];
+  const selected = state.selectedNodeId;
+  const filtered = selected
+    ? records.filter((r) => r && typeof r.origin === "string" && r.origin === selected)
+    : records;
+
+  filtered.sort((a, b) => {
+    const left = `${a.origin || ""}|${a.sensor_id || ""}`;
+    const right = `${b.origin || ""}|${b.sensor_id || ""}`;
+    return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+  });
+
+  els.sensorCount.textContent = `${filtered.length} records${selected ? ` (origin: ${selected})` : ""}`;
+  els.sensorTable.innerHTML = "";
+
+  const maxRows = 600;
+  const rows = filtered.slice(0, maxRows);
+  for (const record of rows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${record.global_sensor_id || "-"}</td>
+      <td>${record.origin || "-"}</td>
+      <td>${record.sensor_id || "-"}</td>
+      <td>${formatCompactNumber(record.value)}</td>
+      <td>${formatTimestamp(record.ts_ms)}</td>
+      <td>${extractSeqVersion(record)}</td>
     `;
-    membershipBodyEl.appendChild(row);
+    els.sensorTable.appendChild(tr);
   }
 
-  statPeersEl.textContent = String(ordered.length);
-  statSuspectedEl.textContent = String(suspected);
-  statDeadEl.textContent = String(dead);
-
-  for (const [nodeId, card] of nodeCards.entries()) {
-    placeNodeCard(nodeId, card);
+  if (filtered.length > maxRows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="6">Showing ${maxRows} of ${filtered.length} rows for readability.</td>`;
+    els.sensorTable.appendChild(tr);
   }
 }
 
-async function poll() {
-  try {
-    const [stateRes, updatesRes, membershipRes] = await Promise.all([
-      fetch(api("/api/state"), { cache: "no-store" }),
-      fetch(api("/api/updates"), { cache: "no-store" }),
-      fetch(api("/api/membership"), { cache: "no-store" }),
-    ]);
-    if (!stateRes.ok || !updatesRes.ok || !membershipRes.ok) {
-      throw new Error("state fetch failed");
+function eventPriority(eventType) {
+  const type = String(eventType || "").toLowerCase();
+  for (let i = 0; i < IMPORTANT_EVENT_PATTERNS.length; i += 1) {
+    if (type.includes(IMPORTANT_EVENT_PATTERNS[i])) {
+      return IMPORTANT_EVENT_PATTERNS.length - i;
     }
-    const [rawState, rawUpdates, rawMembership] = await Promise.all([
-      stateRes.json(),
-      updatesRes.json(),
-      membershipRes.json(),
-    ]);
-    renderState(rawState);
-    if (!isNodeLogPrimed) {
-      const state = normalizeGroupedByOrigin(rawState);
-      for (const nodeId of Object.keys(state)) {
-        knownLogNodes.add(nodeId);
+  }
+  return 0;
+}
+
+function renderTimeline(cluster) {
+  const items = Array.isArray(cluster.events.items) ? cluster.events.items.slice() : [];
+  items.sort((a, b) => {
+    const pa = eventPriority(a.event_type);
+    const pb = eventPriority(b.event_type);
+    if (pa !== pb) {
+      return pb - pa;
+    }
+    const ta = typeof a.ts_ms === "number" ? a.ts_ms : 0;
+    const tb = typeof b.ts_ms === "number" ? b.ts_ms : 0;
+    return tb - ta;
+  });
+
+  els.timeline.innerHTML = "";
+  const maxRows = 140;
+  for (const item of items.slice(0, maxRows)) {
+    const row = document.createElement("article");
+    const prio = eventPriority(item.event_type);
+    row.className = `event-row ${prio > 0 ? "important" : "normal"}`;
+    const sender = item.sender_id || "-";
+    const target = item.target_id || "-";
+    const detail = item.details && typeof item.details === "object"
+      ? JSON.stringify(item.details)
+      : "{}";
+    row.innerHTML = `
+      <div class="event-head">
+        <strong>${item.event_type || "unknown_event"}</strong>
+        <span>${formatTimestamp(item.ts_ms)}</span>
+      </div>
+      <div class="event-meta">${item.category || "-"} | ${sender} -> ${target}</div>
+      <div class="event-detail">${detail}</div>
+    `;
+    els.timeline.appendChild(row);
+  }
+}
+
+function renderMetricsStrip(cluster, graph) {
+  const membershipPeers = Array.isArray(cluster.membership.peers) ? cluster.membership.peers : [];
+  const directPeers = membershipPeers.filter((p) => p && p.direct_observed === true).length;
+  const indirectPeers = membershipPeers.filter((p) => p && p.direct_observed !== true).length;
+  const suspected = membershipPeers.filter((p) => p && p.display_status === "suspected").length;
+  const dead = membershipPeers.filter((p) => p && p.display_status === "dead").length;
+  const metrics = cluster.metrics && typeof cluster.metrics === "object" ? cluster.metrics : {};
+  const counters = metrics.counters && typeof metrics.counters === "object" ? metrics.counters : {};
+
+  const summary = [
+    { label: "Nodes", value: graph.nodes.length },
+    { label: "Active Links", value: graph.links.length },
+    { label: "Direct Peers", value: directPeers },
+    { label: "Indirect Peers", value: indirectPeers },
+    { label: "Suspected", value: suspected },
+    { label: "Dead", value: dead },
+  ];
+
+  for (const key of METRIC_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(counters, key)) {
+      summary.push({ label: key.replace(/_total$/, "").replace(/_/g, " "), value: counters[key] });
+    }
+  }
+
+  els.metricsStrip.innerHTML = "";
+  for (const item of summary) {
+    const card = document.createElement("div");
+    card.className = "metric-card";
+    card.innerHTML = `<div class="metric-label">${item.label}</div><div class="metric-value">${formatCompactNumber(item.value)}</div>`;
+    els.metricsStrip.appendChild(card);
+  }
+}
+
+function renderInspector(cluster, graph) {
+  const selectedId = state.selectedNodeId;
+  const membershipPeers = Array.isArray(cluster.membership.peers) ? cluster.membership.peers : [];
+  const membershipMap = graph.membershipMap;
+
+  if (!selectedId) {
+    els.inspectorSummary.textContent = "Select a node in the graph to inspect local health/topology context.";
+    els.inspectorPeers.innerHTML = "";
+    return;
+  }
+
+  const selectedPeer = membershipMap.get(selectedId);
+  const selectedStatus = graph.nodes.find((n) => n.id === selectedId)?.status || "unknown";
+
+  const directObserved = selectedPeer ? selectedPeer.direct_observed === true : selectedId === graph.localNodeId;
+  const phiText = selectedPeer && selectedPeer.direct_observed === true && typeof selectedPeer.phi === "number"
+    ? selectedPeer.phi.toFixed(3)
+    : "n/a";
+
+  els.inspectorSummary.innerHTML = `
+    <strong>${selectedId}</strong> | status: <code>${selectedStatus}</code> |
+    direct observed by local node: <code>${directObserved ? "yes" : "no"}</code> |
+    phi(local): <code>${phiText}</code>
+  `;
+
+  const peerRows = [];
+  if (selectedId === graph.localNodeId) {
+    for (const peer of membershipPeers.slice().sort((a, b) => nodeSort(a.peer_id, b.peer_id))) {
+      const relation = peer.direct_observed === true ? "direct" : "indirect";
+      const phi = peer.direct_observed === true && typeof peer.phi === "number" ? peer.phi.toFixed(3) : "-";
+      peerRows.push({
+        peer: peer.peer_id || "-",
+        relation,
+        status: peer.display_status || peer.status || "unknown",
+        phi,
+        evidence: peer.last_evidence_source || "-",
+      });
+    }
+  } else {
+    const relation = selectedPeer
+      ? selectedPeer.direct_observed === true ? "direct" : "indirect"
+      : "unknown";
+    const status = selectedPeer
+      ? selectedPeer.display_status || selectedPeer.status || "unknown"
+      : "unknown";
+    const phi = selectedPeer && selectedPeer.direct_observed === true && typeof selectedPeer.phi === "number"
+      ? selectedPeer.phi.toFixed(3)
+      : "-";
+    peerRows.push({
+      peer: selectedId,
+      relation,
+      status,
+      phi,
+      evidence: selectedPeer ? selectedPeer.last_evidence_source || "-" : "not present in local membership view",
+    });
+  }
+
+  els.inspectorPeers.innerHTML = "";
+  for (const row of peerRows) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.peer}</td>
+      <td>${row.relation}</td>
+      <td>${renderStatusPill(row.status)}</td>
+      <td>${row.phi}</td>
+      <td>${row.evidence}</td>
+    `;
+    els.inspectorPeers.appendChild(tr);
+  }
+}
+
+function renderGlobalState(cluster, graph) {
+  const nodes = graph.nodes.slice().sort((a, b) => nodeSort(a.id, b.id));
+  const records = Array.isArray(cluster.sensorState.records) ? cluster.sensorState.records : [];
+  const recordsByOrigin = new Map();
+
+  for (const record of records) {
+    const origin = record && typeof record.origin === "string" ? record.origin : "";
+    if (!origin) {
+      continue;
+    }
+    if (!recordsByOrigin.has(origin)) {
+      recordsByOrigin.set(origin, []);
+    }
+    recordsByOrigin.get(origin).push(record);
+  }
+
+  const totalSensors = records.length;
+  els.globalStateSummary.textContent = `nodes=${nodes.length} | sensors=${totalSensors}`;
+
+  els.globalStateCards.innerHTML = "";
+  if (nodes.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "global-empty";
+    empty.textContent = "No nodes in topology/membership snapshot.";
+    els.globalStateCards.appendChild(empty);
+    return;
+  }
+
+  for (const node of nodes) {
+    const nodeRecords = recordsByOrigin.get(node.id) || [];
+    nodeRecords.sort((a, b) => {
+      const left = `${a.sensor_id || ""}|${a.global_sensor_id || ""}`;
+      const right = `${b.sensor_id || ""}|${b.global_sensor_id || ""}`;
+      return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+    });
+
+    const card = document.createElement("article");
+    card.className = "global-node-card";
+    card.innerHTML = `
+      <header class="global-node-head">
+        <div class="global-node-title">${node.id}</div>
+        <div class="global-node-meta">
+          ${renderStatusPill(node.status)}
+          <span class="global-sensor-count">${nodeRecords.length} sensors</span>
+        </div>
+      </header>
+      <div class="global-sensor-list"></div>
+    `;
+
+    const list = card.querySelector(".global-sensor-list");
+    if (nodeRecords.length === 0) {
+      const emptyRow = document.createElement("div");
+      emptyRow.className = "global-sensor-empty";
+      emptyRow.textContent = "No sensor records for this node.";
+      list.appendChild(emptyRow);
+    } else {
+      for (const record of nodeRecords) {
+        const row = document.createElement("div");
+        row.className = "global-sensor-row";
+        row.innerHTML = `
+          <div class="sensor-name">${record.sensor_id || "-"}</div>
+          <div class="sensor-value">${formatCompactNumber(record.value)}</div>
+          <div class="sensor-ts">${formatTimestamp(record.ts_ms)}</div>
+          <div class="sensor-seq">${extractSeqVersion(record)}</div>
+        `;
+        list.appendChild(row);
       }
-      isNodeLogPrimed = true;
     }
-    processIncrementalUpdates(rawUpdates);
-    renderMembership(rawMembership);
-    flushLog();
-    setStatus(true);
+
+    els.globalStateCards.appendChild(card);
+  }
+}
+
+function renderDashboard(cluster) {
+  const graph = buildGraphModel(cluster);
+  if (!state.selectedNodeId && graph.localNodeId) {
+    state.selectedNodeId = graph.localNodeId;
+  }
+  if (state.selectedNodeId && !graph.nodes.some((n) => n.id === state.selectedNodeId)) {
+    state.selectedNodeId = graph.localNodeId || (graph.nodes[0] ? graph.nodes[0].id : null);
+  }
+
+  drawTopology(graph);
+  renderMetricsStrip(cluster, graph);
+  renderInspector(cluster, graph);
+  renderGlobalState(cluster, graph);
+  renderSensorTable(cluster);
+  renderTimeline(cluster);
+}
+
+async function fetchClusterSnapshot() {
+  const url = `${state.baseUrl}/api/introspection`;
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return normalizeCluster(await response.json());
+}
+
+function makeUrl(protocol, host, port) {
+  return `${protocol}//${host}:${port}`;
+}
+
+function parseNodeIndex(nodeId) {
+  const match = String(nodeId || "").match(/(\d+)$/);
+  if (!match) {
+    return null;
+  }
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function parseBaseUrlParts() {
+  try {
+    const parsed = new URL(state.baseUrl);
+    const protocol = parsed.protocol || "http:";
+    const host = parsed.hostname || "localhost";
+    const port = parsed.port ? Number(parsed.port) : 80;
+    if (!Number.isFinite(port) || port <= 0) {
+      return null;
+    }
+    return { protocol, host, port };
   } catch {
-    setStatus(false);
+    return null;
   }
 }
 
-function start() {
-  const newBase = baseUrlInput.value.replace(/\/+$/, "");
-  if (newBase !== currentBaseUrl) {
-    currentBaseUrl = newBase;
-    resetUI();
+function buildCandidateBaseUrlsForNode(nodeId) {
+  const candidates = [];
+  const seen = new Set();
+  const addCandidate = (url) => {
+    if (typeof url !== "string" || !url || seen.has(url)) {
+      return;
+    }
+    seen.add(url);
+    candidates.push(url);
+  };
+
+  const cached = state.endpointByNodeId.get(nodeId);
+  if (cached) {
+    addCandidate(cached);
   }
 
-  const ms = Math.max(200, Number(refreshMsInput.value) || 1000);
-  timer = setInterval(poll, ms);
-  poll();
+  if (!state.cluster || !state.cluster.membership) {
+    return candidates;
+  }
+  const baseParts = parseBaseUrlParts();
+  const protocol = baseParts ? baseParts.protocol : "http:";
+  const currentHost = baseParts ? baseParts.host : "localhost";
+  const currentPort = baseParts ? baseParts.port : 10000;
+  const localNodeId = typeof state.cluster.membership.local_node_id === "string"
+    ? state.cluster.membership.local_node_id
+    : "";
+
+  const peers = Array.isArray(state.cluster.membership.peers) ? state.cluster.membership.peers : [];
+  const peer = peers.find((p) => p && p.peer_id === nodeId);
+  const peerHost = peer && typeof peer.host === "string" ? peer.host : null;
+  const peerPort = typeof peer.port === "number" && Number.isFinite(peer.port) ? peer.port : null;
+
+  const ports = [];
+  const addPort = (port) => {
+    if (!Number.isFinite(port) || port <= 0) {
+      return;
+    }
+    const normalized = Math.round(port);
+    if (normalized <= 0 || normalized > 65535 || ports.includes(normalized)) {
+      return;
+    }
+    ports.push(normalized);
+  };
+
+  addPort(currentPort);
+  if (peerPort !== null) {
+    addPort(peerPort + 1000);
+    addPort(peerPort);
+  }
+
+  const localIdx = parseNodeIndex(localNodeId);
+  const targetIdx = parseNodeIndex(nodeId);
+  if (localIdx !== null && targetIdx !== null) {
+    addPort(currentPort + (targetIdx - localIdx));
+    const inferredBase = currentPort - (localIdx - 1);
+    addPort(inferredBase + (targetIdx - 1));
+  }
+
+  const hosts = [];
+  const addHost = (host) => {
+    if (typeof host !== "string" || !host || hosts.includes(host)) {
+      return;
+    }
+    hosts.push(host);
+  };
+
+  addHost(peerHost);
+  addHost(currentHost);
+  addHost("localhost");
+  addHost("127.0.0.1");
+
+  for (const host of hosts) {
+    for (const port of ports) {
+      addCandidate(makeUrl(protocol, host, port));
+    }
+  }
+
+  return candidates;
 }
 
-applyBtn.onclick = start;
-start();
+async function probeIntrospection(baseUrl, expectedNodeId, timeoutMs = 1600) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${baseUrl}/api/introspection`, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return { ok: false, matched: false, localNodeId: null };
+    }
+    const payload = await response.json();
+    const cluster = payload && typeof payload.cluster === "object" ? payload.cluster : {};
+    const membership = cluster && typeof cluster.membership === "object" ? cluster.membership : {};
+    const localNodeId = typeof membership.local_node_id === "string" ? membership.local_node_id : null;
+    return {
+      ok: true,
+      matched: localNodeId === expectedNodeId,
+      localNodeId,
+    };
+  } catch {
+    return { ok: false, matched: false, localNodeId: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function switchConnectionToNode(nodeId) {
+  if (!state.cluster) {
+    return false;
+  }
+  const localNodeId = typeof state.cluster.membership.local_node_id === "string"
+    ? state.cluster.membership.local_node_id
+    : "";
+  if (!nodeId || nodeId === localNodeId) {
+    return false;
+  }
+
+  const candidates = buildCandidateBaseUrlsForNode(nodeId);
+  if (candidates.length === 0) {
+    setConnection(false, `No endpoint candidates for ${nodeId}`);
+    return false;
+  }
+
+  setConnection(false, `Switching to ${nodeId}...`);
+  for (const candidate of candidates) {
+    const probe = await probeIntrospection(candidate, nodeId);
+    if (!probe.ok || !probe.matched) {
+      continue;
+    }
+    state.endpointByNodeId.set(nodeId, candidate);
+    state.baseUrl = candidate;
+    els.baseUrl.value = candidate;
+    restartPolling();
+    return true;
+  }
+  setConnection(false, `Cannot reach ${nodeId} introspection API`);
+  return false;
+}
+
+async function pollOnce() {
+  try {
+    const cluster = await fetchClusterSnapshot();
+    state.cluster = cluster;
+    const localNodeId = cluster.membership && typeof cluster.membership.local_node_id === "string"
+      ? cluster.membership.local_node_id
+      : null;
+    if (localNodeId) {
+      state.endpointByNodeId.set(localNodeId, state.baseUrl);
+      // Keep default selection on local node only when no explicit user selection exists.
+      if (!state.selectedNodeId) {
+        state.selectedNodeId = localNodeId;
+      }
+    }
+    renderDashboard(cluster);
+    els.snapshotTime.textContent = formatTimestamp(cluster.generatedAtMs);
+    setConnection(true, "Connected");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "fetch failed";
+    setConnection(false, `Disconnected (${message})`);
+  }
+}
+
+function restartPolling() {
+  if (state.timer) {
+    clearInterval(state.timer);
+    state.timer = null;
+  }
+  state.timer = setInterval(pollOnce, state.pollMs);
+  pollOnce();
+}
+
+function applySettings() {
+  state.baseUrl = String(els.baseUrl.value || "").replace(/\/+$/, "");
+  state.pollMs = Math.max(250, Number(els.pollMs.value) || 1000);
+  restartPolling();
+}
+
+async function onCanvasClick(event) {
+  const rect = els.topologyCanvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const nodeId = findClosestNode(x, y);
+  if (!nodeId) {
+    return;
+  }
+  if (!state.cluster) {
+    return;
+  }
+  const graph = buildGraphModel(state.cluster);
+  const clickedNode = graph.nodes.find((n) => n.id === nodeId);
+  const clickedStatus = clickedNode ? clickedNode.status : "unknown";
+
+  // Always allow inspection selection on click.
+  state.selectedNodeId = nodeId;
+  renderDashboard(state.cluster);
+
+  // Never switch connection toward dead nodes: keep current endpoint and just inspect.
+  if (clickedStatus === "dead") {
+    return;
+  }
+
+  const currentLocalNodeId = typeof state.cluster.membership.local_node_id === "string"
+    ? state.cluster.membership.local_node_id
+    : "";
+  if (nodeId === currentLocalNodeId) {
+    return;
+  }
+  const switched = await switchConnectionToNode(nodeId);
+  if (switched) {
+    // After a successful endpoint switch, immediately keep the view anchored
+    // to the clicked target node (avoid reading stale pre-switch cluster state).
+    state.selectedNodeId = nodeId;
+  }
+}
+
+function onResize() {
+  if (state.cluster) {
+    renderDashboard(state.cluster);
+  }
+}
+
+els.apply.addEventListener("click", applySettings);
+els.topologyCanvas.addEventListener("click", onCanvasClick);
+window.addEventListener("resize", onResize);
+
+applySettings();

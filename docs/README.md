@@ -23,3 +23,4 @@ Module-level details are documented in each module README.
 - [topology](../topology/README.md)
 - [introspection](../introspection/README.md)
 - [webapi](../webapi/README.md)
+- [web dashboard](../web/README.md)

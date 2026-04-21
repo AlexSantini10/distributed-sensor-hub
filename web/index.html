@@ -71,37 +71,46 @@
           <tbody id="inspector-peers"></tbody>
         </table>
       </div>
-    </section>
-
-    <section class="panel sensors-panel" aria-labelledby="sensors-title">
-      <div class="panel-head">
-        <h2 id="sensors-title">Replicated Sensor State</h2>
-        <div id="sensor-count" class="hint">0 records</div>
-      </div>
-      <div class="table-wrap tall">
-        <table>
-          <thead>
-            <tr>
-              <th>Global Sensor</th>
-              <th>Origin</th>
-              <th>Sensor</th>
-              <th>Value</th>
-              <th>Timestamp</th>
-              <th>Seq/Version</th>
-            </tr>
-          </thead>
-          <tbody id="sensor-table"></tbody>
-        </table>
+      <div class="global-state-block">
+        <h3>Global State</h3>
+        <div id="global-state-summary" class="global-state-summary">No data yet.</div>
+        <div id="global-state-cards" class="global-state-cards">
+          <div class="global-empty">No sensor records yet.</div>
+        </div>
       </div>
     </section>
 
-    <section class="panel timeline-panel" aria-labelledby="timeline-title">
-      <div class="panel-head">
-        <h2 id="timeline-title">Recent Event Timeline</h2>
-        <div class="hint">Priority-first (control-plane critical events first)</div>
-      </div>
-      <div id="timeline" class="timeline" aria-live="polite"></div>
-    </section>
+    <div class="right-stack">
+      <section class="panel sensors-panel" aria-labelledby="sensors-title">
+        <div class="panel-head">
+          <h2 id="sensors-title">Replicated Sensor State</h2>
+          <div id="sensor-count" class="hint">0 records</div>
+        </div>
+        <div class="table-wrap tall">
+          <table>
+            <thead>
+              <tr>
+                <th>Global Sensor</th>
+                <th>Origin</th>
+                <th>Sensor</th>
+                <th>Value</th>
+                <th>Timestamp</th>
+                <th>Seq/Version</th>
+              </tr>
+            </thead>
+            <tbody id="sensor-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel timeline-panel" aria-labelledby="timeline-title">
+        <div class="panel-head">
+          <h2 id="timeline-title">Recent Event Timeline</h2>
+          <div class="hint">Priority-first (control-plane critical events first)</div>
+        </div>
+        <div id="timeline" class="timeline" aria-live="polite"></div>
+      </section>
+    </div>
   </main>
 
   <script src="./app.js"></script>

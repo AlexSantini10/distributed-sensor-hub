@@ -541,8 +541,8 @@ def test_membership_snapshot_is_consistent_during_concurrent_updates() -> None:
     assert failures == []
 
 
-def test_snapshot_reports_alive_indirect_when_direct_path_is_dead() -> None:
-    """Assert indirect evidence can keep display status alive while direct FD is dead."""
+def test_snapshot_keeps_dead_display_status_when_direct_path_is_dead() -> None:
+    """Assert dead direct status is never masked by indirect evidence."""
     table = PeerTable(
         self_node_id="node-1",
         phi_threshold_suspect=0.5,
@@ -568,7 +568,31 @@ def test_snapshot_reports_alive_indirect_when_direct_path_is_dead() -> None:
     snapshot = table.membership_snapshot()["peers"][0]
     assert snapshot["direct_status"] == "dead"
     assert snapshot["evidence_status"] == "active"
-    assert snapshot["display_status"] == "alive_indirect"
+    assert snapshot["display_status"] == "dead"
+
+
+def test_display_status_does_not_hide_suspected_with_direct_only_evidence() -> None:
+    """Assert direct-heartbeat evidence cannot mask suspected/dead into alive_indirect."""
+    assert PeerTable._compute_display_status(
+        direct_status="suspected",
+        evidence_status="active",
+        last_evidence_source="direct_heartbeat",
+    ) == "suspected"
+    assert PeerTable._compute_display_status(
+        direct_status="dead",
+        evidence_status="active",
+        last_evidence_source="direct_heartbeat",
+    ) == "dead"
+    assert PeerTable._compute_display_status(
+        direct_status="dead",
+        evidence_status="active",
+        last_evidence_source="sensor_update",
+    ) == "dead"
+    assert PeerTable._compute_display_status(
+        direct_status="unknown",
+        evidence_status="active",
+        last_evidence_source="sensor_update",
+    ) == "alive_indirect"
 
 
 def test_failure_detector_skips_peers_without_direct_observations() -> None:

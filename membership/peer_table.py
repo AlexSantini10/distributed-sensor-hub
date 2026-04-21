@@ -489,6 +489,7 @@ class PeerTable:
                 display_status = self._compute_display_status(
                     direct_status=direct_status,
                     evidence_status=evidence_status,
+                    last_evidence_source=peer.last_evidence_source,
                 )
                 snapshot_peers.append(
                     {
@@ -580,17 +581,33 @@ class PeerTable:
         return "stale"
 
     @staticmethod
-    def _compute_display_status(*, direct_status: str, evidence_status: str) -> str:
+    def _is_indirect_evidence_source(source: str) -> bool:
+        """Return whether an evidence source represents indirect reachability."""
+        return source not in {"none", "direct_bootstrap", "direct_heartbeat"}
+
+    @classmethod
+    def _compute_display_status(
+        cls,
+        *,
+        direct_status: str,
+        evidence_status: str,
+        last_evidence_source: str,
+    ) -> str:
         """Compute a human-oriented status derived from direct and indirect signals."""
         if direct_status == NodeStatus.ALIVE.to_wire():
             return "alive_direct"
-        if evidence_status == "active":
-            return "alive_indirect"
         if direct_status in {
             NodeStatus.SUSPECTED.to_wire(),
             NodeStatus.DEAD.to_wire(),
         }:
             return direct_status
+        if (
+            direct_status == "unknown"
+            and
+            evidence_status == "active"
+            and cls._is_indirect_evidence_source(last_evidence_source)
+        ):
+            return "alive_indirect"
         return "unknown"
 
     @staticmethod
