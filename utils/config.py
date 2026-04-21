@@ -27,6 +27,10 @@ class EnvKey(StrEnum):
     LOG_FILE = "LOG_FILE"
     CLEAR_LOG = "CLEAR_LOG"
     WEB_API_PORT = "WEB_API_PORT"
+    SOCKET_TIMEOUT = "SOCKET_TIMEOUT"
+    ACCEPT_QUEUE_SIZE = "ACCEPT_QUEUE_SIZE"
+    MAX_CONNECTIONS = "MAX_CONNECTIONS"
+    MAX_WORKERS = "MAX_WORKERS"
     HEARTBEAT_INTERVAL_MS = "HEARTBEAT_INTERVAL_MS"
     GOSSIP_SYNC_INTERVAL_MS = "GOSSIP_SYNC_INTERVAL_MS"
     GOSSIP_PUSH_RATIO = "GOSSIP_PUSH_RATIO"
@@ -181,6 +185,10 @@ class Config:
         log_file (str): Path to the process log file.
         clear_log (bool): Whether startup should truncate the configured log file.
         web_api_port (int): TCP port exposed by the HTTP monitoring API.
+        socket_timeout_s (float): Read/accept socket timeout in seconds for inbound TCP server.
+        accept_queue_size (int): Listen backlog passed to the inbound TCP server.
+        max_connections (int): Maximum number of concurrent active inbound TCP connections.
+        max_workers (int): Maximum number of worker threads for inbound TCP handlers.
         heartbeat_interval_ms (int): Heartbeat period used for periodic liveness probes.
         network_delay_ms (float): Artificial outbound network delay baseline in milliseconds.
         network_delay_jitter_ms (float): Delay jitter radius in milliseconds.
@@ -199,6 +207,10 @@ class Config:
     log_file: str
     clear_log: bool
     web_api_port: int
+    socket_timeout_s: float
+    accept_queue_size: int
+    max_connections: int
+    max_workers: int
     heartbeat_interval_ms: int
     gossip_sync_interval_ms: int
     gossip_push_ratio: float
@@ -263,6 +275,22 @@ class Config:
         web_api_port = _parse_port(
             _get_optional_env(env, EnvKey.WEB_API_PORT, default=str(port + 1000)),
             EnvKey.WEB_API_PORT.value,
+        )
+        socket_timeout_s = _parse_positive_float(
+            _get_optional_env(env, EnvKey.SOCKET_TIMEOUT, default="1.0"),
+            EnvKey.SOCKET_TIMEOUT.value,
+        )
+        accept_queue_size = _parse_positive_int(
+            _get_optional_env(env, EnvKey.ACCEPT_QUEUE_SIZE, default="128"),
+            EnvKey.ACCEPT_QUEUE_SIZE.value,
+        )
+        max_connections = _parse_positive_int(
+            _get_optional_env(env, EnvKey.MAX_CONNECTIONS, default="256"),
+            EnvKey.MAX_CONNECTIONS.value,
+        )
+        max_workers = _parse_positive_int(
+            _get_optional_env(env, EnvKey.MAX_WORKERS, default="64"),
+            EnvKey.MAX_WORKERS.value,
         )
         heartbeat_interval_ms = _parse_positive_int(
             _get_optional_env(env, EnvKey.HEARTBEAT_INTERVAL_MS, default="1000"),
@@ -356,6 +384,10 @@ class Config:
             log_file=log_file,
             clear_log=clear_log,
             web_api_port=web_api_port,
+            socket_timeout_s=socket_timeout_s,
+            accept_queue_size=accept_queue_size,
+            max_connections=max_connections,
+            max_workers=max_workers,
             heartbeat_interval_ms=heartbeat_interval_ms,
             gossip_sync_interval_ms=gossip_sync_interval_ms,
             gossip_push_ratio=gossip_push_ratio,

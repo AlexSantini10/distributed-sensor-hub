@@ -427,6 +427,11 @@ def setup_node_networking(
         host=config.host,
         port=config.port,
         dispatcher=dispatcher,
+        recv_timeout_s=config.socket_timeout_s,
+        accept_timeout_s=config.socket_timeout_s,
+        backlog=config.accept_queue_size,
+        max_connections=config.max_connections,
+        max_workers=config.max_workers,
     )
 
     return NetworkingContext(

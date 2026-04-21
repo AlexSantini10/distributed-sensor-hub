@@ -59,6 +59,11 @@ Base configuration:
 - Start from [.env.example](.env.example).
 - Required identifiers/bindings: `NODE_ID`, `HOST`, `PORT`, `WEB_API_PORT`.
 - Cluster bootstrap: `BOOTSTRAP_PEERS`.
+- Inbound TCP resilience:
+  - `SOCKET_TIMEOUT` (socket read/accept timeout in seconds)
+  - `ACCEPT_QUEUE_SIZE` (listen backlog)
+  - `MAX_CONNECTIONS` (max concurrent active inbound connections)
+  - `MAX_WORKERS` (max concurrent inbound handler workers)
 - Replication cadence/fanout: `GOSSIP_SYNC_INTERVAL_MS`, `GOSSIP_PUSH_*`, `GOSSIP_PULL_*`.
 - Failure detection thresholds: `PHI_THRESHOLD_SUSPECT`, `PHI_THRESHOLD_DEAD`.
 

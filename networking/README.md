@@ -40,3 +40,32 @@ Its role in the overall system is to isolate connection management and length-pr
 - `runtime.networking` instantiates and wires `TcpClient`/`TcpServer` into node startup and shutdown lifecycle.
 - `protocol` consumes inbound decoded messages through dispatcher callbacks and supplies outbound serializable message objects.
 - Higher-level subsystems (`membership`, `gossip`, replicated state handlers) use this module indirectly through protocol send/receive paths, relying on <u>eventual delivery attempts rather than transport-level reliability guarantees</u>.
+
+## Inbound Backpressure and Limits (`TcpServer`)
+
+`tcp_server.py` enforces bounded concurrency to prevent saturation under overload.
+
+- **Connection limiting**
+  - Active inbound connections are capped by `MAX_CONNECTIONS`.
+  - When the cap is reached, newly accepted connections are immediately closed (load shedding).
+
+- **Bounded execution model**
+  - Connection handlers run on a `ThreadPoolExecutor`.
+  - Worker concurrency is capped by `MAX_WORKERS` (no unbounded thread-per-connection growth).
+
+- **Timeouts and slow peers**
+  - `SOCKET_TIMEOUT` is applied to accept/read loops so slow or silent clients do not block indefinitely.
+  - Framing remains length-prefixed (`4-byte length + payload`) with max-frame checks.
+
+- **Shutdown behavior**
+  - Stop accepting new connections.
+  - Close tracked active sockets.
+  - Shutdown worker pool and clear tracking state safely.
+
+- **Operational signals**
+  - Logs include connection accepted, rejected (limit reached), and closed events.
+
+### Trade-off
+
+The current strategy prefers predictable resource bounds over queueing:
+excess inbound connections are rejected early instead of being buffered indefinitely.

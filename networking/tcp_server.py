@@ -9,13 +9,17 @@ Responsibilities:
 
 from __future__ import annotations
 
+import logging
 import socket
 import struct
 import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from types import TracebackType
 from typing import Protocol
 
 from protocol.message import Message
+
+_LOG = logging.getLogger(__name__)
 
 
 class Dispatcher(Protocol):
@@ -48,12 +52,16 @@ class TcpServer:
         _accept_timeout_s (float): Timeout for accept-loop wakeups.
         _max_frame_size (int): Upper bound for inbound frame payload size.
         _backlog (int): Kernel listen backlog for pending connections.
+        _max_connections (int): Maximum number of concurrently active connections.
+        _max_workers (int): Maximum number of concurrent connection handlers.
         _stop_event (threading.Event): Shared shutdown signal for server threads.
         _server_sock (socket.socket | None): Listening socket, if started.
         _accept_thread (threading.Thread | None): Thread running the accept loop, if started.
+        _executor (ThreadPoolExecutor | None): Worker pool for connection handlers.
+        _connection_slots (threading.BoundedSemaphore): Active-connection limiter.
         _lock (threading.Lock): Synchronizes connection and thread tracking.
         _connections (set[socket.socket]): Active accepted sockets.
-        _conn_threads (set[threading.Thread]): Active per-connection worker threads.
+        _conn_futures (set[Future[None]]): Active worker tasks for connection handlers.
     """
 
     def __init__(
@@ -65,6 +73,8 @@ class TcpServer:
         accept_timeout_s: float = 1.0,
         max_frame_size: int = 1024 * 1024,
         backlog: int = 128,
+        max_connections: int = 256,
+        max_workers: int = 64,
     ):
         """Initialize the inbound transport server.
 
@@ -76,6 +86,9 @@ class TcpServer:
             accept_timeout_s (float): Timeout for socket accepts.
             max_frame_size (int): Maximum permitted inbound payload size in bytes.
             backlog (int): Maximum number of pending connections.
+            max_connections (int): Maximum number of concurrently active connections.
+            max_workers (int): Maximum number of worker threads used to process
+                connection receive loops.
 
         Returns:
             None: This initializer configures the inbound transport server.
@@ -92,6 +105,12 @@ class TcpServer:
         self._accept_timeout_s = accept_timeout_s
         self._max_frame_size = max_frame_size
         self._backlog = backlog
+        self._max_connections = max_connections
+        self._max_workers = max_workers
+        if self._max_connections <= 0:
+            raise ValueError("max_connections must be > 0")
+        if self._max_workers <= 0:
+            raise ValueError("max_workers must be > 0")
 
         # Shutdown coordination
         self._stop_event = threading.Event()
@@ -99,11 +118,13 @@ class TcpServer:
         # Listening socket and accept thread
         self._server_sock: socket.socket | None = None
         self._accept_thread: threading.Thread | None = None
+        self._executor: ThreadPoolExecutor | None = None
+        self._connection_slots = threading.BoundedSemaphore(value=self._max_connections)
 
-        # Tracking of active connections and threads
+        # Tracking of active connections and worker tasks
         self._lock = threading.Lock()
         self._connections: set[socket.socket] = set()
-        self._conn_threads: set[threading.Thread] = set()
+        self._conn_futures: set[Future[None]] = set()
 
     def start(self) -> None:
         """Bind the listening socket and start the accept loop.
@@ -136,13 +157,19 @@ class TcpServer:
             name="tcp-accept",
             daemon=True,
         )
+        executor = ThreadPoolExecutor(
+            max_workers=self._max_workers,
+            thread_name_prefix="tcp-worker",
+        )
 
         with self._lock:
             if self._accept_thread is not None or self._stop_event.is_set():
                 server_sock.close()
+                executor.shutdown(wait=False, cancel_futures=True)
                 raise RuntimeError("Server already started")
             self._server_sock = server_sock
             self._accept_thread = t
+            self._executor = executor
 
         t.start()
 
@@ -156,10 +183,12 @@ class TcpServer:
             self._stop_event.set()
             server_sock = self._server_sock
             accept_thread = self._accept_thread
+            executor = self._executor
             self._server_sock = None
             self._accept_thread = None
+            self._executor = None
             conns = list(self._connections)
-            threads = list(self._conn_threads)
+            futures = list(self._conn_futures)
 
         # Close listening socket to unblock accept()
         if server_sock is not None:
@@ -182,15 +211,19 @@ class TcpServer:
         if accept_thread is not None and accept_thread is not threading.current_thread():
             accept_thread.join(timeout=5.0)
 
-        for t in threads:
-            if t is threading.current_thread():
-                continue
-            t.join(timeout=5.0)
+        # Wait for worker tasks to finish after sockets have been closed.
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
+        for future in futures:
+            future.cancel()
 
         # Cleanup internal state
         with self._lock:
             self._connections.clear()
-            self._conn_threads.clear()
+            self._conn_futures.clear()
+            self._connection_slots = threading.BoundedSemaphore(
+                value=self._max_connections
+            )
 
     def __enter__(self) -> "TcpServer":
         """Start the server when entering a context manager.
@@ -252,22 +285,61 @@ class TcpServer:
                     pass
                 break
 
+            if not self._connection_slots.acquire(blocking=False):
+                _LOG.warning("Connection rejected due to max_connections limit")
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+                continue
+
             # Configure per-connection timeout
             conn.settimeout(self._recv_timeout_s)
+            _LOG.info("Connection accepted")
 
             with self._lock:
                 self._connections.add(conn)
 
-            # Start per-connection receive loop
-            t = threading.Thread(
-                target=self._connection_loop,
-                args=(conn,),
-                name="tcp-conn",
-                daemon=True,
-            )
+            # Schedule per-connection receive loop
             with self._lock:
-                self._conn_threads.add(t)
-            t.start()
+                executor = self._executor
+            if executor is None:
+                with self._lock:
+                    self._connections.discard(conn)
+                self._connection_slots.release()
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+                break
+
+            try:
+                future = executor.submit(self._connection_loop, conn)
+            except RuntimeError:
+                with self._lock:
+                    self._connections.discard(conn)
+                self._connection_slots.release()
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+                break
+
+            with self._lock:
+                self._conn_futures.add(future)
+            future.add_done_callback(self._on_connection_done)
+
+    def _on_connection_done(self, future: Future[None]) -> None:
+        """Remove a completed connection future from tracking.
+
+        Args:
+            future (Future[None]): Completed worker future.
+
+        Returns:
+            None: This callback updates internal bookkeeping.
+        """
+        with self._lock:
+            self._conn_futures.discard(future)
 
     def _connection_loop(self, conn: socket.socket) -> None:
         """Receive, decode, and dispatch messages from one connection.
@@ -305,10 +377,8 @@ class TcpServer:
                 conn.close()
             except OSError:
                 pass
-
-            current = threading.current_thread()
-            with self._lock:
-                self._conn_threads.discard(current)
+            _LOG.info("Connection closed")
+            self._connection_slots.release()
 
     def _read_frame(self, conn: socket.socket) -> bytes | None:
         """Read one length-prefixed payload from a socket.
