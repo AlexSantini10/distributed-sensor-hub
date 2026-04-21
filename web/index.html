@@ -2,76 +2,108 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Distributed Sensor Hub</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cluster Observability Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-
-<header>
-  <h1>Distributed Sensor Hub</h1>
-  <div id="status">Disconnected</div>
-</header>
-
-<div class="controls">
-  <input id="base-url" value="http://localhost:10000" size="28">
-  <input id="refresh-ms" type="number" value="1000" min="200" step="100">
-  <button id="apply">Apply</button>
-</div>
-
-<section class="stats">
-  <div class="stat"><div class="label">Nodes</div><div id="stat-nodes" class="value">0</div></div>
-  <div class="stat"><div class="label">Sensors</div><div id="stat-sensors" class="value">0</div></div>
-  <div class="stat"><div class="label">Peers</div><div id="stat-peers" class="value">0</div></div>
-  <div class="stat"><div class="label">Suspected</div><div id="stat-suspected" class="value">0</div></div>
-  <div class="stat"><div class="label">Dead</div><div id="stat-dead" class="value">0</div></div>
-  <div class="stat"><div class="label">Changed Last Poll</div><div id="stat-changed" class="value">0</div></div>
-</section>
-
-<main>
-  <section id="nodes">
-    <div class="nodes-group">
-      <h2 class="nodes-group-title">Local Node</h2>
-      <div id="nodes-local" class="nodes-grid"></div>
+  <header class="header">
+    <div>
+      <h1>Cluster Observability</h1>
+      <p class="subtitle">Read-only dashboard powered by <code>/api/introspection</code></p>
     </div>
-    <div class="nodes-group">
-      <h2 class="nodes-group-title">Other Nodes</h2>
-      <div id="nodes-remote" class="nodes-grid"></div>
-    </div>
+    <div id="connection-status" class="status disconnected">Disconnected</div>
+  </header>
+
+  <section class="controls" aria-label="Polling controls">
+    <label>
+      API Base URL
+      <input id="base-url" type="text" value="http://localhost:10000" spellcheck="false">
+    </label>
+    <label>
+      Poll Interval (ms)
+      <input id="poll-ms" type="number" value="1000" min="250" step="250">
+    </label>
+    <button id="apply" type="button">Apply</button>
+    <div class="timestamp">Snapshot: <span id="snapshot-time">-</span></div>
   </section>
 
-  <section id="side-panels">
-    <section id="membership">
-      <h2>Membership (Local View)</h2>
-      <div class="membership-scroll">
+  <section id="metrics-strip" class="metrics-strip" aria-label="Cluster metrics summary"></section>
+
+  <main class="dashboard">
+    <section class="panel topology-panel" aria-labelledby="topology-title">
+      <div class="panel-head">
+        <h2 id="topology-title">Topology Graph</h2>
+        <div id="topology-hint" class="hint">No topology data yet</div>
+      </div>
+      <div class="topology-canvas-wrap">
+        <canvas id="topology-canvas" aria-label="Cluster topology graph"></canvas>
+      </div>
+      <div class="legend">
+        <span><i class="dot local"></i> Local</span>
+        <span><i class="dot alive-direct"></i> Alive direct</span>
+        <span><i class="dot alive-indirect"></i> Alive indirect</span>
+        <span><i class="dot suspected"></i> Suspected</span>
+        <span><i class="dot dead"></i> Dead</span>
+        <span><i class="dot unknown"></i> Unknown</span>
+      </div>
+    </section>
+
+    <section class="panel inspector-panel" aria-labelledby="inspector-title">
+      <div class="panel-head">
+        <h2 id="inspector-title">Selected Node Inspector</h2>
+      </div>
+      <div id="inspector-summary" class="inspector-summary">Select a node in the graph.</div>
+      <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Peer</th>
-              <th>Display</th>
-              <th>Direct</th>
-              <th>Evidence</th>
+              <th>Relation</th>
+              <th>Status</th>
               <th>Phi</th>
-              <th>Delta Last HB (ms)</th>
-              <th>Evidence Source</th>
+              <th>Evidence</th>
             </tr>
           </thead>
-          <tbody id="membership-body"></tbody>
+          <tbody id="inspector-peers"></tbody>
         </table>
       </div>
     </section>
 
-    <section id="log">
-      <h2>Updates log</h2>
-      <div id="log-entries"></div>
+    <section class="panel sensors-panel" aria-labelledby="sensors-title">
+      <div class="panel-head">
+        <h2 id="sensors-title">Replicated Sensor State</h2>
+        <div id="sensor-count" class="hint">0 records</div>
+      </div>
+      <div class="table-wrap tall">
+        <table>
+          <thead>
+            <tr>
+              <th>Global Sensor</th>
+              <th>Origin</th>
+              <th>Sensor</th>
+              <th>Value</th>
+              <th>Timestamp</th>
+              <th>Seq/Version</th>
+            </tr>
+          </thead>
+          <tbody id="sensor-table"></tbody>
+        </table>
+      </div>
     </section>
-  </section>
-</main>
 
-<script src="./app.js"></script>
+    <section class="panel timeline-panel" aria-labelledby="timeline-title">
+      <div class="panel-head">
+        <h2 id="timeline-title">Recent Event Timeline</h2>
+        <div class="hint">Priority-first (control-plane critical events first)</div>
+      </div>
+      <div id="timeline" class="timeline" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
 </body>
 </html>
-
-
-
