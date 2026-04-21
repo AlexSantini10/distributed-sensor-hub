@@ -23,7 +23,7 @@ In the overall system, it acts as the **composition boundary** between domain su
 
 - `state.node_state_worker`: authoritative local state worker; provides merge, snapshot, and delta interfaces consumed by runtime threads.
 - `networking.tcp_client` and `networking.tcp_server`: outbound/inbound TCP transport primitives used by protocol messaging.
-- `protocol.setup` and `protocol.factory`: protocol dispatcher wiring and message construction (`JOIN_REQUEST`, `PING`, `SENSOR_UPDATE`, `GET_DELTA`, `FULL_SYNC_REQUEST`).
+- `runtime.protocol_assembly` and `protocol.factory`: protocol dispatcher wiring and message construction (`JOIN_REQUEST`, `PING`, `SENSOR_UPDATE`, `GET_DELTA`, `FULL_SYNC_REQUEST`).
 - `membership.peer_table`: shared membership/failure-detection state used by bootstrap, heartbeat, and peer selection.
 - `sensors.sensor_manager` and `sensors.handler`: local sensor event production and queue-based ingestion into state processing.
 - `gossip.publisher`: membership dissemination during heartbeat rounds.

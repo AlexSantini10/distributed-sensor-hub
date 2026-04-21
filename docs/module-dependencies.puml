@@ -28,6 +28,7 @@ package "gossip" as gossip
 package "state" as state
 package "sensors" as sensors
 package "webapi" as webapi
+package "topology" as topology
 component "web/\n(static UI)" as web
 
 node --> runtime
@@ -39,6 +40,7 @@ runtime --> gossip
 runtime --> sensors
 runtime --> state
 runtime --> webapi
+runtime --> topology
 
 protocol --> membership
 
@@ -48,6 +50,7 @@ membership --> fd
 
 gossip --> membership
 gossip --> protocol
+gossip --> topology
 
 sensors --> state
 

@@ -310,6 +310,14 @@ class MembershipSnapshotProvider(Protocol):
         ...
 
 
+class TopologySnapshotProvider(Protocol):
+    """Define the call signature used by the topology snapshot endpoint."""
+
+    def __call__(self) -> JsonObject:
+        """Produce a topology snapshot payload."""
+        ...
+
+
 class SensorEventSource(Protocol):
     """Define the queue contract used by the state worker."""
 

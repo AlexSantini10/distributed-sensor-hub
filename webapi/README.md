@@ -15,14 +15,15 @@ Its system role is to bridge internal state/membership workers and external poll
 - `threading` (stdlib): Hosts the HTTP server in a dedicated daemon thread (`WebAPIServer`).
 - `json` (stdlib): Serializes snapshot objects into wire payloads.
 - `protocol.contracts`: Supplies canonical HTTP content-type and UTF-8 encoding constants used in responses.
-- `utils.typing`: Defines provider/logger structural types used for dependency injection (`SnapshotProvider`, `MembershipSnapshotProvider`, `LoggerLike`).
-- `state` and `membership` (internal providers via runtime wiring): Supply full-state, incremental-update, and optional membership snapshots consumed by this module.
+- `utils.typing`: Defines provider/logger structural types used for dependency injection (`SnapshotProvider`, `MembershipSnapshotProvider`, `TopologySnapshotProvider`, `LoggerLike`).
+- `state`, `membership`, and `topology` (internal providers via runtime wiring): Supply full-state, incremental-update, optional membership, and optional topology snapshots consumed by this module.
 
 ## High-Level Design
 
 - **Core responsibilities**:
   - Serve current snapshots of replicated node state and incremental updates.
   - Optionally serve membership snapshots when a membership provider is configured.
+  - Optionally serve merged topology snapshots when a topology provider is configured.
   - Enforce a constrained HTTP surface (`GET`, `OPTIONS`) with CORS headers for browser-based polling.
   - Isolate HTTP failures from domain workers through exception handling and logger-based reporting.
 

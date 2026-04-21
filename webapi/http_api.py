@@ -11,7 +11,12 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from protocol.contracts import HttpContentType, TextEncoding
-from utils.typing import LoggerLike, MembershipSnapshotProvider, SnapshotProvider
+from utils.typing import (
+    LoggerLike,
+    MembershipSnapshotProvider,
+    SnapshotProvider,
+    TopologySnapshotProvider,
+)
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -26,6 +31,7 @@ class RequestHandler(BaseHTTPRequestHandler):
     _state_provider: SnapshotProvider
     _updates_provider: SnapshotProvider
     _membership_provider: MembershipSnapshotProvider | None
+    _topology_provider: TopologySnapshotProvider | None
     _log: LoggerLike | None
 
     def _send_cors_headers(self) -> None:
@@ -61,6 +67,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_updates()
             elif self.path == "/api/membership":
                 self._handle_membership()
+            elif self.path == "/api/topology":
+                self._handle_topology()
             else:
                 self.send_response(404)
                 self._send_cors_headers()
@@ -146,6 +154,32 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _handle_topology(self) -> None:
+        """Serialize and return the current merged topology snapshot."""
+        if self._topology_provider is None:
+            self.send_response(404)
+            self._send_cors_headers()
+            self.end_headers()
+            return
+
+        try:
+            topology = self._topology_provider()
+            payload = json.dumps(topology).encode(TextEncoding.UTF8.value)
+        except Exception:
+            if self._log is not None:
+                self._log.error("Failed to produce topology snapshot", exc_info=True)
+            self.send_response(500)
+            self._send_cors_headers()
+            self.end_headers()
+            return
+
+        self.send_response(200)
+        self._send_cors_headers()
+        self.send_header("Content-Type", HttpContentType.JSON.value)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def log_message(self, format: str, *args: object) -> None:
         """Suppress the standard library's default per-request stderr logging.
 
@@ -163,6 +197,7 @@ def build_request_handler(
     state_provider: SnapshotProvider,
     updates_provider: SnapshotProvider,
     membership_provider: MembershipSnapshotProvider | None,
+    topology_provider: TopologySnapshotProvider | None,
     log: LoggerLike | None,
 ) -> type[RequestHandler]:
     """Create a concrete request-handler class bound to snapshot providers.
@@ -186,6 +221,11 @@ def build_request_handler(
             if membership_provider is not None
             else None
         )
+        _topology_provider = (
+            staticmethod(topology_provider)
+            if topology_provider is not None
+            else None
+        )
         _log = log
 
     return ConfiguredRequestHandler
@@ -206,6 +246,7 @@ class WebAPIServer(threading.Thread):
         state_provider: SnapshotProvider,
         updates_provider: SnapshotProvider,
         membership_provider: MembershipSnapshotProvider | None,
+        topology_provider: TopologySnapshotProvider | None,
         log: LoggerLike | None,
     ) -> None:
         """Initialize the threaded HTTP server wrapper.
@@ -217,6 +258,8 @@ class WebAPIServer(threading.Thread):
             updates_provider (SnapshotProvider): Callable returning the incremental updates snapshot.
             membership_provider (SnapshotProvider | None): Optional callable returning
                 the Phi-based membership snapshot.
+            topology_provider (TopologySnapshotProvider | None): Optional callable
+                returning the merged topology snapshot.
             log (LoggerLike | None): Logger-like object used for lifecycle reporting.
 
         Returns:
@@ -229,6 +272,7 @@ class WebAPIServer(threading.Thread):
             state_provider=state_provider,
             updates_provider=updates_provider,
             membership_provider=membership_provider,
+            topology_provider=topology_provider,
             log=log,
         )
         try:

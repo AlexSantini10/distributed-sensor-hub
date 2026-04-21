@@ -70,6 +70,7 @@ def test_http_api_serves_membership_snapshot() -> None:
         state_provider=lambda: state_snapshot,
         updates_provider=lambda: updates_snapshot,
         membership_provider=lambda: membership_snapshot,
+        topology_provider=lambda: {"local_node_id": "node-a", "adjacency": {}, "entries": []},
         log=DummyLog(),
     )
     server.start()
@@ -79,5 +80,10 @@ def test_http_api_serves_membership_snapshot() -> None:
         assert _fetch_json(f"{base}/api/state") == state_snapshot
         assert _fetch_json(f"{base}/api/updates") == updates_snapshot
         assert _fetch_json(f"{base}/api/membership") == membership_snapshot
+        assert _fetch_json(f"{base}/api/topology") == {
+            "local_node_id": "node-a",
+            "adjacency": {},
+            "entries": [],
+        }
     finally:
         server.stop()

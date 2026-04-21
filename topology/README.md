@@ -2,9 +2,12 @@
 
 ## Purpose
 
-The `topology` module defines the **topology-policy layer** used to drive outbound peer-connection decisions.
+The `topology` module has two responsibilities:
 
-Its role in the overall system is to decouple runtime networking from specific peer-selection strategies. Runtime code provides a topology context (known peers, already connected peers, bootstrap peers), and this module returns policy decisions for connection targets and candidate peers.
+- **Topology policy** for outbound connection decisions.
+- **Topology state dissemination** for eventually consistent cluster-wide adjacency knowledge.
+
+Policy keeps networking strategy pluggable. Topology state lets every node publish and merge direct-neighbor declarations learned via peer-to-peer gossip.
 
 ## File Overview
 
@@ -25,8 +28,13 @@ Its role in the overall system is to decouple runtime networking from specific p
     - keeps disconnect/remediation hooks as no-op.
 - `resolver.py`
   - Maps configured policy names to concrete `TopologyPolicy` instances and validates allowed values.
+- `state.py`
+  - Defines reusable disseminated topology state:
+    - `TopologyEntry` with `{node_id, direct_neighbors, updated_at_ms}`.
+    - `TopologyStateStore` that keeps local declaration + merged global view.
+    - LWW merge per node entry with deterministic tie-break on equal version.
 - `__init__.py`
-  - Exposes the module public surface (`TopologyContext`, `TopologyPeer`, `TopologyPolicy`, `FullMeshTopologyPolicy`, resolver function).
+  - Exposes the module public surface (`TopologyContext`, `TopologyPeer`, `TopologyPolicy`, `FullMeshTopologyPolicy`, resolver function, `TopologyEntry`, `TopologyStateStore`).
 
 ## Main Dependencies
 
@@ -36,6 +44,8 @@ Its role in the overall system is to decouple runtime networking from specific p
   - Provides the wildcard host constant used during outbound target normalization in full-mesh mode.
 - Internal consumer: `runtime.networking`
   - Builds `TopologyContext`, invokes policy selection/resolution, and applies decisions to TCP peer registration.
+- Internal consumers: `gossip.publisher`, `gossip.handlers`, `runtime.networking`, `runtime.heartbeat`
+  - Publish and merge topology entries through `GOSSIP_STATE`.
 - External (standard library): `dataclasses`, `abc`
   - Support immutable data models and abstract policy interfaces.
 
@@ -53,6 +63,12 @@ Its role in the overall system is to decouple runtime networking from specific p
   - For each selected peer, runtime calls `resolve_connection_target`.
   - Runtime registers resolved targets in the outbound TCP client.
   - Disconnect and under-connected hooks are currently invoked as extension points but return empty results in full-mesh mode.
+  - Runtime also updates local topology declaration on connectivity changes (connect, reconnect, unavailable).
+  - Gossip rounds include `state.topology.entries`.
+  - Receivers merge entries with **LWW per node entry**:
+    - newer `updated_at_ms` wins,
+    - equal timestamp resolves deterministically by sorted neighbor tuple comparison.
+  - Any component can read `TopologyStateStore.topology_snapshot()` or `get_adjacency_map()` without coupling to UI.
 
 - **Interactions with other modules**
   - Input side: receives peer information originating from membership/discovery and bootstrap configuration (via runtime).

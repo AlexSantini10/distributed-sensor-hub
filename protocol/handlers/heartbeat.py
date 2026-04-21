@@ -16,6 +16,7 @@ def make_heartbeat_handlers(
     peer_table: PeerTable,
     send: SenderLike,
     self_node_id: str,
+    on_peer_alive: Callable[[str], None] | None = None,
 ) -> tuple[Callable[[Message], None], Callable[[Message], None]]:
     """Create handlers for ``PING`` and ``PONG`` liveness traffic."""
     log: LoggerLike = get_logger(__name__, self_node_id)
@@ -56,6 +57,8 @@ def make_heartbeat_handlers(
             peer_id=msg.sender_id,
             sender_timestamp_ms=payload.timestamp_ms,
         )
+        if on_peer_alive is not None:
+            on_peer_alive(msg.sender_id)
 
         pong = build_pong(
             sender_id=self_node_id,
@@ -79,5 +82,7 @@ def make_heartbeat_handlers(
             peer_id=msg.sender_id,
             sender_timestamp_ms=payload.timestamp_ms,
         )
+        if on_peer_alive is not None:
+            on_peer_alive(msg.sender_id)
 
     return handle_ping, handle_pong

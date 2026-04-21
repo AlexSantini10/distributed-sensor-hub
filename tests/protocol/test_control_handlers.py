@@ -1,7 +1,7 @@
 """Validate protocol control-message handlers are non-fatal."""
 
 from protocol.factory import build_ack, build_error
-from protocol.setup import setup_protocol
+from runtime.protocol_assembly import setup_protocol
 
 
 def _send(_peer_id: str, _msg: object) -> None:

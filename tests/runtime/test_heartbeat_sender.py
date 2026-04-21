@@ -10,6 +10,7 @@ from membership.peer_table import PeerTable
 from protocol.message import Message
 from protocol.message_types import MessageType
 from runtime.heartbeat import HeartbeatSender
+from topology.state import TopologyStateStore
 from utils.logging import get_logger
 
 
@@ -129,3 +130,39 @@ def test_heartbeat_sender_pings_all_and_only_connected_peers() -> None:
         if msg.msg_type is MessageType.PING
     }
     assert ping_targets == {"node-b", "node-d"}
+
+
+def test_heartbeat_sender_gossip_includes_topology_snapshot() -> None:
+    """Assert heartbeat gossip includes topology entries when store is configured."""
+    peer_table = PeerTable(self_node_id="node-a")
+    peer_table.upsert_peer(node_id="node-b", host="10.0.0.2", port=9002)
+
+    topology_state = TopologyStateStore(self_node_id="node-a")
+    topology_state.set_local_neighbors(("node-b",))
+
+    sent: list[tuple[str, Message]] = []
+
+    def send(peer_id: str, msg: Message) -> None:
+        sent.append((peer_id, msg))
+
+    sender = HeartbeatSender(
+        self_node_id="node-a",
+        peer_table=peer_table,
+        send=send,
+        interval_ms=100,
+        log=DummyLog(),
+        topology_state=topology_state,
+    )
+    sender._send_heartbeat_round()
+
+    gossip_messages = [msg for _, msg in sent if msg.msg_type is MessageType.GOSSIP_STATE]
+    assert len(gossip_messages) >= 1
+    state = gossip_messages[0].payload.state
+    assert "topology" in state
+    assert isinstance(state["topology"], dict)
+    entries = state["topology"].get("entries", [])
+    assert isinstance(entries, list)
+    assert len(entries) == 1
+    assert entries[0]["node_id"] == "node-a"
+    assert entries[0]["direct_neighbors"] == ["node-b"]
+    assert isinstance(entries[0]["updated_at_ms"], int)

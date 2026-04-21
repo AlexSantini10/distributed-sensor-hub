@@ -13,6 +13,7 @@ from collections.abc import Iterable
 from membership.peer import Peer
 from membership.peer_table import PeerTable
 from protocol.factory import build_gossip_state
+from topology.state import TopologyStateStore
 from utils.typing import LoggerLike, SenderLike
 
 
@@ -23,11 +24,19 @@ def publish_membership_gossip(
     peers: Iterable[Peer],
     send: SenderLike,
     log: LoggerLike,
+    topology_state: TopologyStateStore | None = None,
 ) -> None:
     """Broadcast one membership gossip snapshot to the provided peers."""
+    state = peer_table.build_gossip_state()
+    if topology_state is not None:
+        topology_fragment = topology_state.build_gossip_state()
+        topology_obj = topology_fragment.get("topology")
+        if isinstance(topology_obj, dict):
+            state["topology"] = topology_obj
+
     gossip = build_gossip_state(
         sender_id=self_node_id,
-        state=peer_table.build_gossip_state(),
+        state=state,
     )
     for peer in peers:
         try:

@@ -15,9 +15,11 @@ from collections.abc import Callable
 from gossip.publisher import publish_membership_gossip
 from membership.peer import Peer
 from membership.peer_table import PeerTable
+from membership.status import NodeStatus
 from membership.results import FailureDetectionUpdateResult
 from protocol.factory import build_ping
 from protocol.message import Message
+from topology.state import TopologyStateStore
 from utils.typing import LoggerLike, SenderLike
 
 
@@ -33,6 +35,7 @@ class HeartbeatSender:
         interval_ms: int,
         log: LoggerLike,
         connected_peer_ids_provider: Callable[[], tuple[str, ...]] | None = None,
+        topology_state: TopologyStateStore | None = None,
     ) -> None:
         """Initialize a background heartbeat sender."""
         self._self_node_id = self_node_id
@@ -42,6 +45,7 @@ class HeartbeatSender:
         self._log = log
         self._stop_event = threading.Event()
         self._connected_peer_ids_provider = connected_peer_ids_provider
+        self._topology_state = topology_state
         self._thread = threading.Thread(
             target=self._run,
             name="heartbeat-sender",
@@ -107,6 +111,12 @@ class HeartbeatSender:
                     f"phi={update.peer.phi:.3f} "
                     f"event_ts_ms={update.peer.status_ts_ms}"
                 )
+            if not update.status.changed or self._topology_state is None:
+                continue
+            if update.status.new_status is NodeStatus.ALIVE:
+                self._topology_state.mark_neighbor_connected(update.peer_id)
+            else:
+                self._topology_state.mark_neighbor_disconnected(update.peer_id)
 
     def _publish_membership_gossip(self, peers: tuple[Peer, ...]) -> None:
         """Publish the current membership view before sending direct probes."""
@@ -116,6 +126,7 @@ class HeartbeatSender:
             peers=peers,
             send=self._send,
             log=self._log,
+            topology_state=self._topology_state,
         )
 
     def _build_ping(self) -> Message:

@@ -7,6 +7,7 @@ Responsibilities:
 """
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from membership.peer import Peer as MembershipPeer
@@ -21,9 +22,10 @@ from protocol.message import Message
 from topology.models import TopologyContext, TopologyPeer
 from topology.policy import TopologyPolicy
 from topology.resolver import resolve_topology_policy
+from topology.state import TopologyStateStore
 from utils.config import Config
 from utils.typing import LoggerLike, SenderLike, StateWorkerLike
-from protocol.setup import setup_protocol
+from runtime.protocol_assembly import setup_protocol
 from runtime.pull_response_tracker import PullResponseTracker
 
 
@@ -40,6 +42,8 @@ class NetworkingContext:
         topology_policy (TopologyPolicy): Topology policy driving connect-target decisions.
         pull_response_tracker (PullResponseTracker): Pull-window tracker used to
             classify inbound state updates as push or pull.
+        topology_state (TopologyStateStore): Disseminated topology state store
+            containing local declaration and merged global topology view.
     """
 
     client: TcpClient
@@ -49,6 +53,7 @@ class NetworkingContext:
     bootstrap_peers: list[TcpPeer]
     topology_policy: TopologyPolicy
     pull_response_tracker: PullResponseTracker
+    topology_state: TopologyStateStore
 
 
 def make_join_request(self_node_id: str, host: str, port: int) -> Message:
@@ -137,7 +142,11 @@ class ClientPeerRegistry:
         _lock (threading.Lock): Mutex guarding concurrent peer discovery updates.
     """
 
-    def __init__(self, client: TcpClient) -> None:
+    def __init__(
+        self,
+        client: TcpClient,
+        on_peer_connected: Callable[[str], None] | None = None,
+    ) -> None:
         """Initialize the registry.
 
         Args:
@@ -147,6 +156,7 @@ class ClientPeerRegistry:
             None: This initializer configures the peer registry.
         """
         self._client = client
+        self._on_peer_connected = on_peer_connected
         self._known_peer_ids: set[str] = set()
         self._pending_peer_ids: set[str] = set()
         self._lock = threading.Lock()
@@ -192,6 +202,8 @@ class ClientPeerRegistry:
         with self._lock:
             self._pending_peer_ids.discard(node_id)
             self._known_peer_ids.add(node_id)
+        if self._on_peer_connected is not None:
+            self._on_peer_connected(node_id)
 
     def connected_peer_ids(self) -> tuple[str, ...]:
         """Return a snapshot of registered outbound peer node IDs.
@@ -357,7 +369,11 @@ def setup_node_networking(
         network_delay_spike_s=config.network_delay_spike_ms / 1000.0,
         network_packet_loss_prob=config.network_packet_loss_prob,
     )
-    registry = ClientPeerRegistry(client=client)
+    topology_state = TopologyStateStore(self_node_id=config.node_id)
+    registry = ClientPeerRegistry(
+        client=client,
+        on_peer_connected=topology_state.mark_neighbor_connected,
+    )
     topology_policy = resolve_topology_policy(config.topology_policy.value)
 
     def on_peer_discovered(peer: MembershipPeer) -> None:
@@ -421,7 +437,10 @@ def setup_node_networking(
         phi_threshold_suspect=config.phi_threshold_suspect,
         phi_threshold_dead=config.phi_threshold_dead,
         phi_initial_interval_s=config.phi_initial_interval_s,
+        topology_state=topology_state,
     )
+
+    topology_state.set_local_neighbors(registry.connected_peer_ids())
 
     server = tcp_server_cls(
         host=config.host,
@@ -442,4 +461,5 @@ def setup_node_networking(
         bootstrap_peers=bootstrap_peers,
         topology_policy=topology_policy,
         pull_response_tracker=pull_response_tracker,
+        topology_state=topology_state,
     )

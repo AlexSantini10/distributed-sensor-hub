@@ -32,6 +32,7 @@ from runtime.startup import (
     start_web_api_server,
 )
 from runtime.pull_response_tracker import PullResponseTracker
+from topology.state import TopologyStateStore
 
 
 class NodeApplication:
@@ -81,6 +82,7 @@ class NodeApplication:
         self.web_api: WebAPIServer | None = None
         self.bootstrap_peers: list[TcpPeer] = []
         self.pull_response_tracker: PullResponseTracker | None = None
+        self.topology_state: TopologyStateStore | None = None
         self._lifecycle_lock = threading.Lock()
         self._stopped = False
 
@@ -214,6 +216,7 @@ class NodeApplication:
         self.peer_table = networking.peer_table
         self.bootstrap_peers = networking.bootstrap_peers
         self.pull_response_tracker = networking.pull_response_tracker
+        self.topology_state = networking.topology_state
 
     def _bootstrap_membership(self) -> None:
         """Seed the membership view and send initial ``JOIN_REQUEST`` messages.
@@ -274,6 +277,7 @@ class NodeApplication:
             peer_table=self.peer_table,
             client=self.client,
             log=self.log,
+            topology_state=self.topology_state,
         )
 
     def _start_web_api(self) -> None:
@@ -293,6 +297,7 @@ class NodeApplication:
                 state_worker=self.state_worker,
                 peer_table=self.peer_table,
                 log=self.log,
+                topology_state=self.topology_state,
             )
         except Exception:
             self.log.critical("Failed to start WebAPI", exc_info=True)

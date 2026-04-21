@@ -15,6 +15,7 @@ from sensors.handler import QueueingSensorHandler
 from sensors.sensor_manager import SensorManager
 from state.events import SensorEventQueue
 from state.node_state_worker import NodeStateWorker
+from topology.state import TopologyStateStore
 from utils.config import Config
 from utils.typing import LoggerLike
 from webapi.http_api import WebAPIServer
@@ -164,6 +165,7 @@ def start_heartbeat_runtime(
     peer_table,
     client: TcpClient,
     log: LoggerLike,
+    topology_state: TopologyStateStore | None = None,
 ) -> HeartbeatSender:
     """Start periodic heartbeats to all peers."""
     heartbeat_sender = HeartbeatSender(
@@ -173,6 +175,7 @@ def start_heartbeat_runtime(
         interval_ms=config.heartbeat_interval_ms,
         log=log,
         connected_peer_ids_provider=client.registered_peer_ids,
+        topology_state=topology_state,
     )
     heartbeat_sender.start()
     log.info(
@@ -187,6 +190,7 @@ def start_web_api_server(
     state_worker: NodeStateWorker,
     peer_table,
     log: LoggerLike,
+    topology_state: TopologyStateStore | None = None,
 ) -> WebAPIServer:
     """Start the HTTP monitoring API backed by state snapshots."""
     log.info(f"Starting WebAPI on {config.host}:{config.web_api_port}")
@@ -197,6 +201,9 @@ def start_web_api_server(
         updates_provider=state_worker.get_updates_snapshot,
         membership_provider=(
             peer_table.membership_snapshot if peer_table is not None else None
+        ),
+        topology_provider=(
+            topology_state.topology_snapshot if topology_state is not None else None
         ),
         log=log,
     )

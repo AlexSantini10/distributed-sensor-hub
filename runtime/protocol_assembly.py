@@ -1,4 +1,4 @@
-"""Assemble protocol routing and handler bindings for a runtime node."""
+"""Assemble protocol routing and handler bindings for runtime nodes."""
 
 from collections.abc import Callable
 import time
@@ -20,9 +20,10 @@ from protocol.handlers.state_sync import (
     make_get_delta_handler,
     make_sensor_update_handler,
 )
-from protocol.message_types import MessageType
 from protocol.message import Message
+from protocol.message_types import MessageType
 from protocol.messages import AckPayload, ErrorPayload
+from topology.state import TopologyStateStore
 from utils.logging import get_logger
 from utils.typing import SenderLike, StateWorkerLike
 
@@ -40,25 +41,9 @@ def setup_protocol(
     phi_threshold_suspect: float = 3.0,
     phi_threshold_dead: float = 8.0,
     phi_initial_interval_s: float = 1.0,
+    topology_state: TopologyStateStore | None = None,
 ) -> tuple[MessageDispatcher, PeerTable]:
-    """Build the protocol dispatcher and register message handlers.
-
-    Args:
-        self_node_id (str): Local node identifier used by protocol handlers.
-        send_function (SenderLike): Transport callback used by outbound handlers.
-        state_worker (StateWorkerLike | None): Optional state worker for state-sync handlers.
-        on_peer_discovered (OnPeerDiscovered | None): Optional callback notified for new peers.
-        sensor_update_source_classifier (Callable[[str], str] | None): Optional
-            sender classifier used to tag inbound ``SENSOR_UPDATE`` source.
-        sensor_update_seq_observer (Callable[[str, str, int], None] | None): Optional
-            observer notified with ``(sender_id, source, seq)`` for inbound updates.
-        phi_threshold_suspect (float): Phi threshold for ``suspected`` transitions.
-        phi_threshold_dead (float): Phi threshold for ``dead`` transitions.
-        phi_initial_interval_s (float): Initial heartbeat interval estimate in seconds.
-
-    Returns:
-        tuple[MessageDispatcher, PeerTable]: Configured dispatcher and shared peer table.
-    """
+    """Build the protocol dispatcher and register message handlers."""
     dispatcher = MessageDispatcher()
     peer_table = PeerTable(
         self_node_id=self_node_id,
@@ -78,6 +63,11 @@ def setup_protocol(
         peer_table=peer_table,
         send=send_function,
         self_node_id=self_node_id,
+        on_peer_alive=(
+            topology_state.mark_neighbor_connected
+            if topology_state is not None
+            else None
+        ),
     )
 
     def _with_direct_observation(
@@ -130,6 +120,7 @@ def setup_protocol(
                 peer_table=peer_table,
                 self_node_id=self_node_id,
                 on_peer_discovered=on_peer_discovered,
+                topology_state=topology_state,
             )
         ),
     )

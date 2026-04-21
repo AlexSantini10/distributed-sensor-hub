@@ -11,6 +11,7 @@ from membership.peer_table import PeerTable
 from membership.status import NodeStatus
 from gossip.handlers import make_gossip_state_handler
 from protocol.factory import build_gossip_state
+from topology.state import TopologyStateStore
 from utils.typing import JsonObject
 
 
@@ -275,3 +276,52 @@ def test_gossip_state_handler_survives_discovery_callback_failure(caplog) -> Non
 
     assert peer_table.get_peer("node-c") is not None
     assert "on_peer_discovered failed for peer node-c 10.0.0.3:9003" in caplog.text
+
+
+def test_gossip_state_handler_merges_topology_entries_with_lww() -> None:
+    """Assert topology entries are merged from gossip payloads using LWW semantics."""
+    peer_table = PeerTable(self_node_id="node-a")
+    topology_state = TopologyStateStore(self_node_id="node-a")
+    topology_state.set_local_neighbors(("node-b",))
+
+    handler = make_gossip_state_handler(
+        peer_table=peer_table,
+        self_node_id="node-a",
+        topology_state=topology_state,
+    )
+    handler(
+        build_gossip_state(
+            sender_id="node-x",
+            state={
+                "topology": {
+                    "entries": [
+                        {
+                            "node_id": "node-c",
+                            "direct_neighbors": ["node-a"],
+                            "updated_at_ms": 100,
+                        }
+                    ]
+                }
+            },
+        )
+    )
+    handler(
+        build_gossip_state(
+            sender_id="node-y",
+            state={
+                "topology": {
+                    "entries": [
+                        {
+                            "node_id": "node-c",
+                            "direct_neighbors": ["node-a", "node-d"],
+                            "updated_at_ms": 101,
+                        }
+                    ]
+                }
+            },
+        )
+    )
+
+    adjacency = topology_state.get_adjacency_map()
+    assert adjacency["node-a"] == ("node-b",)
+    assert adjacency["node-c"] == ("node-a", "node-d")

@@ -7,7 +7,7 @@ Responsibilities:
 
 from __future__ import annotations
 
-from protocol.contracts import NetworkConstant
+from topology.constants import WILDCARD_HOST
 from topology.models import TopologyContext, TopologyPeer
 from topology.policy import TopologyPolicy
 
@@ -24,7 +24,7 @@ class FullMeshTopologyPolicy(TopologyPolicy):
         Returns:
             TopologyPeer: Descriptor with resolved connect host.
         """
-        if peer.host == NetworkConstant.WILDCARD_HOST.value:
+        if peer.host == WILDCARD_HOST:
             return TopologyPeer(
                 node_id=peer.node_id,
                 host=peer.node_id,

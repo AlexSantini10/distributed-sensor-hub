@@ -1,4 +1,4 @@
-"""Provide topology-policy abstractions for connection decision flows.
+"""Provide topology abstractions for connection policy and topology state.
 
 Responsibilities:
     - Define policy-facing context and peer models for topology decisions.
@@ -10,6 +10,7 @@ from topology.models import TopologyContext, TopologyPeer
 from topology.policy import TopologyPolicy
 from topology.full_mesh import FullMeshTopologyPolicy
 from topology.resolver import resolve_topology_policy
+from topology.state import TopologyEntry, TopologyStateStore
 
 __all__ = [
     "TopologyContext",
@@ -17,4 +18,6 @@ __all__ = [
     "TopologyPolicy",
     "FullMeshTopologyPolicy",
     "resolve_topology_policy",
+    "TopologyEntry",
+    "TopologyStateStore",
 ]
