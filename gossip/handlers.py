@@ -19,7 +19,7 @@ from protocol.message import Message
 from protocol.messages import GossipStatePayload
 from topology.state import TopologyEntry, TopologyStateStore
 from utils.logging import get_logger
-from utils.typing import LoggerLike
+from utils.typing import JsonObject, LoggerLike
 
 
 def make_gossip_state_handler(
@@ -28,6 +28,9 @@ def make_gossip_state_handler(
     self_node_id: str,
     on_peer_discovered: Callable[[Peer], None] | None = None,
     topology_state: TopologyStateStore | None = None,
+    on_protocol_event: (
+        Callable[[str, str | None, str | None, JsonObject | None], None] | None
+    ) = None,
 ) -> Callable[[Message], None]:
     """Create a handler that merges membership liveness gossip."""
     log: LoggerLike = get_logger(__name__, self_node_id)
@@ -128,6 +131,18 @@ def make_gossip_state_handler(
                     f"updated={len(merge_result.updated_peers)} "
                     f"ignored={merge_result.ignored_entries}"
                 )
+            if on_protocol_event is not None:
+                on_protocol_event(
+                    "gossip_membership_merged",
+                    msg.sender_id,
+                    self_node_id,
+                    {
+                        "merged_entries": merge_result.merged_entries,
+                        "new_peers": len(merge_result.new_peers),
+                        "updated_peers": len(merge_result.updated_peers),
+                        "ignored_entries": merge_result.ignored_entries,
+                    },
+                )
 
         if topology_state is None:
             return
@@ -160,6 +175,13 @@ def make_gossip_state_handler(
                 "GOSSIP_STATE topology merged: "
                 f"sender={msg.sender_id} merged_entries={merged_topology}"
             )
+            if on_protocol_event is not None:
+                on_protocol_event(
+                    "gossip_topology_merged",
+                    msg.sender_id,
+                    self_node_id,
+                    {"merged_entries": merged_topology},
+                )
 
     return handle_gossip_state
 

@@ -25,7 +25,7 @@ from protocol.message_types import MessageType
 from protocol.messages import AckPayload, ErrorPayload
 from topology.state import TopologyStateStore
 from utils.logging import get_logger
-from utils.typing import SenderLike, StateWorkerLike
+from utils.typing import JsonObject, SenderLike, StateWorkerLike
 
 
 OnPeerDiscovered = Callable[[MembershipPeer], None]
@@ -42,6 +42,10 @@ def setup_protocol(
     phi_threshold_dead: float = 8.0,
     phi_initial_interval_s: float = 1.0,
     topology_state: TopologyStateStore | None = None,
+    on_protocol_event: (
+        Callable[[str, str | None, str | None, JsonObject | None], None] | None
+    ) = None,
+    on_metric: Callable[[str, int], None] | None = None,
 ) -> tuple[MessageDispatcher, PeerTable]:
     """Build the protocol dispatcher and register message handlers."""
     dispatcher = MessageDispatcher()
@@ -79,6 +83,22 @@ def setup_protocol(
             handler(msg)
             if msg.sender_id == self_node_id:
                 return
+            if on_protocol_event is not None:
+                on_protocol_event(
+                    f"inbound_{msg.msg_type.value}",
+                    msg.sender_id,
+                    self_node_id,
+                    None,
+                )
+            if on_metric is not None:
+                if msg.msg_type is MessageType.GOSSIP_STATE:
+                    on_metric("gossip_messages_received_total", 1)
+                if msg.msg_type is MessageType.GET_DELTA:
+                    on_metric("get_delta_requests_received_total", 1)
+                if msg.msg_type is MessageType.FULL_SYNC_REQUEST:
+                    on_metric("full_sync_requests_received_total", 1)
+                if msg.msg_type is MessageType.FULL_SYNC_RESPONSE:
+                    on_metric("full_sync_responses_received_total", 1)
             if msg.msg_type in {MessageType.PING, MessageType.PONG}:
                 return
             peer_table.record_direct_message(
@@ -104,6 +124,8 @@ def setup_protocol(
                     peer_table=peer_table,
                     source_classifier=sensor_update_source_classifier,
                     on_seq_observed=sensor_update_seq_observer,
+                    on_protocol_event=on_protocol_event,
+                    on_metric=on_metric,
                 )
             ),
         )
@@ -116,13 +138,14 @@ def setup_protocol(
     dispatcher.register(
         MessageType.GOSSIP_STATE,
         _with_direct_observation(
-            make_gossip_state_handler(
-                peer_table=peer_table,
-                self_node_id=self_node_id,
-                on_peer_discovered=on_peer_discovered,
-                topology_state=topology_state,
-            )
-        ),
+                make_gossip_state_handler(
+                    peer_table=peer_table,
+                    self_node_id=self_node_id,
+                    on_peer_discovered=on_peer_discovered,
+                    topology_state=topology_state,
+                    on_protocol_event=on_protocol_event,
+                )
+            ),
     )
     if state_worker is not None:
         dispatcher.register(
@@ -133,6 +156,8 @@ def setup_protocol(
                     peer_table=peer_table,
                     send=send_function,
                     self_node_id=self_node_id,
+                    on_protocol_event=on_protocol_event,
+                    on_metric=on_metric,
                 )
             ),
         )
@@ -144,6 +169,7 @@ def setup_protocol(
                     peer_table=peer_table,
                     self_node_id=self_node_id,
                     on_peer_discovered=on_peer_discovered,
+                    on_protocol_event=on_protocol_event,
                 )
             ),
         )
@@ -162,6 +188,8 @@ def setup_protocol(
             make_delta_unavailable_handler(
                 send=send_function,
                 self_node_id=self_node_id,
+                on_protocol_event=on_protocol_event,
+                on_metric=on_metric,
             )
         ),
     )
@@ -173,6 +201,8 @@ def setup_protocol(
                     state_worker=state_worker,
                     send=send_function,
                     self_node_id=self_node_id,
+                    on_protocol_event=on_protocol_event,
+                    on_metric=on_metric,
                 )
             ),
         )

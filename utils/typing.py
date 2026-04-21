@@ -125,7 +125,7 @@ class MembershipSnapshotPeerDict(TypedDict):
     host: str
     port: int
     status: str
-    phi: float
+    phi: float | None
     last_heartbeat_ts_ms: int
     sample_count: int
     sample_window_size: int
@@ -245,6 +245,10 @@ class StateWorkerLike(Protocol):
         """Track one observed replication sequence for one origin."""
         ...
 
+    def replication_stats_snapshot(self) -> JsonObject:
+        """Return read-only replication cursor and ring-buffer statistics."""
+        ...
+
     def start(self) -> None:
         """Start the worker.
 
@@ -315,6 +319,14 @@ class TopologySnapshotProvider(Protocol):
 
     def __call__(self) -> JsonObject:
         """Produce a topology snapshot payload."""
+        ...
+
+
+class JsonSnapshotProvider(Protocol):
+    """Define a generic JSON snapshot provider signature."""
+
+    def __call__(self) -> JsonObject:
+        """Produce a JSON-serializable snapshot payload."""
         ...
 
 

@@ -24,7 +24,7 @@ from topology.policy import TopologyPolicy
 from topology.resolver import resolve_topology_policy
 from topology.state import TopologyStateStore
 from utils.config import Config
-from utils.typing import LoggerLike, SenderLike, StateWorkerLike
+from utils.typing import JsonObject, LoggerLike, SenderLike, StateWorkerLike
 from runtime.protocol_assembly import setup_protocol
 from runtime.pull_response_tracker import PullResponseTracker
 
@@ -347,6 +347,10 @@ def setup_node_networking(
     log: LoggerLike,
     state_worker: StateWorkerLike,
     tcp_server_cls: type[TcpServer],
+    on_protocol_event: (
+        Callable[[str, str | None, str | None, JsonObject | None], None] | None
+    ) = None,
+    on_metric: Callable[[str, int], None] | None = None,
 ) -> NetworkingContext:
     """Create the runtime networking stack for a node.
 
@@ -438,6 +442,8 @@ def setup_node_networking(
         phi_threshold_dead=config.phi_threshold_dead,
         phi_initial_interval_s=config.phi_initial_interval_s,
         topology_state=topology_state,
+        on_protocol_event=on_protocol_event,
+        on_metric=on_metric,
     )
 
     topology_state.set_local_neighbors(registry.connected_peer_ids())

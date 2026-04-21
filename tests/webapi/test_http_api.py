@@ -60,8 +60,29 @@ def test_http_api_serves_membership_snapshot() -> None:
                 "sample_count": 3,
                 "sample_window_size": 128,
                 "status_transition_ts_ms": 1000,
+                "direct_status": "alive",
+                "evidence_status": "active",
+                "display_status": "alive_direct",
+                "last_evidence_ts_ms": 1000,
+                "last_evidence_source": "direct_heartbeat",
+                "direct_observed": True,
             }
         ],
+    }
+    introspection_snapshot = {
+        "schema_version": "introspection/v1",
+        "generated_at_ms": 123,
+        "cluster": {
+            "topology": {
+                "local_node_id": "node-a",
+                "adjacency": {},
+                "entries": [],
+            },
+            "membership": membership_snapshot,
+            "sensor_state": {"record_count": 1, "records": []},
+            "events": {"count": 0, "items": []},
+            "metrics": {"counters": {}, "state_replication": {}},
+        },
     }
 
     server = WebAPIServer(
@@ -71,6 +92,7 @@ def test_http_api_serves_membership_snapshot() -> None:
         updates_provider=lambda: updates_snapshot,
         membership_provider=lambda: membership_snapshot,
         topology_provider=lambda: {"local_node_id": "node-a", "adjacency": {}, "entries": []},
+        introspection_provider=lambda: introspection_snapshot,
         log=DummyLog(),
     )
     server.start()
@@ -84,6 +106,17 @@ def test_http_api_serves_membership_snapshot() -> None:
             "local_node_id": "node-a",
             "adjacency": {},
             "entries": [],
+        }
+        assert _fetch_json(f"{base}/api/introspection") == introspection_snapshot
+        assert _fetch_json(f"{base}/api/introspection/topology") == {
+            "schema_version": "introspection/v1",
+            "generated_at_ms": 123,
+            "topology": introspection_snapshot["cluster"]["topology"],
+        }
+        assert _fetch_json(f"{base}/api/introspection/membership") == {
+            "schema_version": "introspection/v1",
+            "generated_at_ms": 123,
+            "membership": introspection_snapshot["cluster"]["membership"],
         }
     finally:
         server.stop()

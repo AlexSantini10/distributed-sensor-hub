@@ -14,6 +14,11 @@ import time
 from networking.tcp_client import Peer as TcpPeer
 from networking.tcp_client import TcpClient
 from networking.tcp_server import TcpServer
+from introspection.service import (
+    ClusterIntrospectionService,
+    ControlPlaneEventStore,
+    ReplicationGossipMetricsStore,
+)
 from runtime.heartbeat import HeartbeatSender
 from membership.peer_table import PeerTable
 from sensors.sensor_manager import SensorManager
@@ -83,6 +88,9 @@ class NodeApplication:
         self.bootstrap_peers: list[TcpPeer] = []
         self.pull_response_tracker: PullResponseTracker | None = None
         self.topology_state: TopologyStateStore | None = None
+        self.control_plane_events = ControlPlaneEventStore()
+        self.replication_metrics = ReplicationGossipMetricsStore()
+        self.introspection_service: ClusterIntrospectionService | None = None
         self._lifecycle_lock = threading.Lock()
         self._stopped = False
 
@@ -209,6 +217,8 @@ class NodeApplication:
             log=self.log,
             state_worker=self.state_worker,
             tcp_server_cls=TcpServer,
+            on_protocol_event=self._record_protocol_event,
+            on_metric=self._record_metric,
         )
 
         self.client = networking.client
@@ -262,6 +272,8 @@ class NodeApplication:
                 state_worker=self.state_worker,
                 log=self.log,
                 pull_response_tracker=self.pull_response_tracker,
+                on_protocol_event=self._record_protocol_event,
+                on_metric=self._record_metric,
             )
         except Exception:
             self.log.critical("Failed to initialize sensors", exc_info=True)
@@ -278,6 +290,8 @@ class NodeApplication:
             client=self.client,
             log=self.log,
             topology_state=self.topology_state,
+            on_protocol_event=self._record_protocol_event,
+            on_metric=self._record_metric,
         )
 
     def _start_web_api(self) -> None:
@@ -290,6 +304,17 @@ class NodeApplication:
             Exception: Propagates API startup failures to keep process startup consistent.
         """
         assert self.state_worker is not None
+        assert self.peer_table is not None
+        assert self.topology_state is not None
+
+        self.introspection_service = ClusterIntrospectionService(
+            state_provider=self.state_worker.get_state_snapshot,
+            membership_provider=self.peer_table.membership_snapshot,
+            topology_provider=self.topology_state.topology_snapshot,
+            replication_stats_provider=self.state_worker.replication_stats_snapshot,
+            control_plane_events=self.control_plane_events,
+            replication_metrics=self.replication_metrics,
+        )
 
         try:
             self.web_api = start_web_api_server(
@@ -298,7 +323,32 @@ class NodeApplication:
                 peer_table=self.peer_table,
                 log=self.log,
                 topology_state=self.topology_state,
+                introspection_provider=self.introspection_service.cluster_snapshot,
             )
         except Exception:
             self.log.critical("Failed to start WebAPI", exc_info=True)
             raise
+
+    def _record_protocol_event(
+        self,
+        event_type: str,
+        sender_id: str | None = None,
+        target_id: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        """Record one protocol/control-plane event for introspection consumers."""
+        if details is None:
+            payload = None
+        else:
+            payload = dict(details)
+        self.control_plane_events.add_event(
+            event_type=event_type,
+            category="control_plane",
+            sender_id=sender_id,
+            target_id=target_id,
+            details=payload,
+        )
+
+    def _record_metric(self, key: str, amount: int = 1) -> None:
+        """Increment one replication/gossip metric counter."""
+        self.replication_metrics.increment(key=key, amount=amount)

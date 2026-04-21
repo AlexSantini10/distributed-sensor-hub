@@ -3,13 +3,14 @@
 import math
 import random
 import threading
-from typing import Protocol
+from typing import Callable, Protocol
 
 from networking.tcp_client import Peer as TcpPeer
 from protocol.factory import build_get_delta, build_sensor_update
 from protocol.message import Message
 from protocol.messages import SensorMeta
 from utils.typing import (
+    JsonObject,
     LoggerLike,
     PeerLike,
     PeerTableLike,
@@ -35,6 +36,10 @@ class SensorUpdatePublisher(threading.Thread):
         pull_min_peers: int = 1,
         pull_every_rounds: int = 3,
         pull_response_tracker: "PullResponseTrackerLike | None" = None,
+        on_protocol_event: (
+            Callable[[str, str | None, str | None, JsonObject | None], None] | None
+        ) = None,
+        on_metric: Callable[[str, int], None] | None = None,
         random_seed: int | None = None,
     ) -> None:
         """Initialize the publisher thread.
@@ -84,6 +89,8 @@ class SensorUpdatePublisher(threading.Thread):
         self._pull_min_peers = pull_min_peers
         self._pull_every_rounds = pull_every_rounds
         self._pull_response_tracker = pull_response_tracker
+        self._on_protocol_event = on_protocol_event
+        self._on_metric = on_metric
         self._round = 0
         self._rng = random.Random(random_seed)
 
@@ -111,6 +118,8 @@ class SensorUpdatePublisher(threading.Thread):
 
     def _run_round(self) -> None:
         """Run one push-pull replication round."""
+        if self._on_metric is not None:
+            self._on_metric("replication_rounds_total", 1)
         peers = self._alive_peers()
         if not peers:
             return
@@ -200,7 +209,21 @@ class SensorUpdatePublisher(threading.Thread):
             )
 
             for target in push_targets:
-                self._send_message_to_peer(target, msg, op_name="SENSOR_UPDATE")
+                sent = self._send_message_to_peer(target, msg, op_name="SENSOR_UPDATE")
+                if not sent:
+                    continue
+                if self._on_metric is not None:
+                    self._on_metric("sensor_updates_pushed_total", 1)
+                if self._on_protocol_event is not None:
+                    self._on_protocol_event(
+                        "sensor_update_sent",
+                        self._self_node_id,
+                        target.node_id,
+                        {
+                            "sensor_id": sensor_id,
+                            "seq": update.get("seq"),
+                        },
+                    )
 
     def _pull_missing_deltas(self, peers: tuple[PeerLike, ...]) -> None:
         """Pull missing deltas from a random peer subset."""
@@ -220,6 +243,15 @@ class SensorUpdatePublisher(threading.Thread):
             sent = self._send_message_to_peer(target, request, op_name="GET_DELTA")
             if sent and self._pull_response_tracker is not None:
                 self._pull_response_tracker.mark_pull_requested(target.node_id)
+            if sent and self._on_metric is not None:
+                self._on_metric("get_delta_requests_sent_total", 1)
+            if sent and self._on_protocol_event is not None:
+                self._on_protocol_event(
+                    "get_delta_requested",
+                    self._self_node_id,
+                    target.node_id,
+                    {"from_seq": from_seq},
+                )
 
     def _send_message_to_peer(self, peer: PeerLike, msg: Message, *, op_name: str) -> bool:
         """Deliver one replication message to one peer using best-effort transport.

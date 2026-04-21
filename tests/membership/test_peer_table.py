@@ -523,7 +523,7 @@ def test_membership_snapshot_is_consistent_during_concurrent_updates() -> None:
                 if peers:
                     status = peers[0]["status"]
                     assert status in {"alive", "suspected", "dead"}
-                    assert isinstance(peers[0]["phi"], float)
+                    assert peers[0]["phi"] is None or isinstance(peers[0]["phi"], float)
         except Exception as exc:  # pragma: no cover - defensive test plumbing
             failures.append(exc)
 
@@ -591,6 +591,9 @@ def test_failure_detector_skips_peers_without_direct_observations() -> None:
     assert peer.direct_observed is False
     assert peer.status is NodeStatus.ALIVE
     assert peer.phi == 0.0
+
+    snapshot_peer = table.membership_snapshot()["peers"][0]
+    assert snapshot_peer["phi"] is None
 
 
 def test_record_direct_message_marks_peer_as_directly_observed() -> None:

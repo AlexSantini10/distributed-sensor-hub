@@ -23,6 +23,7 @@ from protocol.messages import (
 )
 from utils.logging import get_logger
 from utils.typing import (
+    JsonObject,
     LoggerLike,
     ReplicationDeltaSourceLike,
     SenderLike,
@@ -36,6 +37,10 @@ def make_sensor_update_handler(
     peer_table: PeerTable | None = None,
     source_classifier: Callable[[str], str] | None = None,
     on_seq_observed: Callable[[str, str, int], None] | None = None,
+    on_protocol_event: (
+        Callable[[str, str | None, str | None, JsonObject | None], None] | None
+    ) = None,
+    on_metric: Callable[[str, int], None] | None = None,
 ) -> Callable[[Message], None]:
     """Create a handler for replicated sensor updates.
 
@@ -82,6 +87,8 @@ def make_sensor_update_handler(
                 )
 
         if applied:
+            if on_metric is not None:
+                on_metric("sensor_updates_applied_total", 1)
             if peer_table is not None:
                 peer_table.record_indirect_evidence(
                     payload.origin,
@@ -90,6 +97,18 @@ def make_sensor_update_handler(
                 )
             log.info(
                 f"SENSOR_UPDATE applied: sensor={payload.sensor_id} origin={payload.origin} ts={payload.ts_ms}"
+            )
+        if on_protocol_event is not None:
+            on_protocol_event(
+                "sensor_update_received",
+                msg.sender_id,
+                payload.origin,
+                {
+                    "sensor_id": payload.sensor_id,
+                    "ts_ms": payload.ts_ms,
+                    "applied": applied,
+                    "source": source,
+                },
             )
 
     return handle_sensor_update
@@ -106,6 +125,10 @@ def make_full_sync_request_handler(
     peer_table: PeerTable,
     send: SenderLike,
     self_node_id: str,
+    on_protocol_event: (
+        Callable[[str, str | None, str | None, JsonObject | None], None] | None
+    ) = None,
+    on_metric: Callable[[str, int], None] | None = None,
 ) -> Callable[[Message], None]:
     """Create a handler that replies to full-sync requests with state and membership."""
     log: LoggerLike = get_logger(__name__, self_node_id)
@@ -134,6 +157,8 @@ def make_full_sync_request_handler(
 
         try:
             send(requester_id, response)
+            if on_metric is not None:
+                on_metric("full_sync_responses_sent_total", 1)
             log.info(
                 f"FULL_SYNC_RESPONSE sent to {requester_id} "
                 f"state_nodes={len(state_snapshot)} "
@@ -144,6 +169,17 @@ def make_full_sync_request_handler(
                 f"Failed to send FULL_SYNC_RESPONSE to {requester_id}",
                 exc_info=True,
             )
+            return
+        if on_protocol_event is not None:
+            on_protocol_event(
+                "full_sync_response_sent",
+                self_node_id,
+                requester_id,
+                {
+                    "state_nodes": len(state_snapshot),
+                    "membership_peers": len(membership_snapshot),
+                },
+            )
 
     return handle_full_sync_request
 
@@ -153,6 +189,9 @@ def make_full_sync_response_handler(
     peer_table: PeerTable,
     self_node_id: str,
     on_peer_discovered: Callable[[Peer], None] | None = None,
+    on_protocol_event: (
+        Callable[[str, str | None, str | None, JsonObject | None], None] | None
+    ) = None,
 ) -> Callable[[Message], None]:
     """Create a handler that merges full state and membership snapshots."""
     log: LoggerLike = get_logger(__name__, self_node_id)
@@ -219,6 +258,17 @@ def make_full_sync_response_handler(
             f"membership_updated={len(merge_result.updated_peers)} "
             f"membership_ignored={merge_result.ignored_entries}"
         )
+        if on_protocol_event is not None:
+            on_protocol_event(
+                "full_sync_response_applied",
+                msg.sender_id,
+                self_node_id,
+                {
+                    "state_updates": applied_updates,
+                    "membership_merged": merge_result.merged_entries,
+                    "membership_new": len(merge_result.new_peers),
+                },
+            )
 
     return handle_full_sync_response
 
@@ -226,6 +276,10 @@ def make_full_sync_response_handler(
 def make_delta_unavailable_handler(
     send: SenderLike,
     self_node_id: str,
+    on_protocol_event: (
+        Callable[[str, str | None, str | None, JsonObject | None], None] | None
+    ) = None,
+    on_metric: Callable[[str, int], None] | None = None,
 ) -> Callable[[Message], None]:
     """Create a handler that falls back to full sync when delta is unavailable."""
     log: LoggerLike = get_logger(__name__, self_node_id)
@@ -242,6 +296,8 @@ def make_delta_unavailable_handler(
         )
         try:
             send(msg.sender_id, request)
+            if on_metric is not None:
+                on_metric("full_sync_requests_sent_total", 1)
             log.info(
                 "DELTA_UNAVAILABLE received; requested FULL_SYNC "
                 f"from={msg.sender_id} reason={payload.reason}"
@@ -250,6 +306,14 @@ def make_delta_unavailable_handler(
             log.warning(
                 f"Failed to request FULL_SYNC from {msg.sender_id} after DELTA_UNAVAILABLE",
                 exc_info=True,
+            )
+            return
+        if on_protocol_event is not None:
+            on_protocol_event(
+                "delta_unavailable_received",
+                msg.sender_id,
+                self_node_id,
+                {"reason": payload.reason},
             )
 
     return handle_delta_unavailable
@@ -260,6 +324,10 @@ def make_get_delta_handler(
     state_worker: ReplicationDeltaSourceLike,
     send: SenderLike,
     self_node_id: str,
+    on_protocol_event: (
+        Callable[[str, str | None, str | None, JsonObject | None], None] | None
+    ) = None,
+    on_metric: Callable[[str, int], None] | None = None,
 ) -> Callable[[Message], None]:
     """Create a handler that serves incremental deltas or fallback signals."""
     log: LoggerLike = get_logger(__name__, self_node_id)
@@ -281,6 +349,8 @@ def make_get_delta_handler(
             )
             try:
                 send(requester_id, unavailable)
+                if on_metric is not None:
+                    on_metric("get_delta_unavailable_total", 1)
                 log.info(
                     "GET_DELTA unavailable: "
                     f"requester={requester_id} from_seq={payload.from_seq}"
@@ -332,6 +402,16 @@ def make_get_delta_handler(
             f"requester={requester_id} from_seq={payload.from_seq} "
             f"sent_updates={sent_count}"
         )
+        if on_protocol_event is not None:
+            on_protocol_event(
+                "get_delta_served",
+                self_node_id,
+                requester_id,
+                {
+                    "from_seq": payload.from_seq,
+                    "sent_updates": sent_count,
+                },
+            )
 
     return handle_get_delta
 

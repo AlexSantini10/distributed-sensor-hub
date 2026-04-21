@@ -447,6 +447,10 @@ class NodeStateWorker(threading.Thread):
         """Track one observed replication sequence for a remote origin."""
         self._store.note_replication_seq_for_origin(origin=origin, seq=seq)
 
+    def replication_stats_snapshot(self) -> JsonObject:
+        """Return read-only replication cursor and bounded-delta statistics."""
+        return self._store.replication_stats_snapshot()
+
     def stop(self) -> None:
         """Request graceful worker termination.
 

@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from protocol.contracts import HttpContentType, TextEncoding
 from utils.typing import (
+    JsonSnapshotProvider,
     LoggerLike,
     MembershipSnapshotProvider,
     SnapshotProvider,
@@ -32,6 +33,7 @@ class RequestHandler(BaseHTTPRequestHandler):
     _updates_provider: SnapshotProvider
     _membership_provider: MembershipSnapshotProvider | None
     _topology_provider: TopologySnapshotProvider | None
+    _introspection_provider: JsonSnapshotProvider | None
     _log: LoggerLike | None
 
     def _send_cors_headers(self) -> None:
@@ -69,6 +71,18 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_membership()
             elif self.path == "/api/topology":
                 self._handle_topology()
+            elif self.path == "/api/introspection":
+                self._handle_introspection()
+            elif self.path == "/api/introspection/topology":
+                self._handle_introspection_section("topology")
+            elif self.path == "/api/introspection/membership":
+                self._handle_introspection_section("membership")
+            elif self.path == "/api/introspection/state":
+                self._handle_introspection_section("sensor_state")
+            elif self.path == "/api/introspection/events":
+                self._handle_introspection_section("events")
+            elif self.path == "/api/introspection/metrics":
+                self._handle_introspection_section("metrics")
             else:
                 self.send_response(404)
                 self._send_cors_headers()
@@ -180,6 +194,73 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _handle_introspection(self) -> None:
+        """Serialize and return the aggregate introspection snapshot."""
+        if self._introspection_provider is None:
+            self.send_response(404)
+            self._send_cors_headers()
+            self.end_headers()
+            return
+        self._handle_json_provider(self._introspection_provider, "introspection snapshot")
+
+    def _handle_introspection_section(self, section: str) -> None:
+        """Serialize and return one section of the aggregate introspection snapshot."""
+        if self._introspection_provider is None:
+            self.send_response(404)
+            self._send_cors_headers()
+            self.end_headers()
+            return
+        try:
+            snapshot = self._introspection_provider()
+            cluster = snapshot.get("cluster", {})
+            if not isinstance(cluster, dict):
+                raise ValueError("cluster field must be an object")
+            payload_obj = {
+                "schema_version": snapshot.get("schema_version", "introspection/v1"),
+                "generated_at_ms": snapshot.get("generated_at_ms"),
+                section: cluster.get(section, {}),
+            }
+            payload = json.dumps(payload_obj).encode(TextEncoding.UTF8.value)
+        except Exception:
+            if self._log is not None:
+                self._log.error(
+                    f"Failed to produce introspection section '{section}'",
+                    exc_info=True,
+                )
+            self.send_response(500)
+            self._send_cors_headers()
+            self.end_headers()
+            return
+        self.send_response(200)
+        self._send_cors_headers()
+        self.send_header("Content-Type", HttpContentType.JSON.value)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _handle_json_provider(
+        self,
+        provider: JsonSnapshotProvider,
+        label: str,
+    ) -> None:
+        """Serialize and return JSON from a provider with common error handling."""
+        try:
+            value = provider()
+            payload = json.dumps(value).encode(TextEncoding.UTF8.value)
+        except Exception:
+            if self._log is not None:
+                self._log.error(f"Failed to produce {label}", exc_info=True)
+            self.send_response(500)
+            self._send_cors_headers()
+            self.end_headers()
+            return
+        self.send_response(200)
+        self._send_cors_headers()
+        self.send_header("Content-Type", HttpContentType.JSON.value)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def log_message(self, format: str, *args: object) -> None:
         """Suppress the standard library's default per-request stderr logging.
 
@@ -198,6 +279,7 @@ def build_request_handler(
     updates_provider: SnapshotProvider,
     membership_provider: MembershipSnapshotProvider | None,
     topology_provider: TopologySnapshotProvider | None,
+    introspection_provider: JsonSnapshotProvider | None,
     log: LoggerLike | None,
 ) -> type[RequestHandler]:
     """Create a concrete request-handler class bound to snapshot providers.
@@ -226,6 +308,11 @@ def build_request_handler(
             if topology_provider is not None
             else None
         )
+        _introspection_provider = (
+            staticmethod(introspection_provider)
+            if introspection_provider is not None
+            else None
+        )
         _log = log
 
     return ConfiguredRequestHandler
@@ -247,6 +334,7 @@ class WebAPIServer(threading.Thread):
         updates_provider: SnapshotProvider,
         membership_provider: MembershipSnapshotProvider | None,
         topology_provider: TopologySnapshotProvider | None,
+        introspection_provider: JsonSnapshotProvider | None,
         log: LoggerLike | None,
     ) -> None:
         """Initialize the threaded HTTP server wrapper.
@@ -273,6 +361,7 @@ class WebAPIServer(threading.Thread):
             updates_provider=updates_provider,
             membership_provider=membership_provider,
             topology_provider=topology_provider,
+            introspection_provider=introspection_provider,
             log=log,
         )
         try:

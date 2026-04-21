@@ -98,3 +98,7 @@ class StateStoreLike(RecordMergeStore, Protocol):
     def note_replication_seq_for_origin(self, origin: str, seq: int) -> None:
         """Track one observed replication sequence for one origin."""
         ...
+
+    def replication_stats_snapshot(self) -> JsonObject:
+        """Return read-only replication cursor and ring-buffer statistics."""
+        ...

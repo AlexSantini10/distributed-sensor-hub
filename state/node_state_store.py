@@ -583,6 +583,34 @@ class NodeStateStore:
             ]
             return tuple(self._delta_to_dict(delta) for delta in selected)
 
+    def replication_stats_snapshot(self) -> JsonObject:
+        """Return read-only replication cursor and buffer statistics."""
+        with self._lock:
+            oldest_retained_seq = (
+                self._replication_deltas[0].seq
+                if self._replication_deltas
+                else self._replication_next_seq
+            )
+            newest_retained_seq = (
+                self._replication_deltas[-1].seq
+                if self._replication_deltas
+                else (self._replication_next_seq - 1)
+            )
+            latest_by_origin = dict(
+                sorted(
+                    self._latest_replication_seq_by_origin.items(),
+                    key=lambda item: item[0],
+                )
+            )
+            return {
+                "next_seq": self._replication_next_seq,
+                "last_read_seq": self._replication_last_read_seq,
+                "oldest_retained_seq": oldest_retained_seq,
+                "newest_retained_seq": newest_retained_seq,
+                "retained_delta_count": len(self._replication_deltas),
+                "latest_seq_by_origin": latest_by_origin,
+            }
+
     def get_latest_replication_seq_for_origin(self, origin: str) -> int:
         """Return the latest pull cursor observed for one origin.
 

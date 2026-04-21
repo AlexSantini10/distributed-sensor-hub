@@ -17,7 +17,7 @@ from state.events import SensorEventQueue
 from state.node_state_worker import NodeStateWorker
 from topology.state import TopologyStateStore
 from utils.config import Config
-from utils.typing import LoggerLike
+from utils.typing import JsonSnapshotProvider, LoggerLike
 from webapi.http_api import WebAPIServer
 
 
@@ -45,6 +45,8 @@ def start_networking_stack(
     log: LoggerLike,
     state_worker: NodeStateWorker,
     tcp_server_cls: type[TcpServer],
+    on_protocol_event=None,
+    on_metric=None,
 ):
     """Create the protocol stack and start inbound networking."""
     networking = setup_node_networking(
@@ -52,6 +54,8 @@ def start_networking_stack(
         log=log,
         state_worker=state_worker,
         tcp_server_cls=tcp_server_cls,
+        on_protocol_event=on_protocol_event,
+        on_metric=on_metric,
     )
 
     try:
@@ -118,6 +122,8 @@ def start_sensor_runtime(
     state_worker: NodeStateWorker,
     log: LoggerLike,
     pull_response_tracker: PullResponseTracker | None = None,
+    on_protocol_event=None,
+    on_metric=None,
 ) -> tuple[SensorManager, SensorUpdatePublisher]:
     """Start sensors and the outbound replication publisher.
 
@@ -153,6 +159,8 @@ def start_sensor_runtime(
         pull_min_peers=config.gossip_pull_min_peers,
         pull_every_rounds=config.gossip_pull_every_rounds,
         pull_response_tracker=pull_response_tracker,
+        on_protocol_event=on_protocol_event,
+        on_metric=on_metric,
     )
     publisher.start()
     log.info("Sensor update publisher started")
@@ -166,6 +174,8 @@ def start_heartbeat_runtime(
     client: TcpClient,
     log: LoggerLike,
     topology_state: TopologyStateStore | None = None,
+    on_protocol_event=None,
+    on_metric=None,
 ) -> HeartbeatSender:
     """Start periodic heartbeats to all peers."""
     heartbeat_sender = HeartbeatSender(
@@ -176,6 +186,8 @@ def start_heartbeat_runtime(
         log=log,
         connected_peer_ids_provider=client.registered_peer_ids,
         topology_state=topology_state,
+        on_protocol_event=on_protocol_event,
+        on_metric=on_metric,
     )
     heartbeat_sender.start()
     log.info(
@@ -191,6 +203,7 @@ def start_web_api_server(
     peer_table,
     log: LoggerLike,
     topology_state: TopologyStateStore | None = None,
+    introspection_provider: JsonSnapshotProvider | None = None,
 ) -> WebAPIServer:
     """Start the HTTP monitoring API backed by state snapshots."""
     log.info(f"Starting WebAPI on {config.host}:{config.web_api_port}")
@@ -205,6 +218,7 @@ def start_web_api_server(
         topology_provider=(
             topology_state.topology_snapshot if topology_state is not None else None
         ),
+        introspection_provider=introspection_provider,
         log=log,
     )
     web_api.start()

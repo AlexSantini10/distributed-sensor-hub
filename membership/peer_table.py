@@ -496,7 +496,7 @@ class PeerTable:
                         "host": peer.host,
                         "port": peer.port,
                         "status": peer.status.to_wire(),
-                        "phi": peer.phi,
+                        "phi": peer.phi if peer.direct_observed else None,
                         "last_heartbeat_ts_ms": int(peer.last_heartbeat * 1000),
                         "sample_count": sample_count,
                         "sample_window_size": window_size,

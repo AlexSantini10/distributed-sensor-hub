@@ -20,7 +20,7 @@ from membership.results import FailureDetectionUpdateResult
 from protocol.factory import build_ping
 from protocol.message import Message
 from topology.state import TopologyStateStore
-from utils.typing import LoggerLike, SenderLike
+from utils.typing import JsonObject, LoggerLike, SenderLike
 
 
 class HeartbeatSender:
@@ -36,6 +36,10 @@ class HeartbeatSender:
         log: LoggerLike,
         connected_peer_ids_provider: Callable[[], tuple[str, ...]] | None = None,
         topology_state: TopologyStateStore | None = None,
+        on_protocol_event: (
+            Callable[[str, str | None, str | None, JsonObject | None], None] | None
+        ) = None,
+        on_metric: Callable[[str, int], None] | None = None,
     ) -> None:
         """Initialize a background heartbeat sender."""
         self._self_node_id = self_node_id
@@ -46,6 +50,8 @@ class HeartbeatSender:
         self._stop_event = threading.Event()
         self._connected_peer_ids_provider = connected_peer_ids_provider
         self._topology_state = topology_state
+        self._on_protocol_event = on_protocol_event
+        self._on_metric = on_metric
         self._thread = threading.Thread(
             target=self._run,
             name="heartbeat-sender",
@@ -127,6 +133,8 @@ class HeartbeatSender:
             send=self._send,
             log=self._log,
             topology_state=self._topology_state,
+            on_protocol_event=self._on_protocol_event,
+            on_metric=self._on_metric,
         )
 
     def _build_ping(self) -> Message:

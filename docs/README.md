@@ -7,6 +7,7 @@ Module-level details are documented in each module README.
 
 - [Architecture](architecture.md)
 - [Testing](testing.md)
+- [Introspection API](introspection-api.md)
 - [Module dependency diagram (PlantUML)](module-dependencies.puml)
 
 ## Module docs
@@ -20,4 +21,5 @@ Module-level details are documented in each module README.
 - [state](../state/README.md)
 - [sensors](../sensors/README.md)
 - [topology](../topology/README.md)
+- [introspection](../introspection/README.md)
 - [webapi](../webapi/README.md)
