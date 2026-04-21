@@ -13,6 +13,7 @@ class ControlPlaneEventStore:
     """Keep a bounded in-memory history of protocol/control-plane events."""
 
     def __init__(self, *, max_events: int = 256) -> None:
+        """Initialize a bounded event buffer with thread-safe access."""
         if max_events <= 0:
             raise ValueError("max_events must be > 0")
         self._lock = threading.Lock()
@@ -56,6 +57,7 @@ class ReplicationGossipMetricsStore:
     """Track reusable counters for replication and gossip activity."""
 
     def __init__(self) -> None:
+        """Initialize thread-safe counters for gossip and replication metrics."""
         self._lock = threading.Lock()
         self._counters: dict[str, int] = {
             "gossip_messages_received_total": 0,
@@ -104,6 +106,7 @@ class ClusterIntrospectionService:
         control_plane_events: ControlPlaneEventStore,
         replication_metrics: ReplicationGossipMetricsStore,
     ) -> None:
+        """Store provider callables and backing stores used for snapshots."""
         self._state_provider = state_provider
         self._membership_provider = membership_provider
         self._topology_provider = topology_provider
@@ -205,4 +208,3 @@ class ClusterIntrospectionService:
             "metrics": self.replication_gossip_metrics_snapshot().get("metrics", {}),
         }
         return response
-
