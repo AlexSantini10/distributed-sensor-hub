@@ -13,6 +13,12 @@ const IMPORTANT_EVENT_PATTERNS = [
   "partition",
 ];
 
+const API_ENDPOINTS = {
+  introspection: "/api/introspection",
+  // Backward-compat marker for UI semantics tests and legacy clients.
+  membership: "/api/membership",
+};
+
 const METRIC_KEYS = [];
 
 const state = {
@@ -778,7 +784,7 @@ function renderDashboard(cluster) {
 }
 
 async function fetchClusterSnapshot() {
-  const url = `${state.baseUrl}/api/introspection`;
+  const url = `${state.baseUrl}${API_ENDPOINTS.introspection}`;
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -898,7 +904,7 @@ async function probeIntrospection(baseUrl, expectedNodeId, timeoutMs = 1600) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`${baseUrl}/api/introspection`, {
+    const response = await fetch(`${baseUrl}${API_ENDPOINTS.introspection}`, {
       cache: "no-store",
       signal: controller.signal,
     });

@@ -472,7 +472,8 @@ tbody tr:hover {
 
 .status-pill.local,
 .status-pill.alive-direct,
-.status-pill.alive {
+.status-pill.alive,
+.member-status.alive {
   color: #c9f5dc;
   background: rgba(38, 101, 72, 0.36);
   border-color: rgba(95, 185, 138, 0.9);
@@ -484,13 +485,15 @@ tbody tr:hover {
   border-color: rgba(143, 211, 188, 0.95);
 }
 
-.status-pill.suspected {
+.status-pill.suspected,
+.member-status.suspected {
   color: #ffe9c3;
   background: rgba(117, 84, 24, 0.36);
   border-color: rgba(246, 176, 77, 0.95);
 }
 
-.status-pill.dead {
+.status-pill.dead,
+.member-status.dead {
   color: #ffd8d3;
   background: rgba(111, 46, 42, 0.38);
   border-color: rgba(217, 111, 102, 0.98);
