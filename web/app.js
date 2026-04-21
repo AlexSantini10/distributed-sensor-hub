@@ -13,17 +13,7 @@ const IMPORTANT_EVENT_PATTERNS = [
   "partition",
 ];
 
-const METRIC_KEYS = [
-  "replication_rounds_total",
-  "sensor_updates_applied_total",
-  "sensor_updates_pushed_total",
-  "gossip_messages_received_total",
-  "gossip_messages_sent_total",
-  "get_delta_requests_sent_total",
-  "get_delta_unavailable_total",
-  "full_sync_requests_sent_total",
-  "full_sync_responses_received_total",
-];
+const METRIC_KEYS = [];
 
 const state = {
   baseUrl: "http://localhost:10000",
@@ -454,11 +444,9 @@ function drawTopology(graph) {
 
   const renderedLinks = pickedActive.visible.length + pickedInactive.visible.length;
   const totalLinks = graph.links.length;
-  const activeCount = graph.activeLinks.length;
-  const lostCount = graph.inactiveLinks.length;
   const hintBase = totalLinks > renderedLinks
-    ? `${graph.nodes.length} nodes | active ${activeCount} | lost ${lostCount} | isolated ${graph.isolatedNodeIds.size} (${renderedLinks}/${totalLinks} rendered)`
-    : `${graph.nodes.length} nodes | active ${activeCount} | lost ${lostCount} | isolated ${graph.isolatedNodeIds.size}`;
+    ? `${graph.nodes.length} nodes, ${totalLinks} links (${renderedLinks} rendered)`
+    : `${graph.nodes.length} nodes, ${totalLinks} links`;
   updateTopologyHintText(hintBase);
 
   state.lastRenderBounds = { width, height };
@@ -594,18 +582,20 @@ function renderTimeline(cluster) {
 
 function renderMetricsStrip(cluster, graph) {
   const membershipPeers = Array.isArray(cluster.membership.peers) ? cluster.membership.peers : [];
-  const directPeers = membershipPeers.filter((p) => p && p.direct_observed === true).length;
-  const indirectPeers = membershipPeers.filter((p) => p && p.direct_observed !== true).length;
+  const sensorRecords = Array.isArray(cluster.sensorState.records) ? cluster.sensorState.records : [];
   const suspected = membershipPeers.filter((p) => p && p.display_status === "suspected").length;
   const dead = membershipPeers.filter((p) => p && p.display_status === "dead").length;
+  const alivePeers = membershipPeers.filter((p) => {
+    const status = p && typeof p.display_status === "string" ? p.display_status : "";
+    return status === "alive_direct" || status === "alive_indirect";
+  }).length;
   const metrics = cluster.metrics && typeof cluster.metrics === "object" ? cluster.metrics : {};
   const counters = metrics.counters && typeof metrics.counters === "object" ? metrics.counters : {};
 
   const summary = [
     { label: "Nodes", value: graph.nodes.length },
-    { label: "Active Links", value: graph.links.length },
-    { label: "Direct Peers", value: directPeers },
-    { label: "Indirect Peers", value: indirectPeers },
+    { label: "Sensors", value: sensorRecords.length },
+    { label: "Alive", value: alivePeers },
     { label: "Suspected", value: suspected },
     { label: "Dead", value: dead },
   ];
