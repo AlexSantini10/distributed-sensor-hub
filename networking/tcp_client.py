@@ -516,6 +516,8 @@ class _PeerWorker:
         sock = self._get_socket()
         if sock is None:
             return True
+        if sock.fileno() < 0:
+            return True
 
         try:
             sel = selectors.DefaultSelector()
@@ -533,6 +535,9 @@ class _PeerWorker:
                 except Exception:
                     pass
         except (ConnectionResetError, OSError):
+            return True
+        except ValueError:
+            # Socket may be closed concurrently between lookup and selector registration.
             return True
 
     def _get_socket(self) -> socket.socket | None:

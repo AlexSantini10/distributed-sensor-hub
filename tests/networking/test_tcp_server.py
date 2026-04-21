@@ -266,7 +266,11 @@ def test_tcp_server_stop_stops_accepting_new_connections() -> None:
         assert server._accept_thread is None
 
         # Existing client should see server-side closure.
-        assert client.recv(1) == b""
+        try:
+            assert client.recv(1) == b""
+        except ConnectionResetError:
+            # Linux often reports server-side close during shutdown as ECONNRESET.
+            pass
 
         # New connections should be refused after shutdown.
         try:
