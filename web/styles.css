@@ -243,6 +243,36 @@ code {
 .dot.dead { background: #d96f66; }
 .dot.unknown { background: #8f9aa8; }
 
+.line {
+  width: 16px;
+  height: 2px;
+  display: inline-block;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.line.active {
+  background: rgba(177, 214, 244, 0.95);
+}
+
+.line.inactive {
+  background: rgba(146, 146, 146, 0.7);
+}
+
+.ring {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  margin-right: 5px;
+  border: 2px solid transparent;
+  vertical-align: middle;
+}
+
+.ring.isolated {
+  border-color: #ffd89c;
+}
+
 .inspector-panel {
   grid-column: 1;
   border-color: rgba(121, 196, 166, 0.55);

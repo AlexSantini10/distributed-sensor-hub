@@ -577,22 +577,42 @@ def test_display_status_does_not_hide_suspected_with_direct_only_evidence() -> N
         direct_status="suspected",
         evidence_status="active",
         last_evidence_source="direct_heartbeat",
+        membership_status="alive",
     ) == "suspected"
     assert PeerTable._compute_display_status(
         direct_status="dead",
         evidence_status="active",
         last_evidence_source="direct_heartbeat",
+        membership_status="alive",
     ) == "dead"
     assert PeerTable._compute_display_status(
         direct_status="dead",
         evidence_status="active",
         last_evidence_source="sensor_update",
+        membership_status="alive",
     ) == "dead"
     assert PeerTable._compute_display_status(
         direct_status="unknown",
         evidence_status="active",
         last_evidence_source="sensor_update",
+        membership_status="alive",
     ) == "alive_indirect"
+
+
+def test_display_status_prefers_membership_dead_when_direct_unknown() -> None:
+    """Assert dead/suspected membership status is never shown as alive_indirect."""
+    assert PeerTable._compute_display_status(
+        direct_status="unknown",
+        evidence_status="active",
+        last_evidence_source="gossip_status",
+        membership_status="dead",
+    ) == "dead"
+    assert PeerTable._compute_display_status(
+        direct_status="unknown",
+        evidence_status="active",
+        last_evidence_source="gossip_status",
+        membership_status="suspected",
+    ) == "suspected"
 
 
 def test_failure_detector_skips_peers_without_direct_observations() -> None:

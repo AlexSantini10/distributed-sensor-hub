@@ -490,6 +490,7 @@ class PeerTable:
                     direct_status=direct_status,
                     evidence_status=evidence_status,
                     last_evidence_source=peer.last_evidence_source,
+                    membership_status=peer.status.to_wire(),
                 )
                 snapshot_peers.append(
                     {
@@ -592,6 +593,7 @@ class PeerTable:
         direct_status: str,
         evidence_status: str,
         last_evidence_source: str,
+        membership_status: str,
     ) -> str:
         """Compute a human-oriented status derived from direct and indirect signals."""
         if direct_status == NodeStatus.ALIVE.to_wire():
@@ -601,8 +603,15 @@ class PeerTable:
             NodeStatus.DEAD.to_wire(),
         }:
             return direct_status
+        if membership_status in {
+            NodeStatus.SUSPECTED.to_wire(),
+            NodeStatus.DEAD.to_wire(),
+        }:
+            return membership_status
         if (
             direct_status == "unknown"
+            and
+            membership_status == NodeStatus.ALIVE.to_wire()
             and
             evidence_status == "active"
             and cls._is_indirect_evidence_source(last_evidence_source)

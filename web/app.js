@@ -33,6 +33,7 @@ const state = {
   cluster: null,
   endpointByNodeId: new Map(),
   layoutPositions: new Map(),
+  activeLinkKeys: new Set(),
   lastRenderBounds: null,
 };
 
@@ -207,7 +208,42 @@ function buildGraphModel(cluster) {
     return x.localeCompare(y, undefined, { numeric: true, sensitivity: "base" });
   });
 
-  return { nodes, links, localNodeId, membershipMap };
+  const deadNodeIds = new Set(
+    nodes.filter((n) => n.status === "dead").map((n) => n.id),
+  );
+  const activeLinks = [];
+  const inactiveLinks = [];
+  for (const link of links) {
+    if (deadNodeIds.has(link.source) || deadNodeIds.has(link.target)) {
+      inactiveLinks.push(link);
+    } else {
+      activeLinks.push(link);
+    }
+  }
+
+  const activeDegree = new Map();
+  for (const node of nodes) {
+    activeDegree.set(node.id, 0);
+  }
+  for (const link of activeLinks) {
+    activeDegree.set(link.source, (activeDegree.get(link.source) || 0) + 1);
+    activeDegree.set(link.target, (activeDegree.get(link.target) || 0) + 1);
+  }
+  const isolatedNodeIds = new Set(
+    nodes
+      .filter((n) => n.status !== "dead" && (activeDegree.get(n.id) || 0) === 0)
+      .map((n) => n.id),
+  );
+
+  return {
+    nodes,
+    links,
+    activeLinks,
+    inactiveLinks,
+    isolatedNodeIds,
+    localNodeId,
+    membershipMap,
+  };
 }
 
 function getCanvasSize(canvas) {
@@ -336,11 +372,28 @@ function drawTopology(graph) {
   const layout = layoutNodes(graph, width, height);
   state.layoutPositions = layout;
 
-  const picked = pickLinksToDraw(graph.links, state.selectedNodeId, graph.localNodeId, graph.nodes.length);
+  const pickedActive = pickLinksToDraw(graph.activeLinks, state.selectedNodeId, graph.localNodeId, graph.nodes.length);
+  const pickedInactive = pickLinksToDraw(graph.inactiveLinks, state.selectedNodeId, graph.localNodeId, graph.nodes.length);
 
-  ctx.strokeStyle = "rgba(139, 164, 191, 0.46)";
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = "rgba(150, 150, 150, 0.45)";
+  ctx.lineWidth = 1;
+  for (const link of pickedInactive.visible) {
+    const a = layout.get(link.source);
+    const b = layout.get(link.target);
+    if (!a || !b) {
+      continue;
+    }
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = "rgba(177, 214, 244, 0.55)";
   ctx.lineWidth = graph.nodes.length <= 20 ? 2 : 1;
-  for (const link of picked.visible) {
+  for (const link of pickedActive.visible) {
     const a = layout.get(link.source);
     const b = layout.get(link.target);
     if (!a || !b) {
@@ -351,7 +404,7 @@ function drawTopology(graph) {
       ctx.strokeStyle = "rgba(255, 245, 191, 0.92)";
       ctx.lineWidth = graph.nodes.length <= 20 ? 3 : 2;
     } else {
-      ctx.strokeStyle = "rgba(139, 164, 191, 0.43)";
+      ctx.strokeStyle = "rgba(177, 214, 244, 0.52)";
       ctx.lineWidth = graph.nodes.length <= 20 ? 2 : 1;
     }
     ctx.beginPath();
@@ -384,6 +437,13 @@ function drawTopology(graph) {
       ctx.arc(pos.x, pos.y, radius + 5, 0, Math.PI * 2);
       ctx.stroke();
     }
+    if (graph.isolatedNodeIds.has(node.id)) {
+      ctx.strokeStyle = "#ffd89c";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius + 9, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     if (showLabels || isSelected || node.id === graph.localNodeId) {
       ctx.fillStyle = "#d7e2f0";
@@ -392,12 +452,22 @@ function drawTopology(graph) {
     }
   }
 
-  const hintBase = picked.hiddenCount > 0
-    ? `${graph.nodes.length} nodes, ${graph.links.length} links (${picked.visible.length} links rendered)`
-    : `${graph.nodes.length} nodes, ${graph.links.length} links`;
+  const renderedLinks = pickedActive.visible.length + pickedInactive.visible.length;
+  const totalLinks = graph.links.length;
+  const activeCount = graph.activeLinks.length;
+  const lostCount = graph.inactiveLinks.length;
+  const hintBase = totalLinks > renderedLinks
+    ? `${graph.nodes.length} nodes | active ${activeCount} | lost ${lostCount} | isolated ${graph.isolatedNodeIds.size} (${renderedLinks}/${totalLinks} rendered)`
+    : `${graph.nodes.length} nodes | active ${activeCount} | lost ${lostCount} | isolated ${graph.isolatedNodeIds.size}`;
   updateTopologyHintText(hintBase);
 
   state.lastRenderBounds = { width, height };
+}
+
+function linkKey(link) {
+  const a = link.source < link.target ? link.source : link.target;
+  const b = link.source < link.target ? link.target : link.source;
+  return `${a}::${b}`;
 }
 
 function findClosestNode(canvasX, canvasY) {
@@ -708,6 +778,7 @@ function renderDashboard(cluster) {
     state.selectedNodeId = graph.localNodeId || (graph.nodes[0] ? graph.nodes[0].id : null);
   }
 
+  state.activeLinkKeys = new Set(graph.activeLinks.map(linkKey));
   drawTopology(graph);
   renderMetricsStrip(cluster, graph);
   renderInspector(cluster, graph);
@@ -886,6 +957,7 @@ async function switchConnectionToNode(nodeId) {
     state.endpointByNodeId.set(nodeId, candidate);
     state.baseUrl = candidate;
     els.baseUrl.value = candidate;
+    state.activeLinkKeys = new Set();
     restartPolling();
     return true;
   }
@@ -926,8 +998,13 @@ function restartPolling() {
 }
 
 function applySettings() {
+  const nextBase = String(els.baseUrl.value || "").replace(/\/+$/, "");
+  const baseChanged = nextBase !== state.baseUrl;
   state.baseUrl = String(els.baseUrl.value || "").replace(/\/+$/, "");
   state.pollMs = Math.max(250, Number(els.pollMs.value) || 1000);
+  if (baseChanged) {
+    state.activeLinkKeys = new Set();
+  }
   restartPolling();
 }
 
