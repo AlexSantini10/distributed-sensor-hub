@@ -19,13 +19,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install PlantUML
+      - name: Install Graphviz
         run: |
           sudo apt-get update
-          sudo apt-get install -y graphviz plantuml
+          sudo apt-get install -y graphviz
+
+      - name: Download pinned PlantUML
+        run: |
+          curl -fsSL \
+            -o /tmp/plantuml.jar \
+            https://github.com/plantuml/plantuml/releases/download/v1.2024.3/plantuml-1.2024.3.jar
 
       - name: Render module dependency diagram
-        run: plantuml -tsvg docs/module-dependencies.puml
+        run: java -jar /tmp/plantuml.jar -tsvg docs/module-dependencies.puml
 
       - name: Ensure README references rendered diagram
         run: grep -q "docs/module-dependencies.svg" README.md
