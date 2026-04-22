@@ -17,11 +17,6 @@ Each node runs sensors, state merge, membership/liveness, TCP protocol handling,
 - [Testing](docs/testing.md)
 - [Introspection API](docs/introspection-api.md)
 - [Observability UI](web/README.md)
-- [Module dependencies diagram (SVG)](docs/module-dependencies.svg)
-
-## Architecture diagram
-
-![Module dependencies diagram](docs/module-dependencies.svg)
 
 ## Module map
 
