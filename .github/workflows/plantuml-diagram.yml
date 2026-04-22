@@ -1,0 +1,40 @@
+name: plantuml-diagram
+
+on:
+  push:
+    branches:
+      - "**"
+    tags-ignore:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  render-module-diagram:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PlantUML
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz plantuml
+
+      - name: Render module dependency diagram
+        run: plantuml -tsvg docs/module-dependencies.puml
+
+      - name: Ensure README references rendered diagram
+        run: grep -q "docs/module-dependencies.svg" README.md
+
+      - name: Upload rendered diagram artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-dependencies-svg
+          path: docs/module-dependencies.svg
+
+      - name: Check committed SVG is up to date
+        run: git diff --exit-code -- docs/module-dependencies.svg
