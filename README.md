@@ -6,10 +6,13 @@ Each node runs sensors, state merge, membership/liveness, TCP protocol handling,
 > **Course:** Distributed Systems - MSc in Computer Science and Engineering  
 > **Institution:** University of Bologna (UNIBO)  
 > **Academic Year:** 2025/2026
+>
+> **Course Report:** [Distributed Sensor Hub Final Report (PDF)](docs/report/distributed-sensor-hub-final-report.pdf)
 
 ## Quick links
 
 - [Docs index](docs/README.md)
+- [Course report (PDF)](docs/report/distributed-sensor-hub-final-report.pdf)
 - [Architecture](docs/architecture.md)
 - [Testing](docs/testing.md)
 - [Introspection API](docs/introspection-api.md)
