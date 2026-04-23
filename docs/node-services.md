@@ -53,6 +53,23 @@ single reference for that mapping.
 - Read-only HTTP API
 - Web dashboard rendering
 
+## Service Dependencies (Who Uses What)
+
+| Consumer | Uses | Purpose |
+|---|---|---|
+| `NodeApplication` | runtime startup helpers | Build and start/stop all node services in order |
+| Runtime networking | topology policy | Choose outbound connection targets |
+| Runtime networking | protocol assembly | Bind dispatcher and handlers |
+| Protocol handlers | `PeerTable` | Apply membership/liveness updates |
+| `PeerTable` | `HeartbeatMonitor` (`fd`) | Compute and track phi-accrual state |
+| `HeartbeatSender` | `PeerTable.evaluate_failure_detector()` | Trigger periodic phi evaluation and status transitions |
+| `HeartbeatSender` | gossip publisher | Disseminate membership snapshots |
+| Sensor providers | queueing sensor handler | Feed local events to state worker queue |
+| Sensor replication runtime | state worker deltas + `PeerTable` snapshot | Push/pull sensor state to alive peers |
+| Introspection service | state + membership + topology providers | Build unified cluster snapshot |
+| Web API | introspection/snapshot providers | Expose read-only HTTP endpoints |
+| Browser dashboard | Web API | Render observability views (read-only) |
+
 ## Startup Order (Operationally Important)
 
 `NodeApplication.start()` starts services in this order:
