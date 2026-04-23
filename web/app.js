@@ -72,6 +72,28 @@ function formatCompactNumber(value) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(value);
 }
 
+function formatSensorValue(value) {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? formatCompactNumber(value) : "-";
+  }
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : "-";
+  }
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized || "-";
+  } catch {
+    return String(value);
+  }
+}
+
 function updateTopologyHintText(baseText) {
   els.topologyHint.textContent = `${baseText} | click a node to switch API target`;
 }
@@ -528,7 +550,7 @@ function renderSensorTable(cluster) {
       <td>${record.global_sensor_id || "-"}</td>
       <td>${record.origin || "-"}</td>
       <td>${record.sensor_id || "-"}</td>
-      <td>${formatCompactNumber(record.value)}</td>
+      <td>${formatSensorValue(record.value)}</td>
       <td>${formatTimestamp(record.ts_ms)}</td>
       <td>${extractSeqVersion(record)}</td>
     `;
@@ -777,7 +799,7 @@ function renderGlobalState(cluster, graph) {
         row.className = "global-sensor-row";
         row.innerHTML = `
           <div class="sensor-name">${record.sensor_id || "-"}</div>
-          <div class="sensor-value">${formatCompactNumber(record.value)}</div>
+          <div class="sensor-value">${formatSensorValue(record.value)}</div>
           <div class="sensor-ts">${formatTimestamp(record.ts_ms)}</div>
           <div class="sensor-seq">${extractSeqVersion(record)}</div>
         `;
