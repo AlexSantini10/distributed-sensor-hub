@@ -1,12 +1,19 @@
 {
   "include": [
+    "__init__.py",
     "node.py",
+    "fd",
+    "gossip",
+    "introspection",
+    "manual_tests",
     "membership",
     "networking",
     "protocol",
     "runtime",
     "sensors",
     "state",
+    "tests",
+    "topology",
     "utils",
     "webapi"
   ],
@@ -15,10 +22,11 @@
     ".git",
     ".pytest_cache",
     ".pytest_tmp",
+    ".pytest-temp",
     "logs",
     "docs",
     "docker",
-    "manual_tests",
+    "tmp-pytest",
     "web"
   ],
   "typeCheckingMode": "standard",

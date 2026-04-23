@@ -3,7 +3,7 @@
 import math
 import random
 import threading
-from typing import Callable, Protocol
+from typing import Callable, Protocol, cast
 
 from networking.tcp_client import Peer as TcpPeer
 from protocol.factory import build_get_delta, build_sensor_update
@@ -12,11 +12,32 @@ from protocol.messages import SensorMeta
 from utils.typing import (
     JsonObject,
     LoggerLike,
-    PeerLike,
-    PeerTableLike,
     ReplicationDeltaBatch,
-    StateWorkerLike,
 )
+
+
+class PublisherPeerLike(Protocol):
+    """Define the peer shape used by push-pull peer selection."""
+
+    node_id: str
+    host: str
+    port: int
+
+
+class PublisherPeerTableLike(Protocol):
+    """Define the minimum membership surface used by the publisher."""
+
+    def snapshot(self) -> tuple[object, ...]:
+        """Return a snapshot of peers considered for replication."""
+        ...
+
+
+class ReplicationDeltaSourceLike(Protocol):
+    """Define the minimum state-worker surface used by the publisher."""
+
+    def pop_replication_deltas(self) -> ReplicationDeltaBatch:
+        """Return ordered replication deltas to publish."""
+        ...
 
 
 class SensorUpdatePublisher(threading.Thread):
@@ -25,9 +46,9 @@ class SensorUpdatePublisher(threading.Thread):
     def __init__(
         self,
         self_node_id: str,
-        peer_table: PeerTableLike,
+        peer_table: PublisherPeerTableLike,
         tcp_client: "TcpClientLike",
-        state_worker: StateWorkerLike,
+        state_worker: ReplicationDeltaSourceLike,
         log: LoggerLike,
         interval_s: float = 1.0,
         push_ratio: float = 0.3,
@@ -46,9 +67,9 @@ class SensorUpdatePublisher(threading.Thread):
 
         Args:
             self_node_id (str): Local node id used as sender and local-origin filter.
-            peer_table (PeerTableLike): Membership snapshot provider for replication targets.
+            peer_table (PublisherPeerTableLike): Membership snapshot provider for replication targets.
             tcp_client (TcpClientLike): Outbound transport used to send protocol messages.
-            state_worker (StateWorkerLike): State source used for deltas and pull cursors.
+            state_worker (ReplicationDeltaSourceLike): State source used for deltas and pull cursors.
             log (LoggerLike): Logger used for transport and runtime failures.
             interval_s (float): Seconds between replication rounds.
             push_ratio (float): Push fanout ratio over alive peers.
@@ -127,17 +148,24 @@ class SensorUpdatePublisher(threading.Thread):
         if self._round % self._pull_every_rounds == 0:
             self._pull_missing_deltas(peers)
 
-    def _alive_peers(self) -> tuple[PeerLike, ...]:
+    def _alive_peers(self) -> tuple[PublisherPeerLike, ...]:
         """Return peers currently eligible for push-pull replication."""
         all_peers = self._peer_table.snapshot()
-        eligible: list[PeerLike] = []
+        eligible: list[PublisherPeerLike] = []
         for peer in all_peers:
+            if (
+                not hasattr(peer, "node_id")
+                or not hasattr(peer, "host")
+                or not hasattr(peer, "port")
+            ):
+                continue
+            typed_peer = cast(PublisherPeerLike, peer)
             status = getattr(peer, "status", None)
             if status is None:
-                eligible.append(peer)
+                eligible.append(typed_peer)
                 continue
             if str(status).lower() == "alive":
-                eligible.append(peer)
+                eligible.append(typed_peer)
         return tuple(eligible)
 
     def _fanout_count(self, *, total: int, ratio: float, min_peers: int) -> int:
@@ -152,11 +180,11 @@ class SensorUpdatePublisher(threading.Thread):
 
     def _select_random_peers(
         self,
-        peers: tuple[PeerLike, ...],
+        peers: tuple[PublisherPeerLike, ...],
         *,
         ratio: float,
         min_peers: int,
-    ) -> tuple[PeerLike, ...]:
+    ) -> tuple[PublisherPeerLike, ...]:
         """Select one random subset according to ratio and minimum fanout."""
         if not peers:
             return ()
@@ -165,7 +193,7 @@ class SensorUpdatePublisher(threading.Thread):
             return peers
         return tuple(self._rng.sample(list(peers), k))
 
-    def _push_deltas(self, peers: tuple[PeerLike, ...]) -> None:
+    def _push_deltas(self, peers: tuple[PublisherPeerLike, ...]) -> None:
         """Push local-origin replication deltas to a random peer subset."""
         deltas: ReplicationDeltaBatch = self._state_worker.pop_replication_deltas()
         if not deltas:
@@ -225,7 +253,7 @@ class SensorUpdatePublisher(threading.Thread):
                         },
                     )
 
-    def _pull_missing_deltas(self, peers: tuple[PeerLike, ...]) -> None:
+    def _pull_missing_deltas(self, peers: tuple[PublisherPeerLike, ...]) -> None:
         """Pull missing deltas from a random peer subset."""
         pull_targets = self._select_random_peers(
             peers,
@@ -253,7 +281,13 @@ class SensorUpdatePublisher(threading.Thread):
                     {"from_seq": from_seq},
                 )
 
-    def _send_message_to_peer(self, peer: PeerLike, msg: Message, *, op_name: str) -> bool:
+    def _send_message_to_peer(
+        self,
+        peer: PublisherPeerLike,
+        msg: Message,
+        *,
+        op_name: str,
+    ) -> bool:
         """Deliver one replication message to one peer using best-effort transport.
 
         Args:

@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections import deque
 import threading
 import time
+from typing import cast
 
-from utils.typing import JsonObject, MembershipSnapshotDict, NodeSnapshot, ReplicationDeltaBatch
+from utils.typing import JsonArray, JsonObject, MembershipSnapshotDict, NodeSnapshot
 
 
 class ControlPlaneEventStore:
@@ -132,15 +133,16 @@ class ClusterIntrospectionService:
         raw: MembershipSnapshotDict = self._membership_provider()
         peers_out: list[JsonObject] = []
         for peer in raw.get("peers", []):
-            row: JsonObject = dict(peer)
+            row = cast(JsonObject, dict(peer))
             if row.get("direct_observed") is not True:
                 row["phi"] = None
             peers_out.append(row)
         response = self._stamp()
-        response["membership"] = {
+        membership_obj: JsonObject = {
             "local_node_id": raw.get("local_node_id", ""),
-            "peers": peers_out,
+            "peers": cast(JsonArray, peers_out),
         }
+        response["membership"] = membership_obj
         return response
 
     def sensor_state_snapshot(self) -> JsonObject:
@@ -165,24 +167,26 @@ class ClusterIntrospectionService:
                         "origin": record.get("origin"),
                         "ts_ms": record.get("ts_ms"),
                         "value": record.get("value"),
-                        "meta": record.get("meta", {}),
+                        "meta": cast(JsonObject, dict(record.get("meta", {}))),
                     }
                 )
         response = self._stamp()
-        response["sensor_state"] = {
+        sensor_state_obj: JsonObject = {
             "record_count": len(records),
-            "records": records,
+            "records": cast(JsonArray, records),
         }
+        response["sensor_state"] = sensor_state_obj
         return response
 
     def recent_events_snapshot(self) -> JsonObject:
         """Return bounded recent control-plane/protocol events."""
         response = self._stamp()
         events = list(self._control_plane_events.snapshot())
-        response["events"] = {
+        events_obj: JsonObject = {
             "count": len(events),
-            "items": events,
+            "items": cast(JsonArray, events),
         }
+        response["events"] = events_obj
         return response
 
     def replication_gossip_metrics_snapshot(self) -> JsonObject:

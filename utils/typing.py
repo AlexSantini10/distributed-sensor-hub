@@ -9,7 +9,7 @@ Responsibilities:
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import NotRequired, Protocol, TypedDict, runtime_checkable
+from typing import Any, NotRequired, Protocol, TYPE_CHECKING, TypedDict, runtime_checkable
 
 
 type JsonScalar = None | bool | int | float | str
@@ -287,7 +287,7 @@ class PeerLike(Protocol):
     port: int
 
 
-type SenderLike = Callable[[str, SupportsToBytes], None]
+type SenderLike = Callable[[str, "Message[Any]"], None]
 
 
 class SnapshotProvider(Protocol):
@@ -356,3 +356,5 @@ class ReplicationDeltaSourceLike(Protocol):
         """Return ordered deltas newer than ``from_seq`` without draining."""
         ...
 
+if TYPE_CHECKING:
+    from protocol.message import Message

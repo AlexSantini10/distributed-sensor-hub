@@ -10,7 +10,7 @@ import pytest
 
 from tests.integration.docker_cluster_harness import DockerClusterHarness
 from tests.integration.docker_requirements import skip_unless_docker_accessible
-from utils.typing import JsonObject
+from utils.typing import JsonObject, JsonValue
 
 
 PARTITION_COMPOSE = Path("docker/docker-compose-integration-tests.yml")
@@ -21,7 +21,7 @@ LOGS_ON_FAILURE = Path("logs/docker-partition-reconciliation-failure.log")
 class _InjectedUpdate:
     target_node_id: str
     sensor_id: str
-    value: object
+    value: JsonValue
     ts_ms: int
     origin: str
     meta: JsonObject

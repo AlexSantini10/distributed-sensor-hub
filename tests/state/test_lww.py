@@ -503,4 +503,4 @@ def test_updates_snapshot_includes_sync_source_for_ui_logs() -> None:
     w.merge_update("s1", 10, 1000, "node-b", source="pull")
 
     updates = w.get_updates_snapshot()["A"]
-    assert updates["node-b:s1"]["sync_source"] == "pull"
+    assert updates["node-b:s1"].get("sync_source") == "pull"

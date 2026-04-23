@@ -10,7 +10,7 @@ import pytest
 
 from tests.integration.docker_cluster_harness import DockerClusterHarness
 from tests.integration.docker_requirements import skip_unless_docker_accessible
-from utils.typing import JsonObject
+from utils.typing import JsonObject, JsonValue
 
 
 CRASH_COMPOSE = Path("docker/docker-compose-integration-tests.yml")
@@ -23,7 +23,7 @@ CRASHED_NODE_ID = "node3"
 class _InjectedUpdate:
     target_node_id: str
     sensor_id: str
-    value: object
+    value: JsonValue
     ts_ms: int
     origin: str
     meta: JsonObject
@@ -122,11 +122,14 @@ def _assert_membership_recovers(harness: DockerClusterHarness, *, restarted_node
         if len(peers) < expected_peer_count:
             return False
 
-        peer_by_id = {
-            peer.get("peer_id"): peer
-            for peer in peers
-            if isinstance(peer, dict) and isinstance(peer.get("peer_id"), str)
-        }
+        peer_by_id: dict[str, JsonObject] = {}
+        for peer in peers:
+            if not isinstance(peer, dict):
+                continue
+            peer_id = peer.get("peer_id")
+            if not isinstance(peer_id, str):
+                continue
+            peer_by_id[peer_id] = peer
         if set(harness.node_ids) - {node_id} - set(peer_by_id.keys()):
             return False
 

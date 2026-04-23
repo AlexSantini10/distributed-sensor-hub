@@ -1,10 +1,13 @@
 """Validate reusable cluster introspection service snapshots."""
 
+from typing import cast
+
 from introspection.service import (
     ClusterIntrospectionService,
     ControlPlaneEventStore,
     ReplicationGossipMetricsStore,
 )
+from utils.typing import JsonObject
 
 
 def test_membership_snapshot_hides_phi_for_indirect_peers() -> None:
@@ -41,9 +44,10 @@ def test_membership_snapshot_hides_phi_for_indirect_peers() -> None:
         replication_metrics=metrics,
     )
 
-    membership = service.membership_snapshot()["membership"]
+    membership = cast(JsonObject, service.membership_snapshot().get("membership", {}))
+    peers = cast(list[JsonObject], membership.get("peers", []))
     assert membership["local_node_id"] == "node-a"
-    assert membership["peers"][0]["phi"] is None
+    assert peers[0]["phi"] is None
 
 
 def test_cluster_snapshot_includes_all_surfaces() -> None:
@@ -83,9 +87,17 @@ def test_cluster_snapshot_includes_all_surfaces() -> None:
         replication_metrics=metrics,
     )
 
-    cluster = service.cluster_snapshot()["cluster"]
-    assert cluster["topology"]["adjacency"]["node-b"] == ["node-a"]
-    assert cluster["sensor_state"]["record_count"] == 1
-    assert cluster["events"]["count"] == 1
-    assert cluster["metrics"]["counters"]["replication_rounds_total"] == 1
-    assert cluster["metrics"]["state_replication"]["next_seq"] == 7
+    cluster = cast(JsonObject, service.cluster_snapshot().get("cluster", {}))
+    topology = cast(JsonObject, cluster.get("topology", {}))
+    adjacency = cast(JsonObject, topology.get("adjacency", {}))
+    sensor_state = cast(JsonObject, cluster.get("sensor_state", {}))
+    events = cast(JsonObject, cluster.get("events", {}))
+    metrics = cast(JsonObject, cluster.get("metrics", {}))
+    counters = cast(JsonObject, metrics.get("counters", {}))
+    state_replication = cast(JsonObject, metrics.get("state_replication", {}))
+
+    assert adjacency["node-b"] == ["node-a"]
+    assert sensor_state["record_count"] == 1
+    assert events["count"] == 1
+    assert counters["replication_rounds_total"] == 1
+    assert state_replication["next_seq"] == 7

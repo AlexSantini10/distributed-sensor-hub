@@ -19,12 +19,13 @@ import socket
 import struct
 import subprocess
 import time
+from typing import cast
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 from protocol.factory import build_sensor_update
 from protocol.messages import SensorMeta
-from utils.typing import JsonObject
+from utils.typing import JsonObject, JsonValue
 
 
 RETRYABLE_HTTP_ERRORS = (
@@ -231,7 +232,7 @@ class DockerClusterHarness:
         *,
         target_node_id: str,
         sensor_id: str,
-        value: object,
+        value: JsonValue,
         ts_ms: int,
         origin: str | None = None,
         meta: JsonObject | None = None,
@@ -267,6 +268,7 @@ class DockerClusterHarness:
         for update in updates:
             target_node_id = update.get("target_node_id")
             sensor_id = update.get("sensor_id")
+            value = update.get("value")
             ts_ms = update.get("ts_ms")
             if not isinstance(target_node_id, str):
                 raise TypeError("update.target_node_id must be a string")
@@ -274,24 +276,33 @@ class DockerClusterHarness:
                 raise TypeError("update.sensor_id must be a string")
             if not isinstance(ts_ms, int):
                 raise TypeError("update.ts_ms must be an int")
+            if isinstance(value, dict):
+                typed_value: JsonValue = cast(JsonObject, value)
+            elif isinstance(value, list):
+                typed_value = cast(JsonValue, value)
+            elif value is None or isinstance(value, (bool, int, float, str)):
+                typed_value = value
+            else:
+                raise TypeError("update.value must be JSON-serializable")
+
+            origin_raw = update.get("origin")
+            origin = origin_raw if isinstance(origin_raw, str) else None
+            meta_raw = update.get("meta")
+            meta = cast(JsonObject, meta_raw) if isinstance(meta_raw, dict) else None
+            sender_raw = update.get("sender_id")
+            sender_id = sender_raw if isinstance(sender_raw, str) else "integration-injector"
+            envelope_raw = update.get("envelope_ts_ms")
+            envelope_ts_ms = envelope_raw if isinstance(envelope_raw, int) else None
 
             self.inject_sensor_update(
                 target_node_id=target_node_id,
                 sensor_id=sensor_id,
-                value=update.get("value"),
+                value=typed_value,
                 ts_ms=ts_ms,
-                origin=update.get("origin") if isinstance(update.get("origin"), str) else None,
-                meta=update.get("meta") if isinstance(update.get("meta"), dict) else None,
-                sender_id=(
-                    update.get("sender_id")
-                    if isinstance(update.get("sender_id"), str)
-                    else "integration-injector"
-                ),
-                envelope_ts_ms=(
-                    update.get("envelope_ts_ms")
-                    if isinstance(update.get("envelope_ts_ms"), int)
-                    else None
-                ),
+                origin=origin,
+                meta=meta,
+                sender_id=sender_id,
+                envelope_ts_ms=envelope_ts_ms,
             )
 
     def partition_subgroups(self) -> None:
