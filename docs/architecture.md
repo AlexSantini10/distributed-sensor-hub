@@ -27,8 +27,6 @@ No coordinator is required for normal operation.
 | `topology` | Policy-driven connection target selection | [topology/README.md](../topology/README.md) |
 | `webapi` | Read-only HTTP observation endpoints | [webapi/README.md](../webapi/README.md) |
 
-Dependency overview diagram: [module-dependencies.puml](module-dependencies.puml)
-
 ## Runtime sequence
 
 1. Load config and logging.
