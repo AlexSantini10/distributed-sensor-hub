@@ -63,15 +63,16 @@ def setup_protocol(
         on_peer_discovered=on_peer_discovered,
     )
 
+    def _on_peer_alive(node_id: str) -> None:
+        if topology_state is None:
+            return
+        topology_state.mark_neighbor_connected(node_id)
+
     ping_handler, pong_handler = make_heartbeat_handlers(
         peer_table=peer_table,
         send=send_function,
         self_node_id=self_node_id,
-        on_peer_alive=(
-            topology_state.mark_neighbor_connected
-            if topology_state is not None
-            else None
-        ),
+        on_peer_alive=_on_peer_alive if topology_state is not None else None,
     )
 
     def _with_direct_observation(

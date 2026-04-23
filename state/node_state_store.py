@@ -596,13 +596,14 @@ class NodeStateStore:
                 if self._replication_deltas
                 else (self._replication_next_seq - 1)
             )
-            latest_by_origin = dict(
-                sorted(
+            latest_by_origin: JsonObject = {
+                origin: seq
+                for origin, seq in sorted(
                     self._latest_replication_seq_by_origin.items(),
                     key=lambda item: item[0],
                 )
-            )
-            return {
+            }
+            stats: JsonObject = {
                 "next_seq": self._replication_next_seq,
                 "last_read_seq": self._replication_last_read_seq,
                 "oldest_retained_seq": oldest_retained_seq,
@@ -610,6 +611,7 @@ class NodeStateStore:
                 "retained_delta_count": len(self._replication_deltas),
                 "latest_seq_by_origin": latest_by_origin,
             }
+            return stats
 
     def get_latest_replication_seq_for_origin(self, origin: str) -> int:
         """Return the latest pull cursor observed for one origin.

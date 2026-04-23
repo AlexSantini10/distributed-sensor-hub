@@ -25,7 +25,7 @@ from sensors.sensor_manager import SensorManager
 from state.events import SensorEventQueue
 from state.node_state_worker import NodeStateWorker
 from utils.config import Config
-from utils.typing import LoggerLike
+from utils.typing import JsonObject, LoggerLike
 from webapi.http_api import WebAPIServer
 from runtime.sensor_update_publisher import SensorUpdatePublisher
 from runtime.startup import (
@@ -334,7 +334,7 @@ class NodeApplication:
         event_type: str,
         sender_id: str | None = None,
         target_id: str | None = None,
-        details: dict[str, object] | None = None,
+        details: JsonObject | None = None,
     ) -> None:
         """Record one protocol/control-plane event for introspection consumers."""
         if details is None:

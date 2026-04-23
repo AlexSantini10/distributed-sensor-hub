@@ -374,9 +374,13 @@ def setup_node_networking(
         network_packet_loss_prob=config.network_packet_loss_prob,
     )
     topology_state = TopologyStateStore(self_node_id=config.node_id)
+
+    def _on_peer_connected(node_id: str) -> None:
+        topology_state.mark_neighbor_connected(node_id)
+
     registry = ClientPeerRegistry(
         client=client,
-        on_peer_connected=topology_state.mark_neighbor_connected,
+        on_peer_connected=_on_peer_connected,
     )
     topology_policy = resolve_topology_policy(config.topology_policy.value)
 
