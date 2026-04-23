@@ -14,6 +14,7 @@ Each node runs sensors, state merge, membership/liveness, TCP protocol handling,
 - [Docs index](docs/README.md)
 - [Course report (PDF)](docs/report/distributed-sensor-hub-final-report.pdf)
 - [Architecture](docs/architecture.md)
+- [Node services inventory](docs/node-services.md)
 - [Testing](docs/testing.md)
 - [Introspection API](docs/introspection-api.md)
 - [Observability UI](web/README.md)
