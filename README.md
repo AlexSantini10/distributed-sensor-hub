@@ -101,6 +101,54 @@ python -m http.server 8080
 
 Then open `http://localhost:8080` and set the API base URL to a node endpoint (for example `http://localhost:10000`).
 
+## Replication tuning (avoid saturation)
+
+When many nodes and sensors are active, stale data in UI is usually caused by pull storms and/or a too-small delta history.
+
+Recommended baseline for `docker-compose-6-nodes.yml`, `docker-compose-12-nodes.yml`, and `docker-compose-base.yml`:
+
+- `GOSSIP_SYNC_INTERVAL_MS: 1000`
+- `GOSSIP_PUSH_RATIO: 0.35`
+- `GOSSIP_PUSH_MIN_PEERS: 1`
+- `GOSSIP_PULL_RATIO: 0.05`
+- `GOSSIP_PULL_MIN_PEERS: 1`
+- `GOSSIP_PULL_EVERY_ROUNDS: 6`
+- `REPLICATION_DELTA_MAXLEN: 4096`
+
+Sensor cadence for demos (mixed load, clearer UI behavior):
+
+- Keep a few "fast" sensors at `1200-2500 ms`.
+- Keep non-critical sensors at `10000-15000 ms`.
+- Avoid making all sensors fast at the same time.
+
+Practical rule of thumb:
+
+- If you increase fast sensors, first increase `REPLICATION_DELTA_MAXLEN`.
+- Increase pull pressure only if freshness is low and push alone is not enough.
+- Keep pull less aggressive than push in stable networks.
+
+Symptoms and actions:
+
+- Many `sensor_update_received` with `applied:false` and `source:"pull"`: reduce `GOSSIP_PULL_RATIO` and/or increase `GOSSIP_PULL_EVERY_ROUNDS`.
+- Frequent `DELTA_UNAVAILABLE` or very old UI timestamps: increase `REPLICATION_DELTA_MAXLEN`.
+- CPU/network pressure too high: increase `GOSSIP_SYNC_INTERVAL_MS` (for example `1200-1500`) and slow non-critical sensors.
+
+Suggested safe ranges:
+
+- `GOSSIP_SYNC_INTERVAL_MS`: `800-1500`
+- `GOSSIP_PUSH_RATIO`: `0.25-0.5`
+- `GOSSIP_PULL_RATIO`: `0.05-0.25`
+- `GOSSIP_PULL_EVERY_ROUNDS`: `3-8`
+- `REPLICATION_DELTA_MAXLEN`: `2048-8192`
+
+Validation checklist after tuning:
+
+1. Restart compose and wait at least 1-2 minutes.
+2. Check introspection counters: `get_delta_unavailable_total` should stay near `0`.
+3. Verify retained delta buffer is not constantly full.
+4. In UI, most sensor timestamps should be recent (seconds, not minutes) for "fast" sensors.
+5. `applied:false` events can exist, but they should not dominate traffic for long periods.
+
 ## Validation
 
 - Unit + integration overview: [docs/testing.md](docs/testing.md)

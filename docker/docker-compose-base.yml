@@ -15,6 +15,13 @@ services:
       CLEAR_LOG: "true"
 
       WEB_API_PORT: 10000
+      GOSSIP_SYNC_INTERVAL_MS: 1000
+      GOSSIP_PUSH_RATIO: 0.35
+      GOSSIP_PUSH_MIN_PEERS: 1
+      GOSSIP_PULL_RATIO: 0.05
+      GOSSIP_PULL_MIN_PEERS: 1
+      GOSSIP_PULL_EVERY_ROUNDS: 6
+      REPLICATION_DELTA_MAXLEN: 4096
 
       SENSORS: 4
 
@@ -29,7 +36,7 @@ services:
       # MEDIUM boolean - occasional flips
       SENSOR_1_TYPE: boolean
       SENSOR_1_NAME: motion
-      SENSOR_1_PERIOD_MS: 5000
+      SENSOR_1_PERIOD_MS: 10000
       SENSOR_1_P_TRUE: 0.4
       SENSOR_1_UNIT: "detected"
 
@@ -71,13 +78,20 @@ services:
       CLEAR_LOG: "true"
 
       WEB_API_PORT: 10001
+      GOSSIP_SYNC_INTERVAL_MS: 1000
+      GOSSIP_PUSH_RATIO: 0.35
+      GOSSIP_PUSH_MIN_PEERS: 1
+      GOSSIP_PULL_RATIO: 0.05
+      GOSSIP_PULL_MIN_PEERS: 1
+      GOSSIP_PULL_EVERY_ROUNDS: 6
+      REPLICATION_DELTA_MAXLEN: 4096
 
       SENSORS: 3
 
       # MEDIUM numeric - steady rhythm
       SENSOR_0_TYPE: numeric
       SENSOR_0_NAME: pressure
-      SENSOR_0_PERIOD_MS: 6000
+      SENSOR_0_PERIOD_MS: 9000
       SENSOR_0_MIN: 900
       SENSOR_0_MAX: 1100
       SENSOR_0_UNIT: "hPa"
@@ -94,7 +108,7 @@ services:
       # FAST spike - bursty behaviour
       SENSOR_2_TYPE: spike
       SENSOR_2_NAME: traffic
-      SENSOR_2_PERIOD_MS: 2500
+      SENSOR_2_PERIOD_MS: 1500
       SENSOR_2_BASELINE: 5
       SENSOR_2_SPIKE_HEIGHT: 60
       SENSOR_2_P_SPIKE: 0.25

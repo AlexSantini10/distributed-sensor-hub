@@ -556,6 +556,10 @@ function isSensorDataTimelineEvent(item) {
   const eventType = String(item && item.event_type ? item.event_type : "").toLowerCase();
   const details = item && item.details && typeof item.details === "object" ? item.details : {};
 
+  if (eventType.startsWith("inbound_")) {
+    return false;
+  }
+
   if (eventType.includes("sensor")) {
     return true;
   }

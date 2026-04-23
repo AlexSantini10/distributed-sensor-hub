@@ -22,7 +22,7 @@ class PullResponseTracker:
         _last_seq_by_peer (dict[str, int]): Latest pull cursor observed per peer.
     """
 
-    def __init__(self, *, default_window_s: float = 1.5) -> None:
+    def __init__(self, *, default_window_s: float = 5.0) -> None:
         """Initialize the pull-response classifier.
 
         Args:
@@ -94,10 +94,9 @@ class PullResponseTracker:
             seq (int): Replication sequence carried by the update.
 
         Returns:
-            None: This method updates in-memory pull cursors only.
+            None: This method updates the per-peer cursor using any valid
+                inbound sequence observed from that peer.
         """
-        if source != "pull":
-            return
         if not isinstance(sender_id, str) or sender_id == "":
             return
         if not isinstance(seq, int):
