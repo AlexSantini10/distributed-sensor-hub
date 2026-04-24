@@ -6,6 +6,7 @@ Module-level details are documented in each module README.
 ## Project docs
 
 - [Architecture](architecture.md)
+- [Docker CD](docker-cd.md)
 - [Layered Communication Model](layered-communication-model.md)
 - [Node Services Inventory](node-services.md)
 - [Testing](testing.md)

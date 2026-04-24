@@ -12,6 +12,7 @@ Each node runs sensors, state merge, membership/liveness, TCP protocol handling,
 ## Quick links
 
 - [Docs index](docs/README.md)
+- [Docker CD](docs/docker-cd.md)
 - [Course report (PDF)](docs/report/distributed-sensor-hub-final-report.pdf)
 - [Course report repository (LaTeX source)](https://github.com/AlexSantini10/distributed-sensor-hub-report)
 - [Architecture](docs/architecture.md)
@@ -155,6 +156,12 @@ Validation checklist after tuning:
 
 - Unit + integration overview: [docs/testing.md](docs/testing.md)
 - Quick local run: `pytest --maxfail=1`
+
+## Docker CD
+
+GitHub Actions builds the node container image from `docker/Dockerfile.base` on every push to `main` and publishes the rolling tags on `ghcr.io/<owner>/<repo>`.
+
+When you push a version tag such as `v1.0.0`, the workflow also creates the GitHub Release for that commit with pull and run instructions. Pull requests to `main` still validate that the image builds, but they do not publish artifacts. Full usage details are documented in [docs/docker-cd.md](docs/docker-cd.md).
 
 ## Notes
 
