@@ -161,7 +161,7 @@ Validation checklist after tuning:
 
 GitHub Actions builds the node container image from `docker/Dockerfile.base` on every push to `main` and publishes the rolling tags on `ghcr.io/<owner>/<repo>`.
 
-When you push a version tag such as `v1.0.0`, the workflow also creates the GitHub Release for that commit with pull and run instructions. Pull requests to `main` still validate that the image builds, but they do not publish artifacts. Full usage details are documented in [docs/docker-cd.md](docs/docker-cd.md).
+When you push a version tag such as `v1.0.0`, the workflow also creates the GitHub Release for that commit and attaches a small usage bundle with instructions, a `.env` example, and a minimal Compose file pinned to the released image digest. Pull requests to `main` still validate that the image builds, but they do not publish artifacts. Full usage details are documented in [docs/docker-cd.md](docs/docker-cd.md).
 
 ## Notes
 

@@ -99,6 +99,93 @@ jobs:
             ${{ steps.prep.outputs.image_name }}@${{ steps.build.outputs.digest }}
           EOF
 
+          cat <<EOF > docker-node.env.example
+          # Minimal environment for a released single node container
+          NODE_ID=node-1
+          HOST=0.0.0.0
+          PORT=9000
+          BOOTSTRAP_PEERS=
+
+          LOG_LEVEL=INFO
+          LOG_FILE=/app/logs/node-1.log
+          CLEAR_LOG=true
+
+          WEB_API_PORT=10000
+
+          SOCKET_TIMEOUT=1.0
+          ACCEPT_QUEUE_SIZE=128
+          MAX_CONNECTIONS=256
+          MAX_WORKERS=64
+
+          PHI_THRESHOLD_SUSPECT=3.0
+          PHI_THRESHOLD_DEAD=8.0
+          PHI_INITIAL_INTERVAL_S=1.0
+
+          GOSSIP_SYNC_INTERVAL_MS=1000
+          GOSSIP_PUSH_RATIO=0.3
+          GOSSIP_PUSH_MIN_PEERS=2
+          GOSSIP_PULL_RATIO=0.15
+          GOSSIP_PULL_MIN_PEERS=1
+          GOSSIP_PULL_EVERY_ROUNDS=3
+
+          NETWORK_DELAY_MS=0
+          NETWORK_DELAY_JITTER_MS=0
+          NETWORK_DELAY_SPIKE_PROB=0
+          NETWORK_DELAY_SPIKE_MS=0
+          NETWORK_PACKET_LOSS_PROB=0
+          TOPOLOGY_POLICY=full_mesh
+
+          SENSORS=2
+
+          SENSOR_0_TYPE=numeric
+          SENSOR_0_NAME=temperature
+          SENSOR_0_PERIOD_MS=1500
+          SENSOR_0_MIN=15
+          SENSOR_0_MAX=30
+          SENSOR_0_UNIT=C
+
+          SENSOR_1_TYPE=boolean
+          SENSOR_1_NAME=motion
+          SENSOR_1_PERIOD_MS=2500
+          SENSOR_1_P_TRUE=0.3
+          EOF
+
+          cat <<EOF > docker-compose.release.yml
+          services:
+            node:
+              image: ${{ steps.prep.outputs.image_name }}@${{ steps.build.outputs.digest }}
+              container_name: distributed-sensor-hub-node
+              env_file:
+                - docker-node.env
+              ports:
+                - "9000:9000"
+                - "10000:10000"
+              volumes:
+                - ./logs:/app/logs
+          EOF
+
+          cat <<EOF > RELEASE-README.md
+          # Distributed Sensor Hub release bundle
+
+          This release includes:
+
+          - docker-node-release.txt: quick pull and run commands
+          - docker-node.env.example: minimal environment file for one node
+          - docker-compose.release.yml: compose file pinned to this image digest
+
+          Quick start:
+
+          1. Rename docker-node.env.example to docker-node.env
+          2. Start the node:
+             docker compose -f docker-compose.release.yml up -d
+          3. Query the HTTP API:
+             http://localhost:10000/api/introspection
+
+          To stop the node:
+
+          docker compose -f docker-compose.release.yml down
+          EOF
+
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -129,4 +216,12 @@ jobs:
               -e BOOTSTRAP_PEERS= \
               ${{ steps.prep.outputs.image_name }}@${{ steps.build.outputs.digest }}
             ```
+
+            Release assets also include:
+            - `docker-node.env.example`
+            - `docker-compose.release.yml`
+            - `RELEASE-README.md`
           files: docker-node-release.txt
+            docker-node.env.example
+            docker-compose.release.yml
+            RELEASE-README.md
