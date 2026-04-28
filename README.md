@@ -97,12 +97,9 @@ docker compose -f docker/docker-compose-12-nodes.yml up --build -d
 
 Observability UI:
 
-```powershell
-cd web
-python -m http.server 8080
-```
-
-Then open `http://localhost:8080` and set the API base URL to a node endpoint (for example `http://localhost:10000`).
+- Open the node dashboard URL directly, for example `http://localhost:10000/ui`.
+- The same port serves both the dashboard static assets (`/`, `/index.html`, `/app.js`, `/styles.css`) and API endpoints (`/api/*`).
+- In multi-node Docker runs, open any node dashboard URL you want to observe (for example `http://localhost:10003/ui`).
 
 ## Replication tuning (avoid saturation)
 

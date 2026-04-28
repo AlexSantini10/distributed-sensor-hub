@@ -26,8 +26,17 @@ Its system role is to bridge internal state/membership workers and external poll
   - Optionally serve membership snapshots when a membership provider is configured.
   - Optionally serve merged topology snapshots when a topology provider is configured.
   - Optionally serve aggregate and per-surface introspection snapshots when an introspection provider is configured.
+  - Serve static observability UI assets (`/`, `/index.html`, `/app.js`, `/styles.css`) from the repository `web/` directory.
   - Enforce a constrained HTTP surface (`GET`, `OPTIONS`) with CORS headers for browser-based polling.
   - Isolate HTTP failures from domain workers through exception handling and logger-based reporting.
+
+- **Useful URLs (on `WEB_API_PORT`)**:
+  - Dashboard: `/ui` (aliases: `/dashboard`, `/`, `/index.html`)
+  - State snapshot: `/api/state`
+  - Incremental updates: `/api/updates`
+  - Membership: `/api/membership`
+  - Topology: `/api/topology`
+  - Introspection: `/api/introspection`
 
 - Main data flow:
   - Runtime injects zero-argument snapshot provider callables into a configured request handler.
@@ -38,4 +47,4 @@ Its system role is to bridge internal state/membership workers and external poll
   - With `runtime.startup` (or equivalent composition layer): receives injected providers and bind configuration.
   - With `state`: reads full-state and incremental-update views produced by the state worker/store.
   - With `membership`: reads Phi-based membership view when membership integration is enabled.
-  - With external clients (`web` UI/tests): provides a polling endpoint layer only; it does not mutate replicated state.
+  - With external clients (`web` UI/tests): serves both polling endpoints and static dashboard assets; it does not mutate replicated state.

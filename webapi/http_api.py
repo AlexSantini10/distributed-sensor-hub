@@ -9,6 +9,7 @@ Responsibilities:
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from protocol.contracts import HttpContentType, TextEncoding
 from utils.typing import (
@@ -35,6 +36,7 @@ class RequestHandler(BaseHTTPRequestHandler):
     _topology_provider: TopologySnapshotProvider | None
     _introspection_provider: JsonSnapshotProvider | None
     _log: LoggerLike | None
+    _web_root: Path | None
 
     def _send_cors_headers(self) -> None:
         """Write the permissive CORS headers required by browser polling clients.
@@ -83,6 +85,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self._handle_introspection_section("events")
             elif self.path == "/api/introspection/metrics":
                 self._handle_introspection_section("metrics")
+            elif self.path in ("/", "/ui", "/dashboard", "/index.html"):
+                self._handle_static_file("index.html", "text/html; charset=utf-8")
+            elif self.path == "/app.js":
+                self._handle_static_file("app.js", "application/javascript; charset=utf-8")
+            elif self.path == "/styles.css":
+                self._handle_static_file("styles.css", "text/css; charset=utf-8")
             else:
                 self.send_response(404)
                 self._send_cors_headers()
@@ -114,6 +122,37 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self._send_cors_headers()
         self.send_header("Content-Type", HttpContentType.JSON.value)
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _handle_static_file(self, filename: str, content_type: str) -> None:
+        """Serve static UI assets from the repository's web directory."""
+        web_root = self._web_root
+        if web_root is None:
+            self.send_response(404)
+            self._send_cors_headers()
+            self.end_headers()
+            return
+
+        try:
+            payload = (web_root / filename).read_bytes()
+        except FileNotFoundError:
+            self.send_response(404)
+            self._send_cors_headers()
+            self.end_headers()
+            return
+        except Exception:
+            if self._log is not None:
+                self._log.error(f"Failed to serve static file '{filename}'", exc_info=True)
+            self.send_response(500)
+            self._send_cors_headers()
+            self.end_headers()
+            return
+
+        self.send_response(200)
+        self._send_cors_headers()
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
@@ -281,6 +320,7 @@ def build_request_handler(
     topology_provider: TopologySnapshotProvider | None,
     introspection_provider: JsonSnapshotProvider | None,
     log: LoggerLike | None,
+    web_root: Path | None,
 ) -> type[RequestHandler]:
     """Create a concrete request-handler class bound to snapshot providers.
 
@@ -314,6 +354,7 @@ def build_request_handler(
             else None
         )
         _log = log
+        _web_root = web_root
 
     return ConfiguredRequestHandler
 
@@ -363,6 +404,7 @@ class WebAPIServer(threading.Thread):
             topology_provider=topology_provider,
             introspection_provider=introspection_provider,
             log=log,
+            web_root=Path(__file__).resolve().parent.parent / "web",
         )
         try:
             self._server = ThreadingHTTPServer((host, port), handler_cls)

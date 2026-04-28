@@ -10,15 +10,8 @@ No UI-specific backend logic is required.
 ## Start and access
 
 1. Start one node or a Docker cluster (see project [README](../README.md)).
-2. Serve static files from this folder:
-
-```powershell
-cd web
-python -m http.server 8080
-```
-
-3. Open `http://localhost:8080`.
-4. In the UI, set `API Base URL` to one node's Web API endpoint (for example `http://localhost:10000`).
+2. Open one node dashboard URL in browser (for example `http://localhost:10000/ui`).
+3. Optional: change `API Base URL` in UI if you want to point to a different node endpoint.
 
 ## Component responsibilities
 
@@ -52,4 +45,4 @@ python -m http.server 8080
 
 - Frontend is static and read-only.
 - Data source is introspection API contract only (`introspection/v1`).
-- No dependency from backend/core modules to UI assets.
+- UI assets are served by `webapi` on the node Web API port for simpler deployment.

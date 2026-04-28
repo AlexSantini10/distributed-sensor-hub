@@ -12,6 +12,12 @@ Module-level details are documented in each module README.
 - [Testing](testing.md)
 - [Introspection API](introspection-api.md)
 
+## Dashboard URL
+
+- The observability dashboard is served by each node on the Web API port at `/ui`.
+- Example (single node): `http://localhost:10000/ui`
+- Example (6 nodes): `http://localhost:10000/ui` ... `http://localhost:10005/ui`
+
 ## Module docs
 
 - [runtime](../runtime/README.md)

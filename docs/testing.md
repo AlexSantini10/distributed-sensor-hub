@@ -57,7 +57,8 @@ python tests/integration/verify_cluster.py --timeout 120 --interval 2
 docker compose -f docker/docker-compose-12-nodes.yml down
 ```
 
-For 12 nodes, combine smoke check with UI inspection in [web/index.html](../web/index.html).
+For 12 nodes, combine smoke check with UI inspection by opening one node Web API root
+(for example `http://localhost:10000/`, `http://localhost:10005/`, or `http://localhost:10011/`).
 
 ## Chaos/recovery scenario
 
