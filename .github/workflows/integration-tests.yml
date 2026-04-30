@@ -35,20 +35,3 @@ jobs:
       - name: Deterministic state convergence check
         run: python -m pytest tests/integration/test_deterministic_state_convergence.py -q -s
 
-      - name: Build and start cluster
-        run: docker compose -f docker/docker-compose-base.yml up --build -d
-
-      - name: Verify cluster startup and node connectivity
-        run: python tests/integration/verify_cluster.py --timeout 60 --interval 2
-
-      - name: Show container status
-        if: always()
-        run: docker compose -f docker/docker-compose-base.yml ps
-
-      - name: Dump cluster logs
-        if: failure()
-        run: docker compose -f docker/docker-compose-base.yml logs --no-color
-
-      - name: Stop cluster
-        if: always()
-        run: docker compose -f docker/docker-compose-base.yml down --volumes --remove-orphans

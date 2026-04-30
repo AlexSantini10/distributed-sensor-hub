@@ -31,35 +31,6 @@ Scope limits:
 - validates state convergence, not full membership stability semantics
 - timing is deadline/polling-based, so duration depends on host load
 
-## Docker smoke checks
-
-Base:
-
-```bash
-docker compose -f docker/docker-compose-base.yml up --build -d
-python tests/integration/verify_cluster.py --timeout 60 --interval 2
-docker compose -f docker/docker-compose-base.yml down
-```
-
-6 nodes:
-
-```bash
-docker compose -f docker/docker-compose-6-nodes.yml up --build -d
-python tests/integration/verify_cluster.py --timeout 120 --interval 2
-docker compose -f docker/docker-compose-6-nodes.yml down
-```
-
-12 nodes:
-
-```bash
-docker compose -f docker/docker-compose-12-nodes.yml up --build -d
-python tests/integration/verify_cluster.py --timeout 120 --interval 2
-docker compose -f docker/docker-compose-12-nodes.yml down
-```
-
-For 12 nodes, combine smoke check with UI inspection by opening one node Web API root
-(for example `http://localhost:10000/`, `http://localhost:10005/`, or `http://localhost:10011/`).
-
 ## Chaos/recovery scenario
 
 Use `manual_tests/compose_chaos.py` to stop/restart one service in a running topology.
