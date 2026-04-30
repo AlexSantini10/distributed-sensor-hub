@@ -71,6 +71,9 @@ class DummyLog:
     def critical(self, *args: object, **kwargs: object) -> None:
         pass
 
+    def demo(self, *args: object, **kwargs: object) -> None:
+        pass
+
 
 class DummyPullResponseTracker:
     """Capture peers marked as pending pull responses."""

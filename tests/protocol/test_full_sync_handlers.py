@@ -45,6 +45,9 @@ class DummyLog:
     def critical(self, *args: object, **kwargs: object) -> None:
         pass
 
+    def demo(self, *args: object, **kwargs: object) -> None:
+        pass
+
 
 def _event_queue() -> SensorEventSource:
     return cast(SensorEventSource, Queue())

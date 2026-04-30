@@ -32,6 +32,9 @@ class DummyLog:
     def critical(self, *args: object, **kwargs: object) -> None:
         pass
 
+    def demo(self, *args: object, **kwargs: object) -> None:
+        pass
+
 
 def test_heartbeat_sender_runs_in_background_and_emits_pings() -> None:
     """Assert heartbeat sender emits PING and GOSSIP_STATE without blocking."""

@@ -23,6 +23,9 @@ class DummyLog:
     def critical(self, *args: object, **kwargs: object) -> None:
         pass
 
+    def demo(self, *args: object, **kwargs: object) -> None:
+        pass
+
 
 def test_seed_peer_table_ignores_bootstrap_placeholder_ids() -> None:
     """Assert bootstrap@host:port placeholders are never inserted into membership."""

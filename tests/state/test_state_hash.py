@@ -1,11 +1,12 @@
 """Validate deterministic hashing for replicated state snapshots."""
 
 from state.state_hash import deterministic_state_hash
+from utils.typing import NodeSnapshot
 
 
 def test_state_hash_is_deterministic_across_key_order() -> None:
     """Assert equivalent state dictionaries yield the same deterministic hash."""
-    snapshot_a = {
+    snapshot_a: NodeSnapshot = {
         "node-1": {
             "node-a:sensor-1": {
                 "value": 1,
@@ -21,7 +22,7 @@ def test_state_hash_is_deterministic_across_key_order() -> None:
             },
         }
     }
-    snapshot_b = {
+    snapshot_b: NodeSnapshot = {
         "node-1": {
             "node-b:sensor-2": {
                 "value": 2,

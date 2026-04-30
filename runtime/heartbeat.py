@@ -118,7 +118,10 @@ class HeartbeatSender:
                     f"phi={update.peer.phi:.3f} "
                     f"event_ts_ms={update.peer.status_ts_ms}"
                 )
-                status_wire = update.status.new_status.to_wire()
+                new_status = update.status.new_status
+                if new_status is None:
+                    continue
+                status_wire = new_status.to_wire()
                 if status_wire in {"alive", "suspected"}:
                     demo_event(
                         self._log,

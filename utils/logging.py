@@ -9,8 +9,10 @@ Responsibilities:
 import logging
 import os
 from collections.abc import MutableMapping
+from typing import Any, cast
 
 from utils.config import LogLevel
+from utils.typing import LoggerLike
 
 DEMO_LEVEL_NUM = 60
 DEMO_LEVEL_NAME = "DEMO"
@@ -24,7 +26,7 @@ def _register_demo_level() -> None:
     if hasattr(logging.Logger, "demo"):
         return
 
-    def demo(self: logging.Logger, msg: object, *args: object, **kwargs: object) -> None:
+    def demo(self: logging.Logger, msg: object, *args: object, **kwargs: Any) -> None:
         if self.isEnabledFor(DEMO_LEVEL_NUM):
             self._log(DEMO_LEVEL_NUM, msg, args, **kwargs)
 
@@ -102,10 +104,13 @@ class NodeLogger(logging.LoggerAdapter):
         kwargs["extra"] = extra
         return msg, kwargs
 
-    def demo(self, msg: object, *args: object, **kwargs: object) -> None:
+    def demo(self, msg: object, *args: object, **kwargs: Any) -> None:
         """Emit one message at custom ``DEMO`` severity."""
-        msg, kwargs = self.process(msg, kwargs)
-        self.logger.log(DEMO_LEVEL_NUM, msg, *args, **kwargs)
+        processed_msg, processed_kwargs = self.process(
+            msg,
+            cast(MutableMapping[str, object], kwargs),
+        )
+        self.logger.log(DEMO_LEVEL_NUM, processed_msg, *args, **processed_kwargs)
 
 
 def get_logger(name: str, node_id: str) -> NodeLogger:
@@ -122,7 +127,7 @@ def get_logger(name: str, node_id: str) -> NodeLogger:
     return NodeLogger(logger, {"node_id": node_id})
 
 
-def demo_event(log: logging.Logger | NodeLogger, event: str, **fields: object) -> None:
+def demo_event(log: LoggerLike, event: str, **fields: object) -> None:
     """Emit one strict-format demo event line.
 
     The output format is:
