@@ -1,0 +1,226 @@
+services:
+  node-1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-1
+    restart: "no"
+    environment:
+      NODE_ID: node-1
+      HOST: 0.0.0.0
+      PORT: 9200
+      BOOTSTRAP_PEERS: node-2:9201,node-3:9202,node-4:9203
+      LOG_LEVEL: DEMO
+      LOG_FILE: /app/logs/node-1-demo.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 12000
+
+      DEMO_MODE: "true"
+      FINITE_TEST_SENSOR: "true"
+      SENSOR_CLASS: sensors.providers.finite_test_sensor.FiniteTestSensor
+      READINGS_PER_SENSOR: "60"
+      SENSOR_INTERVAL_MS: "1000"
+
+      HEARTBEAT_INTERVAL_MS: 1000
+      GOSSIP_SYNC_INTERVAL_MS: 1000
+      GOSSIP_PUSH_RATIO: 0.35
+      GOSSIP_PUSH_MIN_PEERS: 1
+      GOSSIP_PULL_RATIO: 0.15
+      GOSSIP_PULL_MIN_PEERS: 1
+      GOSSIP_PULL_EVERY_ROUNDS: 3
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 8.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      REPLICATION_DELTA_MAXLEN: 1024
+
+      NETWORK_DELAY_MS: 0
+      NETWORK_DELAY_JITTER_MS: 0
+      NETWORK_DELAY_SPIKE_PROB: 0
+      NETWORK_DELAY_SPIKE_MS: 0
+      NETWORK_PACKET_LOSS_PROB: 0
+
+      SENSORS: 1
+      SENSOR_0_TYPE: finite_test
+      SENSOR_0_NAME: demo_node_1
+      SENSOR_0_PERIOD_MS: 1000
+      SENSOR_0_SEED: 101
+      SENSOR_0_MAX_UPDATES: 60
+      SENSOR_0_START_TS_MS: 1767225600000
+      SENSOR_0_UNIT: demo
+    ports:
+      - "9200:9200"
+      - "12000:12000"
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - sensor-net
+
+  node-2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-2
+    restart: "no"
+    environment:
+      NODE_ID: node-2
+      HOST: 0.0.0.0
+      PORT: 9201
+      BOOTSTRAP_PEERS: node-1:9200,node-3:9202,node-4:9203
+      LOG_LEVEL: DEMO
+      LOG_FILE: /app/logs/node-2-demo.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 12001
+
+      DEMO_MODE: "true"
+      FINITE_TEST_SENSOR: "true"
+      SENSOR_CLASS: sensors.providers.finite_test_sensor.FiniteTestSensor
+      READINGS_PER_SENSOR: "60"
+      SENSOR_INTERVAL_MS: "1000"
+
+      HEARTBEAT_INTERVAL_MS: 1000
+      GOSSIP_SYNC_INTERVAL_MS: 1000
+      GOSSIP_PUSH_RATIO: 0.35
+      GOSSIP_PUSH_MIN_PEERS: 1
+      GOSSIP_PULL_RATIO: 0.15
+      GOSSIP_PULL_MIN_PEERS: 1
+      GOSSIP_PULL_EVERY_ROUNDS: 3
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 8.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      REPLICATION_DELTA_MAXLEN: 1024
+
+      NETWORK_DELAY_MS: 0
+      NETWORK_DELAY_JITTER_MS: 0
+      NETWORK_DELAY_SPIKE_PROB: 0
+      NETWORK_DELAY_SPIKE_MS: 0
+      NETWORK_PACKET_LOSS_PROB: 0
+
+      SENSORS: 1
+      SENSOR_0_TYPE: finite_test
+      SENSOR_0_NAME: demo_node_2
+      SENSOR_0_PERIOD_MS: 1000
+      SENSOR_0_SEED: 102
+      SENSOR_0_MAX_UPDATES: 60
+      SENSOR_0_START_TS_MS: 1767225600000
+      SENSOR_0_UNIT: demo
+    ports:
+      - "12001:12001"
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - sensor-net
+
+  node-3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-3
+    restart: "no"
+    environment:
+      NODE_ID: node-3
+      HOST: 0.0.0.0
+      PORT: 9202
+      BOOTSTRAP_PEERS: node-1:9200,node-2:9201,node-4:9203
+      LOG_LEVEL: DEMO
+      LOG_FILE: /app/logs/node-3-demo.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 12002
+
+      DEMO_MODE: "true"
+      FINITE_TEST_SENSOR: "true"
+      SENSOR_CLASS: sensors.providers.finite_test_sensor.FiniteTestSensor
+      READINGS_PER_SENSOR: "60"
+      SENSOR_INTERVAL_MS: "1000"
+
+      HEARTBEAT_INTERVAL_MS: 1000
+      GOSSIP_SYNC_INTERVAL_MS: 1000
+      GOSSIP_PUSH_RATIO: 0.35
+      GOSSIP_PUSH_MIN_PEERS: 1
+      GOSSIP_PULL_RATIO: 0.15
+      GOSSIP_PULL_MIN_PEERS: 1
+      GOSSIP_PULL_EVERY_ROUNDS: 3
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 8.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      REPLICATION_DELTA_MAXLEN: 1024
+
+      NETWORK_DELAY_MS: 0
+      NETWORK_DELAY_JITTER_MS: 0
+      NETWORK_DELAY_SPIKE_PROB: 0
+      NETWORK_DELAY_SPIKE_MS: 0
+      NETWORK_PACKET_LOSS_PROB: 0
+
+      SENSORS: 1
+      SENSOR_0_TYPE: finite_test
+      SENSOR_0_NAME: demo_node_3
+      SENSOR_0_PERIOD_MS: 1000
+      SENSOR_0_SEED: 103
+      SENSOR_0_MAX_UPDATES: 60
+      SENSOR_0_START_TS_MS: 1767225600000
+      SENSOR_0_UNIT: demo
+    ports:
+      - "12002:12002"
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - sensor-net
+
+  node-4:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.base
+    container_name: node-4
+    restart: "no"
+    environment:
+      NODE_ID: node-4
+      HOST: 0.0.0.0
+      PORT: 9203
+      BOOTSTRAP_PEERS: node-1:9200,node-2:9201,node-3:9202
+      LOG_LEVEL: DEMO
+      LOG_FILE: /app/logs/node-4-demo.log
+      CLEAR_LOG: "true"
+      WEB_API_PORT: 12003
+
+      DEMO_MODE: "true"
+      FINITE_TEST_SENSOR: "true"
+      SENSOR_CLASS: sensors.providers.finite_test_sensor.FiniteTestSensor
+      READINGS_PER_SENSOR: "60"
+      SENSOR_INTERVAL_MS: "1000"
+
+      HEARTBEAT_INTERVAL_MS: 1000
+      GOSSIP_SYNC_INTERVAL_MS: 1000
+      GOSSIP_PUSH_RATIO: 0.35
+      GOSSIP_PUSH_MIN_PEERS: 1
+      GOSSIP_PULL_RATIO: 0.15
+      GOSSIP_PULL_MIN_PEERS: 1
+      GOSSIP_PULL_EVERY_ROUNDS: 3
+      PHI_THRESHOLD_SUSPECT: 2.5
+      PHI_THRESHOLD_DEAD: 8.0
+      PHI_INITIAL_INTERVAL_S: 1.0
+      REPLICATION_DELTA_MAXLEN: 1024
+
+      NETWORK_DELAY_MS: 0
+      NETWORK_DELAY_JITTER_MS: 0
+      NETWORK_DELAY_SPIKE_PROB: 0
+      NETWORK_DELAY_SPIKE_MS: 0
+      NETWORK_PACKET_LOSS_PROB: 0
+
+      SENSORS: 1
+      SENSOR_0_TYPE: finite_test
+      SENSOR_0_NAME: demo_node_4
+      SENSOR_0_PERIOD_MS: 1000
+      SENSOR_0_SEED: 104
+      SENSOR_0_MAX_UPDATES: 60
+      SENSOR_0_START_TS_MS: 1767225600000
+      SENSOR_0_UNIT: demo
+    ports:
+      - "12003:12003"
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - sensor-net
+
+networks:
+  sensor-net:
+    name: sensor-net
+    driver: bridge

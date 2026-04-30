@@ -95,6 +95,34 @@ docker compose -f docker/docker-compose-6-nodes.yml up --build -d
 docker compose -f docker/docker-compose-12-nodes.yml up --build -d
 ```
 
+Demo topology (4 deterministic nodes, DEMO logs):
+
+```bash
+docker compose -f docker/docker-compose-demo.yml up --build
+```
+
+Stop demo:
+
+```bash
+docker compose -f docker/docker-compose-demo.yml down
+```
+
+What to expect in the demo:
+
+- nodes join the cluster and exchange peer views
+- finite sensors emit bounded updates
+- push-pull gossip replicates updates across nodes
+- state converges shortly after sensor streams end (typically within ~1 minute)
+
+Failure / recovery during demo:
+
+```bash
+docker compose -f docker/docker-compose-demo.yml stop node-4
+docker compose -f docker/docker-compose-demo.yml start node-4
+```
+
+After restart, `node-4` requests/applies `FULL_SYNC` and converges again.
+
 Observability UI:
 
 - Open the node dashboard URL directly, for example `http://localhost:10000/ui`.
