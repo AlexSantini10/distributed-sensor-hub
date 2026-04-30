@@ -39,7 +39,7 @@ from runtime.startup import (
 from runtime.pull_response_tracker import PullResponseTracker
 from topology.state import TopologyStateStore
 from state.state_hash import deterministic_state_hash
-from utils.logging import demo_event
+from utils.logging import demo_event, get_logger
 
 
 class NodeApplication:
@@ -77,6 +77,7 @@ class NodeApplication:
         """
         self.config = config
         self.log = log
+        self._demo_log = get_logger(__name__, config.node_id)
 
         self.sensor_event_queue = SensorEventQueue()
         self.state_worker: NodeStateWorker | None = None
@@ -107,7 +108,7 @@ class NodeApplication:
             None: This method starts the node subsystems in dependency order.
         """
         try:
-            demo_event(self.log, "NODE_STARTED", node=self.config.node_id)
+            demo_event(self._demo_log, "NODE_STARTED", node=self.config.node_id)
             self._start_state()
             self._start_networking()
             self._bootstrap_membership()
@@ -194,13 +195,13 @@ class NodeApplication:
             per_node = snapshot.get(self.config.node_id, {})
             entries = len(per_node) if isinstance(per_node, dict) else 0
             demo_event(
-                self.log,
+                self._demo_log,
                 "STATE_SUMMARY",
                 node=self.config.node_id,
                 entries=entries,
                 hash=deterministic_state_hash(snapshot)[:12],
             )
-        demo_event(self.log, "NODE_STOPPED", node=self.config.node_id)
+        demo_event(self._demo_log, "NODE_STOPPED", node=self.config.node_id)
         self.log.info("Node shutdown complete")
 
     def _start_state(self) -> None:

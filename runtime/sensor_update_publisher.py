@@ -9,7 +9,7 @@ from networking.tcp_client import Peer as TcpPeer
 from protocol.factory import build_get_delta, build_sensor_update
 from protocol.message import Message
 from protocol.messages import SensorMeta
-from utils.logging import demo_event
+from utils.logging import demo_event, get_logger
 from utils.typing import (
     JsonObject,
     LoggerLike,
@@ -104,6 +104,7 @@ class SensorUpdatePublisher(threading.Thread):
         self._client = tcp_client
         self._state_worker = state_worker
         self._log = log
+        self._demo_log = get_logger(__name__, self_node_id)
         self._interval_s = interval_s
         self._push_ratio = push_ratio
         self._push_min_peers = push_min_peers
@@ -262,7 +263,7 @@ class SensorUpdatePublisher(threading.Thread):
             if sent_updates <= 0:
                 continue
             demo_event(
-                self._log,
+                self._demo_log,
                 "GOSSIP_PUSH",
                 **{"from": self._self_node_id, "to": peer_id, "updates": sent_updates},
             )
@@ -289,7 +290,7 @@ class SensorUpdatePublisher(threading.Thread):
                 previous_cursor = self._last_demo_pull_cursor_by_peer.get(target.node_id)
                 if previous_cursor != from_seq:
                     demo_event(
-                        self._log,
+                        self._demo_log,
                         "GOSSIP_PULL",
                         **{"from": self._self_node_id, "to": target.node_id, "cursor": from_seq},
                     )

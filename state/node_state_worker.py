@@ -15,7 +15,7 @@ from state.contracts import StateStoreLike
 from state.events import SensorEvent
 from state.node_state_store import NodeStateStore, SensorMeta, SensorRecord
 from state.policy import MergePolicy
-from utils.logging import demo_event
+from utils.logging import demo_event, get_logger
 from utils.typing import (
     JsonObject,
     JsonValue,
@@ -67,6 +67,7 @@ class NodeStateWorker(threading.Thread):
         self.node_id = node_id
         self.event_queue = event_queue
         self.log = log
+        self._demo_log = get_logger(__name__, node_id)
 
         self._stop_event = threading.Event()
         self._store = store or NodeStateStore(
@@ -320,7 +321,7 @@ class NodeStateWorker(threading.Thread):
         )
         if applied and source == "local_sensor":
             demo_event(
-                self.log,
+                self._demo_log,
                 "STATE_UPDATE",
                 node=self.node_id,
                 key=sensor_id,

@@ -52,7 +52,13 @@ def setup_logging(node_id: str, level: LogLevel, log_file: str) -> None:
         os.makedirs(log_dir, exist_ok=True)
 
     formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | %(name)s | %(node_id)s | %(message)s",
+        fmt=(
+            "%(asctime)s | "
+            "%(levelname)-8.8s | "
+            "%(name)-36.36s | "
+            "%(node_id)-10.10s | "
+            "%(message)s"
+        ),
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
