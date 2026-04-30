@@ -191,3 +191,13 @@ def test_invalid_spike_sensor_probability(monkeypatch: MonkeyPatch) -> None:
 
     with pytest.raises(RuntimeError):
         Config.from_env(dict(os.environ))
+
+
+def test_log_level_demo_is_accepted(monkeypatch: MonkeyPatch) -> None:
+    """Assert ``LOG_LEVEL=DEMO`` is accepted by environment parsing."""
+    _set_base_env(monkeypatch)
+    monkeypatch.setenv("LOG_LEVEL", "DEMO")
+
+    config = Config.from_env(dict(os.environ))
+    assert config.log_level == LogLevel.DEMO
+    assert config.log_level_name == "DEMO"

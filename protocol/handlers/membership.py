@@ -9,7 +9,7 @@ from protocol.factory import build_peer_list
 from protocol.message import Message
 from protocol.message_types import MessageType
 from protocol.messages import JoinRequestPayload, PeerDescriptor, PeerListPayload
-from utils.logging import get_logger
+from utils.logging import demo_event, get_logger
 from utils.typing import LoggerLike, SenderLike
 
 
@@ -82,6 +82,7 @@ def make_membership_handlers(
         if payload.node_id == self_node_id:
             log.info("Ignored self JOIN_REQUEST")
             return
+        demo_event(log, "JOIN_REQUEST", **{"from": payload.node_id})
 
         upsert_result = peer_table.upsert_peer(
             node_id=payload.node_id,
@@ -111,6 +112,7 @@ def make_membership_handlers(
             )
 
         reply = _build_peer_list_reply()
+        demo_event(log, "PEER_LIST", node=self_node_id, peers=len(reply.payload.peers))
         try:
             send(msg.sender_id, reply)
         except Exception:

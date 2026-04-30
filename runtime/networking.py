@@ -24,6 +24,7 @@ from topology.policy import TopologyPolicy
 from topology.resolver import resolve_topology_policy
 from topology.state import TopologyStateStore
 from utils.config import Config
+from utils.logging import demo_event
 from utils.typing import JsonObject, LoggerLike, SenderLike, StateWorkerLike
 from runtime.protocol_assembly import setup_protocol
 from runtime.pull_response_tracker import PullResponseTracker
@@ -377,6 +378,7 @@ def setup_node_networking(
 
     def _on_peer_connected(node_id: str) -> None:
         topology_state.mark_neighbor_connected(node_id)
+        demo_event(log, "PEER_CONNECTED", node=config.node_id, peer=node_id)
 
     registry = ClientPeerRegistry(
         client=client,

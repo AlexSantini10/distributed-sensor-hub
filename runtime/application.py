@@ -38,6 +38,8 @@ from runtime.startup import (
 )
 from runtime.pull_response_tracker import PullResponseTracker
 from topology.state import TopologyStateStore
+from state.state_hash import deterministic_state_hash
+from utils.logging import demo_event
 
 
 class NodeApplication:
@@ -105,6 +107,7 @@ class NodeApplication:
             None: This method starts the node subsystems in dependency order.
         """
         try:
+            demo_event(self.log, "NODE_STARTED", node=self.config.node_id)
             self._start_state()
             self._start_networking()
             self._bootstrap_membership()
@@ -186,6 +189,18 @@ class NodeApplication:
             except Exception:
                 self.log.error("Error while stopping networking", exc_info=True)
 
+        if self.state_worker is not None:
+            snapshot = self.state_worker.get_state_snapshot()
+            per_node = snapshot.get(self.config.node_id, {})
+            entries = len(per_node) if isinstance(per_node, dict) else 0
+            demo_event(
+                self.log,
+                "STATE_SUMMARY",
+                node=self.config.node_id,
+                entries=entries,
+                hash=deterministic_state_hash(snapshot)[:12],
+            )
+        demo_event(self.log, "NODE_STOPPED", node=self.config.node_id)
         self.log.info("Node shutdown complete")
 
     def _start_state(self) -> None:

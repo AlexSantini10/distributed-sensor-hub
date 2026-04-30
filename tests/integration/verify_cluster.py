@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import time
 from typing import Iterable
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
+
+from state.state_hash import deterministic_state_hash
+from utils.logging import DEMO_LEVEL_NUM, DEMO_LEVEL_NAME, demo_event
 
 
 RETRYABLE_CLUSTER_ERRORS = (
@@ -176,6 +180,9 @@ def main() -> int:
         "http://127.0.0.1:10001/api/state",
     ]
     required_prefixes = ["node-1:", "node-2:"]
+    logging.addLevelName(DEMO_LEVEL_NUM, DEMO_LEVEL_NAME)
+    logging.basicConfig(level=DEMO_LEVEL_NUM, format="%(message)s")
+    log = logging.getLogger("verify_cluster")
 
     wait_for_cluster(
         endpoints=endpoints,
@@ -183,8 +190,9 @@ def main() -> int:
         timeout=args.timeout,
         interval=args.interval,
     )
-
-    print("Cluster startup and node replication verified.")
+    snapshots = [fetch_json(endpoint, timeout=args.interval) for endpoint in endpoints]
+    hashes = {deterministic_state_hash(snapshot) for snapshot in snapshots}
+    demo_event(log, "CONVERGENCE", result=("true" if len(hashes) == 1 else "false"))
     return 0
 
 

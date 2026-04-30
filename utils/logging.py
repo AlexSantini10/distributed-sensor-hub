@@ -12,6 +12,27 @@ from collections.abc import MutableMapping
 
 from utils.config import LogLevel
 
+DEMO_LEVEL_NUM = 60
+DEMO_LEVEL_NAME = "DEMO"
+
+
+def _register_demo_level() -> None:
+    """Register the custom ``DEMO`` logging level and ``Logger.demo`` API."""
+    if logging.getLevelName(DEMO_LEVEL_NUM) != DEMO_LEVEL_NAME:
+        logging.addLevelName(DEMO_LEVEL_NUM, DEMO_LEVEL_NAME)
+
+    if hasattr(logging.Logger, "demo"):
+        return
+
+    def demo(self: logging.Logger, msg: object, *args: object, **kwargs: object) -> None:
+        if self.isEnabledFor(DEMO_LEVEL_NUM):
+            self._log(DEMO_LEVEL_NUM, msg, args, **kwargs)
+
+    setattr(logging.Logger, "demo", demo)
+
+
+_register_demo_level()
+
 
 def setup_logging(node_id: str, level: LogLevel, log_file: str) -> None:
     """Configure root logging for one node process.
@@ -37,7 +58,10 @@ def setup_logging(node_id: str, level: LogLevel, log_file: str) -> None:
     handler.setFormatter(formatter)
 
     root = logging.getLogger()
-    root.setLevel(level.value)
+    if level is LogLevel.DEMO:
+        root.setLevel(DEMO_LEVEL_NUM)
+    else:
+        root.setLevel(level.value)
     root.handlers.clear()
     root.addHandler(handler)
 
@@ -78,6 +102,11 @@ class NodeLogger(logging.LoggerAdapter):
         kwargs["extra"] = extra
         return msg, kwargs
 
+    def demo(self, msg: object, *args: object, **kwargs: object) -> None:
+        """Emit one message at custom ``DEMO`` severity."""
+        msg, kwargs = self.process(msg, kwargs)
+        self.logger.log(DEMO_LEVEL_NUM, msg, *args, **kwargs)
+
 
 def get_logger(name: str, node_id: str) -> NodeLogger:
     """Create a node-aware logger adapter for one component.
@@ -91,3 +120,18 @@ def get_logger(name: str, node_id: str) -> NodeLogger:
     """
     logger = logging.getLogger(name)
     return NodeLogger(logger, {"node_id": node_id})
+
+
+def demo_event(log: logging.Logger | NodeLogger, event: str, **fields: object) -> None:
+    """Emit one strict-format demo event line.
+
+    The output format is:
+        ``[DEMO] <EVENT> key=value key=value ...``
+    """
+    ordered_parts = [f"{key}={fields[key]}" for key in sorted(fields)]
+    body = f"[DEMO] {event}"
+    if ordered_parts:
+        body = f"{body} {' '.join(ordered_parts)}"
+    demo_method = getattr(log, "demo", None)
+    if callable(demo_method):
+        demo_method(body)

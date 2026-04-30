@@ -15,6 +15,7 @@ from membership.peer import Peer
 from membership.peer_table import PeerTable
 from protocol.factory import build_gossip_state
 from topology.state import TopologyStateStore
+from utils.logging import demo_event
 from utils.typing import JsonObject, LoggerLike, SenderLike
 
 
@@ -43,9 +44,20 @@ def publish_membership_gossip(
         sender_id=self_node_id,
         state=state,
     )
+    membership = state.get("membership")
+    updates_count = 0
+    if isinstance(membership, dict):
+        peers_list = membership.get("peers")
+        if isinstance(peers_list, list):
+            updates_count = len(peers_list)
     for peer in peers:
         try:
             send(peer.node_id, gossip)
+            demo_event(
+                log,
+                "GOSSIP_PUSH",
+                **{"from": self_node_id, "to": peer.node_id, "updates": updates_count},
+            )
             if on_metric is not None:
                 on_metric("gossip_messages_sent_total", 1)
             if on_protocol_event is not None:

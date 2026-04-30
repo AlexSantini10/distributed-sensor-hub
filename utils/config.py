@@ -87,6 +87,7 @@ class LogLevel(StrEnum):
     WARNING = "WARNING"
     ERROR = "ERROR"
     CRITICAL = "CRITICAL"
+    DEMO = "DEMO"
 
 
 class SensorType(StrEnum):

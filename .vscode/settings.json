@@ -18,7 +18,8 @@
         "docker",
         "topology",
         "liveness",
-        "introspection"
+        "introspection",
+        "logging"
     ],
     "markdown.validate.enabled": true,
     "postman.settings.dotenv-detection-notification-visibility": false

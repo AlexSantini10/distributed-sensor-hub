@@ -9,6 +9,7 @@ from networking.tcp_client import Peer as TcpPeer
 from protocol.factory import build_get_delta, build_sensor_update
 from protocol.message import Message
 from protocol.messages import SensorMeta
+from utils.logging import demo_event
 from utils.typing import (
     JsonObject,
     LoggerLike,
@@ -271,6 +272,12 @@ class SensorUpdatePublisher(threading.Thread):
             sent = self._send_message_to_peer(target, request, op_name="GET_DELTA")
             if sent and self._pull_response_tracker is not None:
                 self._pull_response_tracker.mark_pull_requested(target.node_id)
+            if sent:
+                demo_event(
+                    self._log,
+                    "GOSSIP_PULL",
+                    **{"from": self._self_node_id, "to": target.node_id, "cursor": from_seq},
+                )
             if sent and self._on_metric is not None:
                 self._on_metric("get_delta_requests_sent_total", 1)
             if sent and self._on_protocol_event is not None:

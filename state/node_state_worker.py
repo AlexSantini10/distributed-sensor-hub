@@ -15,6 +15,7 @@ from state.contracts import StateStoreLike
 from state.events import SensorEvent
 from state.node_state_store import NodeStateStore, SensorMeta, SensorRecord
 from state.policy import MergePolicy
+from utils.logging import demo_event
 from utils.typing import (
     JsonObject,
     JsonValue,
@@ -317,6 +318,14 @@ class NodeStateWorker(threading.Thread):
             reason=reason,
             previous=previous,
         )
+        if applied and source == "local_sensor":
+            demo_event(
+                self.log,
+                "STATE_UPDATE",
+                node=self.node_id,
+                key=sensor_id,
+                ts=ts_ms,
+            )
         return applied
 
     def apply_update(self, sensor_id: str, value: JsonValue, timestamp: int) -> bool:

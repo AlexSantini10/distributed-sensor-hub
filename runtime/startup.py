@@ -17,6 +17,7 @@ from state.events import SensorEventQueue
 from state.node_state_worker import NodeStateWorker
 from topology.state import TopologyStateStore
 from utils.config import Config
+from utils.logging import demo_event
 from utils.typing import JsonSnapshotProvider, LoggerLike
 from webapi.http_api import WebAPIServer
 
@@ -103,6 +104,11 @@ def bootstrap_cluster_membership(
     for peer in bootstrap_peers:
         try:
             client.send_json(peer.node_id, request)
+            demo_event(
+                log,
+                "FULL_SYNC_REQUEST",
+                **{"from": config.node_id, "to": peer.node_id},
+            )
             log.info(
                 f"Sent FULL_SYNC_REQUEST to {peer.node_id} {peer.host}:{peer.port}"
             )

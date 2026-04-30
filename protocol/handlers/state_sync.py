@@ -21,7 +21,7 @@ from protocol.messages import (
     SensorMeta,
     SensorUpdatePayload,
 )
-from utils.logging import get_logger
+from utils.logging import demo_event, get_logger
 from utils.typing import (
     JsonObject,
     LoggerLike,
@@ -98,6 +98,14 @@ def make_sensor_update_handler(
             log.info(
                 f"SENSOR_UPDATE applied: sensor={payload.sensor_id} origin={payload.origin} ts={payload.ts_ms}"
             )
+            if source == "local_sensor":
+                demo_event(
+                    log,
+                    "STATE_UPDATE",
+                    node=self_node_id,
+                    key=payload.sensor_id,
+                    ts=payload.ts_ms,
+                )
         if on_protocol_event is not None:
             on_protocol_event(
                 "sensor_update_received",
@@ -157,6 +165,11 @@ def make_full_sync_request_handler(
 
         try:
             send(requester_id, response)
+            demo_event(
+                log,
+                "FULL_SYNC_RESPONSE",
+                **{"from": self_node_id, "to": requester_id, "entries": len(state_snapshot)},
+            )
             if on_metric is not None:
                 on_metric("full_sync_responses_sent_total", 1)
             log.info(
@@ -234,6 +247,7 @@ def make_full_sync_response_handler(
             remote_full_state=payload.state,
             reject_partial=True,
         )
+        demo_event(log, "FULL_SYNC_APPLIED", node=self_node_id, entries=applied_updates)
         for per_node in payload.state.values():
             if not isinstance(per_node, dict):
                 continue
@@ -296,6 +310,7 @@ def make_delta_unavailable_handler(
         )
         try:
             send(msg.sender_id, request)
+            demo_event(log, "FULL_SYNC_REQUEST", **{"from": self_node_id, "to": msg.sender_id})
             if on_metric is not None:
                 on_metric("full_sync_requests_sent_total", 1)
             log.info(
@@ -401,6 +416,11 @@ def make_get_delta_handler(
             "GET_DELTA served: "
             f"requester={requester_id} from_seq={payload.from_seq} "
             f"sent_updates={sent_count}"
+        )
+        demo_event(
+            log,
+            "DELTA_SENT",
+            **{"from": self_node_id, "to": requester_id, "updates": sent_count},
         )
         if on_protocol_event is not None:
             on_protocol_event(

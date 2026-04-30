@@ -20,6 +20,7 @@ from membership.results import FailureDetectionUpdateResult
 from protocol.factory import build_ping
 from protocol.message import Message
 from topology.state import TopologyStateStore
+from utils.logging import demo_event
 from utils.typing import JsonObject, LoggerLike, SenderLike
 
 
@@ -117,6 +118,23 @@ class HeartbeatSender:
                     f"phi={update.peer.phi:.3f} "
                     f"event_ts_ms={update.peer.status_ts_ms}"
                 )
+                status_wire = update.status.new_status.to_wire()
+                if status_wire in {"alive", "suspected"}:
+                    demo_event(
+                        self._log,
+                        "PHI_STATUS",
+                        node=self._self_node_id,
+                        peer=update.peer_id,
+                        phi=f"{update.peer.phi:.3f}",
+                        status=status_wire,
+                    )
+                if status_wire == "dead":
+                    demo_event(
+                        self._log,
+                        "PEER_DEAD",
+                        node=self._self_node_id,
+                        peer=update.peer_id,
+                    )
             if not update.status.changed or self._topology_state is None:
                 continue
             if update.status.new_status is NodeStatus.ALIVE:
