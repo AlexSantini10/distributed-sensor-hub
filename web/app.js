@@ -21,8 +21,28 @@ const API_ENDPOINTS = {
 
 const METRIC_KEYS = [];
 
+function deriveInitialBaseUrl() {
+  try {
+    if (typeof window === "undefined" || !window.location) {
+      return "http://localhost:10000";
+    }
+    const { protocol, hostname, port } = window.location;
+    if (!protocol || !hostname) {
+      return "http://localhost:10000";
+    }
+    if (port) {
+      return `${protocol}//${hostname}:${port}`;
+    }
+    return `${protocol}//${hostname}`;
+  } catch {
+    return "http://localhost:10000";
+  }
+}
+
+const INITIAL_BASE_URL = deriveInitialBaseUrl();
+
 const state = {
-  baseUrl: "http://localhost:10000",
+  baseUrl: INITIAL_BASE_URL,
   pollMs: 1000,
   timer: null,
   isPolling: false,
@@ -1112,4 +1132,5 @@ els.apply.addEventListener("click", applySettings);
 els.topologyCanvas.addEventListener("click", onCanvasClick);
 window.addEventListener("resize", onResize);
 
+els.baseUrl.value = state.baseUrl;
 applySettings();
