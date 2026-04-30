@@ -20,6 +20,11 @@ const API_ENDPOINTS = {
 };
 
 const METRIC_KEYS = [];
+const SCROLL_RESTORE_KEY = "cluster_ui_scroll_y";
+const SCROLL_RESTORE_WINDOW_NAME_KEY = "__cluster_ui_scroll__";
+const MAX_SCROLL_RESTORE_ATTEMPTS = 40;
+let pendingScrollRestore = null;
+let scrollRestoreAttempts = 0;
 
 function deriveInitialBaseUrl() {
   try {
@@ -72,6 +77,117 @@ const els = {
   sensorTable: document.getElementById("sensor-table"),
   timeline: document.getElementById("timeline"),
 };
+
+function saveScrollPositionForNavigation() {
+  try {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const scrollY = Math.max(0, window.scrollY || 0);
+    const doc = document.documentElement;
+    const maxY = Math.max(0, doc.scrollHeight - window.innerHeight);
+    const ratio = maxY > 0 ? Math.min(1, scrollY / maxY) : 0;
+    const payload = JSON.stringify({ y: scrollY, ratio });
+    if (window.sessionStorage) {
+      window.sessionStorage.setItem(SCROLL_RESTORE_KEY, payload);
+    }
+    // Cross-port handoff in the same browser tab without touching URL.
+    const bag = {};
+    if (typeof window.name === "string" && window.name) {
+      try {
+        const parsed = JSON.parse(window.name);
+        if (parsed && typeof parsed === "object") {
+          Object.assign(bag, parsed);
+        }
+      } catch {
+        // Ignore non-JSON window.name.
+      }
+    }
+    bag[SCROLL_RESTORE_WINDOW_NAME_KEY] = { y: scrollY, ratio };
+    window.name = JSON.stringify(bag);
+  } catch {
+    // Best-effort only.
+  }
+}
+
+function restoreScrollPositionAfterNavigation() {
+  try {
+    if (typeof window === "undefined") {
+      return;
+    }
+    // First choice: cross-port handoff from window.name in same tab.
+    if (typeof window.name === "string" && window.name) {
+      try {
+        const bag = JSON.parse(window.name);
+        if (bag && typeof bag === "object" && bag[SCROLL_RESTORE_WINDOW_NAME_KEY]) {
+          const saved = bag[SCROLL_RESTORE_WINDOW_NAME_KEY];
+          const y = Number(saved && saved.y);
+          const ratio = Number(saved && saved.ratio);
+          if (Number.isFinite(y) && y >= 0) {
+            pendingScrollRestore = {
+              y: Math.round(y),
+              ratio: Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : null,
+            };
+            scrollRestoreAttempts = 0;
+          }
+          delete bag[SCROLL_RESTORE_WINDOW_NAME_KEY];
+          window.name = JSON.stringify(bag);
+          return;
+        }
+      } catch {
+        // Ignore non-JSON window.name.
+      }
+    }
+
+    // Fallback: same-origin navigation.
+    if (!window.sessionStorage) {
+      return;
+    }
+    const raw = window.sessionStorage.getItem(SCROLL_RESTORE_KEY);
+    if (raw === null) {
+      return;
+    }
+    window.sessionStorage.removeItem(SCROLL_RESTORE_KEY);
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = { y: Number(raw), ratio: null };
+    }
+    const y = Number(parsed && parsed.y);
+    const ratio = Number(parsed && parsed.ratio);
+    if (!Number.isFinite(y) || y < 0) {
+      return;
+    }
+    pendingScrollRestore = {
+      y: Math.round(y),
+      ratio: Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : null,
+    };
+    scrollRestoreAttempts = 0;
+  } catch {
+    // Best-effort only.
+  }
+}
+
+function tryRestoreScrollPosition() {
+  if (!pendingScrollRestore || typeof window === "undefined" || typeof document === "undefined") {
+    return;
+  }
+  const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  const desiredY = Math.max(0, pendingScrollRestore.y);
+  const targetY = Math.min(desiredY, maxY);
+  window.scrollTo(0, targetY);
+
+  const closeEnough = Math.abs((window.scrollY || 0) - targetY) <= 2;
+  const pageIsTallEnough = maxY >= desiredY;
+  if ((closeEnough && pageIsTallEnough) || scrollRestoreAttempts >= MAX_SCROLL_RESTORE_ATTEMPTS) {
+    pendingScrollRestore = null;
+    scrollRestoreAttempts = 0;
+    return;
+  }
+  scrollRestoreAttempts += 1;
+  window.setTimeout(tryRestoreScrollPosition, 50);
+}
 
 function setConnection(ok, message) {
   els.status.className = `status ${ok ? "connected" : "disconnected"}`;
@@ -847,6 +963,7 @@ function renderDashboard(cluster) {
   renderGlobalState(cluster, graph);
   renderSensorTable(cluster);
   renderTimeline(cluster);
+  tryRestoreScrollPosition();
 }
 
 async function fetchClusterSnapshot() {
@@ -1035,6 +1152,7 @@ async function switchConnectionToNode(nodeId) {
     const relativePath = `${window.location.pathname || "/ui"}${window.location.search || ""}${window.location.hash || ""}`;
     const targetUrl = new URL(relativePath, `${candidate}/`).toString();
     setConnection(true, `Navigating to ${nodeId}...`);
+    saveScrollPositionForNavigation();
     window.location.assign(targetUrl);
     return true;
   }
@@ -1152,5 +1270,7 @@ els.apply.addEventListener("click", applySettings);
 els.topologyCanvas.addEventListener("click", onCanvasClick);
 window.addEventListener("resize", onResize);
 
+restoreScrollPositionAfterNavigation();
+tryRestoreScrollPosition();
 els.baseUrl.value = state.baseUrl;
 applySettings();
