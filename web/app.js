@@ -862,6 +862,14 @@ function makeUrl(protocol, host, port) {
   return `${protocol}//${host}:${port}`;
 }
 
+function isUnroutableHost(host) {
+  if (typeof host !== "string") {
+    return true;
+  }
+  const normalized = host.trim().toLowerCase();
+  return !normalized || normalized === "0.0.0.0" || normalized === "::" || normalized === "[::]";
+}
+
 function parseNodeIndex(nodeId) {
   const match = String(nodeId || "").match(/(\d+)$/);
   if (!match) {
@@ -876,8 +884,8 @@ function parseBaseUrlParts() {
     const parsed = new URL(state.baseUrl);
     const protocol = parsed.protocol || "http:";
     const host = parsed.hostname || "localhost";
-    const port = parsed.port ? Number(parsed.port) : 80;
-    if (!Number.isFinite(port) || port <= 0) {
+    const port = parsed.port ? Number(parsed.port) : null;
+    if (port !== null && (!Number.isFinite(port) || port <= 0)) {
       return null;
     }
     return { protocol, host, port };
@@ -908,7 +916,7 @@ function buildCandidateBaseUrlsForNode(nodeId) {
   const baseParts = parseBaseUrlParts();
   const protocol = baseParts ? baseParts.protocol : "http:";
   const currentHost = baseParts ? baseParts.host : "localhost";
-  const currentPort = baseParts ? baseParts.port : 10000;
+  const currentPort = baseParts && typeof baseParts.port === "number" ? baseParts.port : 10000;
   const localNodeId = typeof state.cluster.membership.local_node_id === "string"
     ? state.cluster.membership.local_node_id
     : "";
@@ -930,30 +938,38 @@ function buildCandidateBaseUrlsForNode(nodeId) {
     ports.push(normalized);
   };
 
+  const localIdx = parseNodeIndex(localNodeId);
+  const targetIdx = parseNodeIndex(nodeId);
+  if (localIdx !== null && targetIdx !== null) {
+    // Highest priority: keep same host, move to target node offset port
+    // (e.g. node-1@12000 -> node-2@12001).
+    addPort(currentPort + (targetIdx - localIdx));
+  }
+
+  // Keep current port only as fallback.
   addPort(currentPort);
+
   if (peerPort !== null) {
     addPort(peerPort + 1000);
     addPort(peerPort);
   }
 
-  const localIdx = parseNodeIndex(localNodeId);
-  const targetIdx = parseNodeIndex(nodeId);
   if (localIdx !== null && targetIdx !== null) {
-    addPort(currentPort + (targetIdx - localIdx));
     const inferredBase = currentPort - (localIdx - 1);
     addPort(inferredBase + (targetIdx - 1));
   }
 
   const hosts = [];
   const addHost = (host) => {
-    if (typeof host !== "string" || !host || hosts.includes(host)) {
+    if (typeof host !== "string" || !host || isUnroutableHost(host) || hosts.includes(host)) {
       return;
     }
     hosts.push(host);
   };
 
-  addHost(peerHost);
+  // Prefer the current browser host (usually externally reachable), then peer host.
   addHost(currentHost);
+  addHost(peerHost);
   addHost("localhost");
   addHost("127.0.0.1");
 
@@ -1011,11 +1027,10 @@ async function switchConnectionToNode(nodeId) {
   }
 
   setConnection(false, `Switching to ${nodeId}...`);
-  // Use direct browser navigation to the target UI endpoint.
-  // Cross-origin probes (different port) may fail due to CORS and block switching.
   const candidate = candidates[0];
   state.endpointByNodeId.set(nodeId, candidate);
 
+  // Primary behavior: navigate to the target node UI by changing browser URL.
   if (typeof window !== "undefined" && window.location && typeof window.location.assign === "function") {
     const relativePath = `${window.location.pathname || "/ui"}${window.location.search || ""}${window.location.hash || ""}`;
     const targetUrl = new URL(relativePath, `${candidate}/`).toString();
