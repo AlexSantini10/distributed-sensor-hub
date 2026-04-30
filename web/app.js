@@ -1011,20 +1011,25 @@ async function switchConnectionToNode(nodeId) {
   }
 
   setConnection(false, `Switching to ${nodeId}...`);
-  for (const candidate of candidates) {
-    const probe = await probeIntrospection(candidate, nodeId);
-    if (!probe.ok || !probe.matched) {
-      continue;
-    }
-    state.endpointByNodeId.set(nodeId, candidate);
-    state.baseUrl = candidate;
-    els.baseUrl.value = candidate;
-    state.activeLinkKeys = new Set();
-    restartPolling();
+  // Use direct browser navigation to the target UI endpoint.
+  // Cross-origin probes (different port) may fail due to CORS and block switching.
+  const candidate = candidates[0];
+  state.endpointByNodeId.set(nodeId, candidate);
+
+  if (typeof window !== "undefined" && window.location && typeof window.location.assign === "function") {
+    const relativePath = `${window.location.pathname || "/ui"}${window.location.search || ""}${window.location.hash || ""}`;
+    const targetUrl = new URL(relativePath, `${candidate}/`).toString();
+    setConnection(true, `Navigating to ${nodeId}...`);
+    window.location.assign(targetUrl);
     return true;
   }
-  setConnection(false, `Cannot reach ${nodeId} introspection API`);
-  return false;
+
+  // Non-browser fallback.
+  state.baseUrl = candidate;
+  els.baseUrl.value = candidate;
+  state.activeLinkKeys = new Set();
+  restartPolling();
+  return true;
 }
 
 async function pollOnce() {
