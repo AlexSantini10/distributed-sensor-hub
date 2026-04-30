@@ -417,11 +417,12 @@ def make_get_delta_handler(
             f"requester={requester_id} from_seq={payload.from_seq} "
             f"sent_updates={sent_count}"
         )
-        demo_event(
-            log,
-            "DELTA_SENT",
-            **{"from": self_node_id, "to": requester_id, "updates": sent_count},
-        )
+        if sent_count > 0:
+            demo_event(
+                log,
+                "DELTA_SENT",
+                **{"from": self_node_id, "to": requester_id, "updates": sent_count},
+            )
         if on_protocol_event is not None:
             on_protocol_event(
                 "get_delta_served",

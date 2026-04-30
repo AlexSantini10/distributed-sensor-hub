@@ -115,6 +115,7 @@ class SensorUpdatePublisher(threading.Thread):
         self._on_metric = on_metric
         self._round = 0
         self._rng = random.Random(random_seed)
+        self._last_demo_pull_cursor_by_peer: dict[str, int] = {}
 
         self._stop_event = threading.Event()
 
@@ -207,6 +208,7 @@ class SensorUpdatePublisher(threading.Thread):
         )
         if not push_targets:
             return
+        updates_sent_by_peer: dict[str, int] = {}
 
         for update in deltas:
             origin = update.get("origin")
@@ -241,6 +243,9 @@ class SensorUpdatePublisher(threading.Thread):
                 sent = self._send_message_to_peer(target, msg, op_name="SENSOR_UPDATE")
                 if not sent:
                     continue
+                updates_sent_by_peer[target.node_id] = (
+                    updates_sent_by_peer.get(target.node_id, 0) + 1
+                )
                 if self._on_metric is not None:
                     self._on_metric("sensor_updates_pushed_total", 1)
                 if self._on_protocol_event is not None:
@@ -253,6 +258,14 @@ class SensorUpdatePublisher(threading.Thread):
                             "seq": update.get("seq"),
                         },
                     )
+        for peer_id, sent_updates in updates_sent_by_peer.items():
+            if sent_updates <= 0:
+                continue
+            demo_event(
+                self._log,
+                "GOSSIP_PUSH",
+                **{"from": self._self_node_id, "to": peer_id, "updates": sent_updates},
+            )
 
     def _pull_missing_deltas(self, peers: tuple[PublisherPeerLike, ...]) -> None:
         """Pull missing deltas from a random peer subset."""
@@ -273,11 +286,14 @@ class SensorUpdatePublisher(threading.Thread):
             if sent and self._pull_response_tracker is not None:
                 self._pull_response_tracker.mark_pull_requested(target.node_id)
             if sent:
-                demo_event(
-                    self._log,
-                    "GOSSIP_PULL",
-                    **{"from": self._self_node_id, "to": target.node_id, "cursor": from_seq},
-                )
+                previous_cursor = self._last_demo_pull_cursor_by_peer.get(target.node_id)
+                if previous_cursor != from_seq:
+                    demo_event(
+                        self._log,
+                        "GOSSIP_PULL",
+                        **{"from": self._self_node_id, "to": target.node_id, "cursor": from_seq},
+                    )
+                    self._last_demo_pull_cursor_by_peer[target.node_id] = from_seq
             if sent and self._on_metric is not None:
                 self._on_metric("get_delta_requests_sent_total", 1)
             if sent and self._on_protocol_event is not None:
