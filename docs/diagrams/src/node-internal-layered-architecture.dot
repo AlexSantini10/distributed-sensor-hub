@@ -1,0 +1,108 @@
+digraph NodeInternalLayeredArchitecture {
+  graph [
+    layout=dot,
+    rankdir=TB,
+    splines=true,
+    compound=true,
+    newrank=true,
+    outputorder=edgesfirst,
+    bgcolor="white",
+    fontname="Helvetica",
+    fontsize=12,
+    labelloc="t",
+    label="Distributed Sensor Hub - Internal Node Architecture (5-Layer View)",
+    nodesep=0.45,
+    ranksep=0.8
+  ];
+
+  node [
+    shape=box,
+    style="rounded",
+    color="#2E4053",
+    fontname="Helvetica",
+    fontsize=10
+  ];
+
+  edge [color="#5D6D7E", penwidth=1.3, dir=both];
+
+  subgraph cluster_node_a {
+    label="Node A";
+    color="#2E4053";
+    style="rounded";
+    penwidth=1.1;
+
+    a_runtime [label="Runtime"];
+
+    a_fd [label="Failure Detection"];
+    a_sensors [label="Sensors"];
+
+    a_membership [label="Membership"];
+    a_state [label="State"];
+    a_topology [label="Topology"];
+    a_protocol [label="Protocol\n(contracts + codec + dispatcher + handlers)"];
+    a_networking [label="Networking / TCP"];
+  }
+
+  subgraph cluster_node_b {
+    label="Node B";
+    color="#2E4053";
+    style="rounded";
+    penwidth=1.1;
+
+    b_runtime [label="Runtime"];
+
+    b_fd [label="Failure Detection"];
+    b_sensors [label="Sensors"];
+
+    b_membership [label="Membership"];
+    b_state [label="State"];
+    b_topology [label="Topology"];
+    b_protocol [label="Protocol\n(contracts + codec + dispatcher + handlers)"];
+    b_networking [label="Networking / TCP"];
+  }
+
+  a_runtime -> a_membership;
+  a_runtime -> a_fd;
+  a_runtime -> a_state;
+  a_runtime -> a_sensors;
+  a_runtime -> a_topology;
+
+  a_membership -> a_protocol;
+  a_state -> a_protocol;
+  a_topology -> a_protocol;
+
+  a_protocol -> a_networking;
+  a_sensors -> a_state [dir=forward, arrowtail=none, color="#7D8B8C", label="local events", fontcolor="#7D8B8C"];
+  a_fd -> a_membership [dir=forward, arrowtail=none, color="#7D8B8C", label="phi status", fontcolor="#7D8B8C"];
+
+  b_runtime -> b_membership;
+  b_runtime -> b_fd;
+  b_runtime -> b_state;
+  b_runtime -> b_sensors;
+  b_runtime -> b_topology;
+
+  b_membership -> b_protocol;
+  b_state -> b_protocol;
+  b_topology -> b_protocol;
+
+  b_protocol -> b_networking;
+  b_sensors -> b_state [dir=forward, arrowtail=none, color="#7D8B8C", label="local events", fontcolor="#7D8B8C"];
+  b_fd -> b_membership [dir=forward, arrowtail=none, color="#7D8B8C", label="phi status", fontcolor="#7D8B8C"];
+
+  { rank=same; a_runtime; b_runtime; }
+  { rank=same; a_fd; a_sensors; b_fd; b_sensors; }
+  { rank=same; a_membership; a_state; a_topology; b_membership; b_state; b_topology; }
+  { rank=same; a_protocol; b_protocol; }
+  { rank=same; a_networking; b_networking; }
+
+  a_runtime -> b_runtime [style=invis, constraint=true];
+  a_membership -> b_membership [style=invis, constraint=true];
+  a_fd -> b_fd [style=invis, constraint=true];
+  a_state -> b_state [style=invis, constraint=true];
+  a_sensors -> b_sensors [style=invis, constraint=true];
+  a_topology -> b_topology [style=invis, constraint=true];
+  a_protocol -> b_protocol [style=invis, constraint=true];
+  a_networking -> b_networking [style=invis, constraint=true];
+
+  a_networking -> b_networking [color="#2E86C1", penwidth=1.9, label="TCP P2P", fontcolor="#2E86C1"];
+}
