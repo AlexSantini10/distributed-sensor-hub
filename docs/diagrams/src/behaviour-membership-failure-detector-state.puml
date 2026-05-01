@@ -1,0 +1,19 @@
+@startuml
+
+[*] --> alive : peer inserted / heartbeat observed
+
+alive --> alive : PING/PONG observed\nor indirect evidence refreshed
+alive --> suspected : phi >= suspect threshold
+suspected --> suspected : phi stays in suspect band
+suspected --> dead : phi >= dead threshold
+suspected --> alive : heartbeat observed
+dead --> alive : heartbeat observed
+dead --> dead : no direct recovery evidence
+
+note right of alive
+Local status only.
+Status transitions are evaluated by the local
+phi-accrual failure detector and then disseminated.
+end note
+
+@enduml

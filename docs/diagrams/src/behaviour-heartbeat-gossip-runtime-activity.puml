@@ -1,0 +1,15 @@
+@startuml
+
+start
+
+repeat
+  :Evaluate failure detector\n(peer_table.evaluate_failure_detector);
+  :Apply local status transitions\n(alive/suspected/dead);
+  :Take membership snapshot;
+  :Publish GOSSIP_STATE to known peers;
+  :Send PING to connected peers;
+repeat while (next heartbeat interval?)
+
+stop
+
+@enduml

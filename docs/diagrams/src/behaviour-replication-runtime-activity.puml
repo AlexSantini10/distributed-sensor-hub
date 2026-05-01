@@ -1,0 +1,19 @@
+@startuml
+
+start
+
+repeat
+  :Select alive peers;
+  :Push recent local deltas\n(SENSOR_UPDATE) to a subset;
+  :Every N rounds, pull missing deltas\n(GET_DELTA) from a subset;
+  if (delta history available?) then (yes)
+    :Receive SENSOR_UPDATE deltas\nand merge with LWW;
+  else (no)
+    :Receive DELTA_UNAVAILABLE;
+    :Request and apply FULL_SYNC;
+  endif
+repeat while (next replication interval?)
+
+stop
+
+@enduml
