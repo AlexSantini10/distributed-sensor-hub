@@ -1,0 +1,76 @@
+digraph DistributedSystemArchitecture {
+  graph [
+    layout=dot,
+    rankdir=TB,
+    splines=true,
+    compound=true,
+    newrank=true,
+    outputorder=edgesfirst,
+    bgcolor="white",
+    fontname="Helvetica",
+    fontsize=12,
+    labelloc="t",
+    label="Distributed Sensor Hub - P2P Full Mesh",
+    nodesep=0.40,
+    ranksep=0.60
+  ];
+
+  node [
+    shape=box,
+    style="rounded",
+    fontname="Helvetica",
+    fontsize=10,
+    color="#2E4053",
+    penwidth=1.2
+  ];
+
+  edge [
+    color="#2E86C1",
+    penwidth=1.6,
+    style=solid,
+    dir=both,
+    arrowhead=normal,
+    arrowtail=normal
+  ];
+
+  node1 [label="Node-1"];
+  node2 [label="Node-2"];
+  node3 [label="Node-3"];
+  node4 [label="Node-4"];
+  client [label="Client / Browser", color="#5D6D7E", style="rounded,dashed"];
+
+  { rank=same; node1; node3; }
+  { rank=same; node2; node4; }
+
+  node1 -> node2 [style=invis, constraint=true];
+  node3 -> node4 [style=invis, constraint=true];
+  node1 -> node3 [style=invis, constraint=true];
+  node2 -> node4 [style=invis, constraint=true];
+
+  node1 -> node2;
+  node1 -> node3;
+  node1 -> node4;
+  node2 -> node3;
+  node2 -> node4;
+  node3 -> node4;
+
+  client -> node2 [
+    dir=forward,
+    arrowhead=normal,
+    arrowtail=none,
+    style="dashed",
+    penwidth=1.4,
+    color="#5D6D7E",
+    label="HTTP",
+    fontcolor="#5D6D7E",
+    fontsize=9
+  ];
+
+  legend [shape=note, style="rounded", color="#BFC9CA", fontcolor="#2E4053",
+    label="Blue: TCP P2P (bidirectional)\nGray dashed: client HTTP access"
+  ];
+
+  { rank=sink; client; legend; }
+  client -> legend [style=invis, constraint=true];
+}
+

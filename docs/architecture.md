@@ -12,6 +12,11 @@ Distributed Sensor Hub is a decentralized runtime where each node executes the s
 
 No coordinator is required for normal operation.
 
+## Diagrams (Graphviz DOT)
+
+- System architecture (distributed nodes): `docs/diagrams/src/distributed-system-architecture.dot`
+- Internal node layered architecture: `docs/diagrams/src/node-internal-layered-architecture.dot`
+
 ## Module responsibilities
 
 | Module | Responsibility | Reference |
