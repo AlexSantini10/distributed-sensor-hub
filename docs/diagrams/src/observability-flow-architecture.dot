@@ -1,0 +1,57 @@
+digraph ObservabilityFlowArchitecture {
+  graph [
+    layout=dot,
+    rankdir=LR,
+    splines=ortho,
+    compound=true,
+    newrank=true,
+    outputorder=edgesfirst,
+    bgcolor="white",
+    fontname="Helvetica",
+    fontsize=12,
+    nodesep=0.5,
+    ranksep=0.8
+  ];
+
+  node [
+    shape=box,
+    style="rounded",
+    color="#2E4053",
+    penwidth=1.2,
+    fontname="Helvetica",
+    fontsize=10
+  ];
+
+  edge [
+    color="#5D6D7E",
+    penwidth=1.4,
+    dir=forward,
+    arrowhead=normal
+  ];
+
+  subgraph cluster_domain {
+    label="Domain";
+    color="#2E4053";
+    style="rounded";
+    penwidth=1.1;
+
+    state [label="State"];
+    membership [label="Membership"];
+    topology [label="Topology"];
+  }
+
+  introspection [label="Introspection Service"];
+  webapi [label="Web API\n(/api/*)"];
+  dashboard [label="Web UI"];
+  client [label="Automated Tool\n(script / monitor / test)", style="rounded,dashed", color="#5D6D7E"];
+
+  { rank=same; state; membership; topology; }
+
+  state -> introspection;
+  membership -> introspection;
+  topology -> introspection;
+
+  introspection -> webapi [label="read-only", fontcolor="#5D6D7E", fontsize=9];
+  webapi -> dashboard [label="HTTP", fontcolor="#5D6D7E", fontsize=9];
+  webapi -> client [style=dashed, color="#5D6D7E", label="HTTP", fontcolor="#5D6D7E", fontsize=9];
+}

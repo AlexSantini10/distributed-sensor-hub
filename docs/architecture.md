@@ -16,6 +16,7 @@ No coordinator is required for normal operation.
 
 - System architecture (distributed nodes): `docs/diagrams/src/distributed-system-architecture.dot`
 - Internal node layered architecture: `docs/diagrams/src/node-internal-layered-architecture.dot`
+- Observability flow architecture: `docs/diagrams/src/observability-flow-architecture.dot`
 
 ## Module responsibilities
 
