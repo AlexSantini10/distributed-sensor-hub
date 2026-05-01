@@ -1,0 +1,28 @@
+@startuml
+
+autonumber
+skinparam responseMessageBelowArrow true
+
+participant "Node A" as A
+participant "Node B" as B
+
+== Periodic Liveness ==
+loop Every heartbeat interval
+  A -> B: PING(node_id, ts)
+  B --> A: PONG(node_id, ts)
+end
+
+== Membership/Liveness Dissemination ==
+A -> B: PEER_LIST(peers)
+B -> A: PEER_LIST(peers)
+opt State gossip
+  A -> B: GOSSIP_STATE(state_delta)
+end
+
+note over A,B
+Best-effort peer messaging over TCP.
+Sender-side retry/queue may reduce transient loss.
+No exactly-once or total-order guarantees.
+end note
+
+@enduml

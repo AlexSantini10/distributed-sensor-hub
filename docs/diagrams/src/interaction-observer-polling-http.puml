@@ -1,0 +1,28 @@
+@startuml
+
+autonumber
+skinparam responseMessageBelowArrow true
+
+actor "Dashboard / External Observer" as O
+participant "Node X HTTP API" as API
+participant "Introspection Service" as I
+participant "State Store" as S
+participant "Peer Table" as P
+participant "Topology Store" as T
+
+loop Every polling interval
+  O -> API: GET /api/introspection
+  API -> I: build introspection snapshot
+  I -> S: read state snapshot
+  I -> P: read membership snapshot
+  I -> T: read topology snapshot
+  I --> API: introspection payload (read-only)
+  API --> O: 200 OK + JSON
+end
+
+note over O,API
+Observer path is read-only and orthogonal to cluster coordination.
+No distributed-state mutation is triggered by polling.
+end note
+
+@enduml

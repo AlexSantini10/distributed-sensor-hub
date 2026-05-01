@@ -1,0 +1,18 @@
+@startuml
+
+autonumber
+skinparam responseMessageBelowArrow true
+
+participant "Joining Node (Node J)" as J
+participant "Seed Node (Node S)" as S
+
+J -> S: JOIN_REQUEST(node_id, host, port)
+S --> J: PEER_LIST(peers)
+J -> J: initialize peer table from received list
+
+note over J,S
+Bootstrap provides initial connectivity knowledge.
+Subsequent convergence is handled by heartbeat and gossip cycles.
+end note
+
+@enduml

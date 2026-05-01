@@ -1,0 +1,28 @@
+@startuml
+
+autonumber
+skinparam responseMessageBelowArrow true
+
+participant "Node A" as A
+participant "Node B" as B
+
+== Push phase ==
+loop Periodic push dissemination
+  A --> B: SENSOR_UPDATE(sensor_id, value, ts_ms, origin, seq)
+  B -> B: merge update (LWW policy)
+end
+
+== Pull phase ==
+loop Pull recovery (on sampled peers)
+  A -> B: GET_DELTA(from_seq)
+  loop For each available delta
+    B --> A: SENSOR_UPDATE(sensor_id, value, ts_ms, origin, seq)
+    A -> A: merge update (LWW policy)
+  end
+end
+
+note over A,B
+Push-pull synchronization path: opportunistic push plus cursor-based pull recovery.
+end note
+
+@enduml

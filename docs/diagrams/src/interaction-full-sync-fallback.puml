@@ -1,0 +1,19 @@
+@startuml
+
+autonumber
+skinparam responseMessageBelowArrow true
+
+participant "Node A" as A
+participant "Node B" as B
+
+A -> B: GET_DELTA(from_seq)
+B --> A: DELTA_UNAVAILABLE(reason="stale_cursor")
+A -> B: FULL_SYNC_REQUEST()
+B --> A: FULL_SYNC_RESPONSE(state_snapshot, membership_snapshot)
+A -> A: replace/reconcile local replica
+
+note over A,B
+Fallback recovery path when incremental delta is unavailable or insufficient.
+end note
+
+@enduml
