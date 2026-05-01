@@ -1,0 +1,33 @@
+@startuml
+left to right direction
+
+rectangle "Runtime" as runtime
+rectangle "Sensor Handler" as sensor_handler
+rectangle "State Store / Worker" as state
+rectangle "State Replication Publisher" as publisher
+rectangle "Heartbeat Runtime" as hb_runtime
+rectangle "Peer Table" as peer_table
+rectangle "Heartbeat Monitor (phi)" as hb_monitor
+rectangle "Topology Store" as topology
+rectangle "Introspection Service" as introspection
+rectangle "API Clients" as api
+
+runtime --> sensor_handler : manages
+runtime --> state : manages
+runtime --> publisher : manages
+runtime --> hb_runtime : manages
+runtime --> peer_table : manages
+runtime --> topology : manages
+
+sensor_handler --> state : local sensor events
+publisher --> state : read replication deltas
+publisher --> peer_table : select peers
+hb_runtime --> peer_table : evaluate/update statuses
+peer_table --> hb_monitor : owns detector
+hb_runtime --> topology : mark connect/disconnect
+
+state --> introspection : state snapshot
+peer_table --> introspection : membership snapshot
+topology --> introspection : topology snapshot
+introspection --> api : read-only HTTP
+@enduml
