@@ -7,49 +7,29 @@ skinparam defaultFontSize 11
 actor "Dashboard / External Client" as client
 
 rectangle "Node A" as nodeA {
-  artifact "Node Process" as procA
+  component "Runtime" as rtA
   component "TCP Server\n(protocol)" as tcpA
-  component "Heartbeat Runtime" as hbA
-  component "Replication Runtime" as replA
-  component "State Worker" as stateA
   component "Web API\n/api/introspection" as apiA
 }
 
 rectangle "Node B" as nodeB {
-  artifact "Node Process" as procB
+  component "Runtime" as rtB
   component "TCP Server\n(protocol)" as tcpB
-  component "Heartbeat Runtime" as hbB
-  component "Replication Runtime" as replB
-  component "State Worker" as stateB
   component "Web API\n/api/introspection" as apiB
 }
 
 rectangle "Node N" as nodeN {
-  artifact "Node Process" as procN
+  component "Runtime" as rtN
   component "TCP Server\n(protocol)" as tcpN
-  component "Heartbeat Runtime" as hbN
-  component "Replication Runtime" as replN
-  component "State Worker" as stateN
   component "Web API\n/api/introspection" as apiN
 }
 
-procA -- tcpA
-procA -- hbA
-procA -- replA
-procA -- stateA
-procA -- apiA
-
-procB -- tcpB
-procB -- hbB
-procB -- replB
-procB -- stateB
-procB -- apiB
-
-procN -- tcpN
-procN -- hbN
-procN -- replN
-procN -- stateN
-procN -- apiN
+rtA --> tcpA : manages
+rtA --> apiA : manages
+rtB --> tcpB : manages
+rtB --> apiB : manages
+rtN --> tcpN : manages
+rtN --> apiN : manages
 
 tcpA <--> tcpB : TCP peer protocol\nJOIN/PEER_LIST/PING/PONG/\nGOSSIP_STATE/SENSOR_UPDATE/GET_DELTA
 tcpB <--> tcpN : TCP peer protocol
