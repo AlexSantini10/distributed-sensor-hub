@@ -9,8 +9,6 @@ digraph DistributedSystemArchitecture {
     bgcolor="white",
     fontname="Helvetica",
     fontsize=12,
-    labelloc="t",
-    label="Distributed Sensor Hub - P2P Full Mesh",
     nodesep=0.40,
     ranksep=0.60
   ];

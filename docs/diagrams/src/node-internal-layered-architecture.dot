@@ -9,8 +9,6 @@ digraph NodeInternalLayeredArchitecture {
     bgcolor="white",
     fontname="Helvetica",
     fontsize=12,
-    labelloc="t",
-    label="Distributed Sensor Hub - Internal Node Architecture (5-Layer View)",
     nodesep=0.45,
     ranksep=0.8
   ];
@@ -39,7 +37,7 @@ digraph NodeInternalLayeredArchitecture {
     a_membership [label="Membership"];
     a_state [label="State"];
     a_topology [label="Topology"];
-    a_protocol [label="Protocol\n(contracts + codec + dispatcher + handlers)"];
+    a_protocol [label="Protocol"];
     a_networking [label="Networking / TCP"];
   }
 
@@ -57,7 +55,7 @@ digraph NodeInternalLayeredArchitecture {
     b_membership [label="Membership"];
     b_state [label="State"];
     b_topology [label="Topology"];
-    b_protocol [label="Protocol\n(contracts + codec + dispatcher + handlers)"];
+    b_protocol [label="Protocol"];
     b_networking [label="Networking / TCP"];
   }
 
