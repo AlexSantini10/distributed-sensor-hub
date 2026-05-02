@@ -8,20 +8,20 @@ actor "Dashboard / External Client" as client
 
 rectangle "Node A" as nodeA {
   component "Runtime" as rtA
-  component "TCP Server\n(protocol)" as tcpA
-  component "Web API\n/api/introspection" as apiA
+  component "TCP" as tcpA
+  component "Web API" as apiA
 }
 
 rectangle "Node B" as nodeB {
   component "Runtime" as rtB
-  component "TCP Server\n(protocol)" as tcpB
-  component "Web API\n/api/introspection" as apiB
+  component "TCP" as tcpB
+  component "Web API" as apiB
 }
 
 rectangle "Node N" as nodeN {
   component "Runtime" as rtN
-  component "TCP Server\n(protocol)" as tcpN
-  component "Web API\n/api/introspection" as apiN
+  component "TCP" as tcpN
+  component "Web API" as apiN
 }
 
 rtA --> tcpA : manages
@@ -31,12 +31,12 @@ rtB --> apiB : manages
 rtN --> tcpN : manages
 rtN --> apiN : manages
 
-tcpA <--> tcpB : TCP peer protocol\nJOIN/PEER_LIST/PING/PONG/\nGOSSIP_STATE/SENSOR_UPDATE/GET_DELTA
-tcpB <--> tcpN : TCP peer protocol
-tcpA <--> tcpN : TCP peer protocol
+tcpA <--> tcpB
+tcpB <--> tcpN
+tcpA <--> tcpN
 
-client --> apiA : HTTP GET /api/introspection*
-client --> apiB : HTTP GET /api/introspection*
+client --> apiA : HTTP
+client --> apiB : HTTP
 
 note bottom
 Peer-to-peer traffic is best-effort over TCP.

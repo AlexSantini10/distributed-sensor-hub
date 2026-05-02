@@ -2,32 +2,29 @@
 left to right direction
 
 rectangle "Runtime" as runtime
-rectangle "Sensor Handler" as sensor_handler
-rectangle "State Store / Worker" as state
-rectangle "State Replication Publisher" as publisher
-rectangle "Heartbeat Runtime" as hb_runtime
-rectangle "Peer Table" as peer_table
-rectangle "Heartbeat Monitor (phi)" as hb_monitor
-rectangle "Topology Store" as topology
-rectangle "Introspection Service" as introspection
+rectangle "Sensor Sources" as sensors
+rectangle "State Manager\n(LWW + delta view)" as state
+rectangle "Membership Manager\n(+ failure detection)" as membership
+rectangle "Replication Runtime\n(push-pull + full sync fallback)" as replication
+rectangle "Observability Service" as observability
 rectangle "API Clients" as api
 
-runtime --> sensor_handler : manages
+runtime --> sensors : starts/manages
 runtime --> state : manages
-runtime --> publisher : manages
-runtime --> hb_runtime : manages
-runtime --> peer_table : manages
-runtime --> topology : manages
+runtime --> membership : manages
+runtime --> replication : schedules
+runtime --> observability : exposes
 
-sensor_handler --> state : local sensor events
-publisher --> state : read replication deltas
-publisher --> peer_table : select peers
-hb_runtime --> peer_table : evaluate/update statuses
-peer_table --> hb_monitor : owns detector
-hb_runtime --> topology : mark connect/disconnect
+sensors --> state : local updates
+replication --> membership : reads alive peers
+replication --> state : remote updates / sync
 
-state --> introspection : state snapshot
-peer_table --> introspection : membership snapshot
-topology --> introspection : topology snapshot
-introspection --> api : read-only HTTP
+state --> observability : state snapshot
+membership --> observability : membership snapshot
+observability --> api : read-only HTTP
+
+note bottom
+No direct dependency between Membership Manager and State Manager.
+They are coordinated by runtime and replication flows.
+end note
 @enduml
