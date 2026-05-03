@@ -1,0 +1,27 @@
+@startuml
+
+autonumber
+skinparam responseMessageBelowArrow true
+
+participant "Node A" as A
+participant "Node B" as B
+
+loop Every HEARTBEAT_INTERVAL_MS
+  A -> B: gossip membership
+  A -> B: gossip topology
+  A -> B: gossip state
+end
+
+loop Every GOSSIP_SYNC_INTERVAL_MS
+  A -> B: SENSOR_UPDATE(delta) [push local deltas if any]
+  A -> B: GET_DELTA(from_seq) [pull]
+  alt Peer can serve requested delta history
+    B --> A: SENSOR_UPDATE(delta_batch)
+  else Peer cannot serve requested history (cursor too old)
+    B --> A: DELTA_UNAVAILABLE
+    A -> B: FULL_SYNC_REQUEST
+    B --> A: FULL_SYNC_RESPONSE(full_state, membership_snapshot)
+  end
+end
+
+@enduml
