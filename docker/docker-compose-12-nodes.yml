@@ -1,9 +1,24 @@
 services:
+  logs-cleaner:
+    image: alpine:3.20
+    command:
+      - sh
+      - -lc
+      - |
+        mkdir -p /app/logs
+        rm -rf /app/logs/* /app/logs/.[!.]* /app/logs/..?* 2>/dev/null || true
+    volumes:
+      - ../logs:/app/logs
+    restart: "no"
+
   node1:
     build:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-1
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-1
       HOST: 0.0.0.0
@@ -72,6 +87,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-2
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-2
       HOST: 0.0.0.0
@@ -139,6 +157,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-3
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-3
       HOST: 0.0.0.0
@@ -205,6 +226,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-4
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-4
       HOST: 0.0.0.0
@@ -273,6 +297,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-5
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-5
       HOST: 0.0.0.0
@@ -341,6 +368,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-6
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-6
       HOST: 0.0.0.0
@@ -408,6 +438,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-7
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-7
       HOST: 0.0.0.0
@@ -474,6 +507,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-8
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-8
       HOST: 0.0.0.0
@@ -542,6 +578,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-9
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-9
       HOST: 0.0.0.0
@@ -609,6 +648,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-10
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-10
       HOST: 0.0.0.0
@@ -675,6 +717,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-11
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-11
       HOST: 0.0.0.0
@@ -742,6 +787,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-12
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     environment:
       NODE_ID: node-12
       HOST: 0.0.0.0

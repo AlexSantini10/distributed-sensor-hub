@@ -1,9 +1,24 @@
 services:
+  logs-cleaner:
+    image: alpine:3.20
+    command:
+      - sh
+      - -lc
+      - |
+        mkdir -p /app/logs
+        rm -rf /app/logs/* /app/logs/.[!.]* /app/logs/..?* 2>/dev/null || true
+    volumes:
+      - ../logs:/app/logs
+    restart: "no"
+
   node-1:
     build:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-1
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     restart: "no"
     environment:
       NODE_ID: node-1
@@ -67,6 +82,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-2
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     restart: "no"
     environment:
       NODE_ID: node-2
@@ -129,6 +147,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-3
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     restart: "no"
     environment:
       NODE_ID: node-3
@@ -191,6 +212,9 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.base
     container_name: node-4
+    depends_on:
+      logs-cleaner:
+        condition: service_completed_successfully
     restart: "no"
     environment:
       NODE_ID: node-4
