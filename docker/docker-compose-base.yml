@@ -31,7 +31,7 @@ services:
       SENSOR_0_PERIOD_MS: 2000
       SENSOR_0_MIN: 10
       SENSOR_0_MAX: 35
-      SENSOR_0_UNIT: "°C"
+      SENSOR_0_UNIT: "Â°C"
 
       # MEDIUM boolean - occasional flips
       SENSOR_1_TYPE: boolean
@@ -61,6 +61,13 @@ services:
       - "10000:10000"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node2:
     build:
@@ -119,3 +126,10 @@ services:
       - "10001:10001"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py

@@ -52,6 +52,13 @@ services:
       - "12000:12000"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
     networks:
       - sensor-net
 
@@ -107,6 +114,13 @@ services:
       - "12001:12001"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
     networks:
       - sensor-net
 
@@ -162,6 +176,13 @@ services:
       - "12002:12002"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
     networks:
       - sensor-net
 
@@ -217,6 +238,13 @@ services:
       - "12003:12003"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
     networks:
       - sensor-net
 

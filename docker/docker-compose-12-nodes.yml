@@ -59,6 +59,13 @@ services:
       - "10000:10000"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node2:
     build:
@@ -119,6 +126,13 @@ services:
       - "10001:10001"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node3:
     build:
@@ -178,6 +192,13 @@ services:
       - "10002:10002"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node4:
     build:
@@ -239,6 +260,13 @@ services:
       - "10003:10003"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node5:
     build:
@@ -300,6 +328,13 @@ services:
       - "10004:10004"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node6:
     build:
@@ -360,6 +395,13 @@ services:
       - "10005:10005"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node7:
     build:
@@ -419,6 +461,13 @@ services:
       - "10006:10006"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node8:
     build:
@@ -480,6 +529,13 @@ services:
       - "10007:10007"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node9:
     build:
@@ -540,6 +596,13 @@ services:
       - "10008:10008"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node10:
     build:
@@ -599,6 +662,13 @@ services:
       - "10009:10009"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node11:
     build:
@@ -659,6 +729,13 @@ services:
       - "10010:10010"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 
   node12:
     build:
@@ -720,4 +797,11 @@ services:
       - "10011:10011"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
 

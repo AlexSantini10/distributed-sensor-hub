@@ -30,6 +30,13 @@ services:
       - "11000:11000"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
     networks:
       - shared
       - group_a
@@ -65,6 +72,13 @@ services:
       - "11001:11001"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
     networks:
       - shared
       - group_a
@@ -100,6 +114,13 @@ services:
       - "11002:11002"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
     networks:
       - shared
       - group_b
@@ -135,6 +156,13 @@ services:
       - "11003:11003"
     volumes:
       - ../logs:/app/logs
+    command:
+      - sh
+      - -lc
+      - |
+        touch "$${LOG_FILE}";
+        tail -n +1 -F "$${LOG_FILE}" &
+        exec python node.py
     networks:
       - shared
       - group_b
