@@ -230,6 +230,27 @@ function formatSensorValue(value) {
   }
 }
 
+function extractSensorUnit(record) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+  const meta = record.meta && typeof record.meta === "object" ? record.meta : null;
+  if (!meta) {
+    return null;
+  }
+  const unit = typeof meta.unit === "string" ? meta.unit.trim() : "";
+  return unit || null;
+}
+
+function formatSensorReadingValue(record) {
+  if (!record || typeof record !== "object") {
+    return "-";
+  }
+  const valueText = formatSensorValue(record.value);
+  const unit = extractSensorUnit(record);
+  return unit ? `${valueText} ${unit}` : valueText;
+}
+
 function updateTopologyHintText(baseText) {
   els.topologyHint.textContent = `${baseText} | click a node to switch API target`;
 }
@@ -664,7 +685,7 @@ function renderSensorTable(cluster) {
       <td>${record.global_sensor_id || "-"}</td>
       <td>${record.origin || "-"}</td>
       <td>${record.sensor_id || "-"}</td>
-      <td>${formatSensorValue(record.value)}</td>
+      <td>${formatSensorReadingValue(record)}</td>
       <td>${formatTimestamp(record.ts_ms)}</td>
     `;
     els.sensorTable.appendChild(tr);
@@ -912,7 +933,7 @@ function renderGlobalState(cluster, graph) {
         row.className = "global-sensor-row";
         row.innerHTML = `
           <div class="sensor-name">${record.sensor_id || "-"}</div>
-          <div class="sensor-value">${formatSensorValue(record.value)}</div>
+          <div class="sensor-value">${formatSensorReadingValue(record)}</div>
           <div class="sensor-ts">${formatTimestamp(record.ts_ms)}</div>
         `;
         list.appendChild(row);
