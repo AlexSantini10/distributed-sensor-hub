@@ -36,6 +36,20 @@ def _register_demo_level() -> None:
 _register_demo_level()
 
 
+class NodeContextFilter(logging.Filter):
+    """Ensure every log record has a ``node_id`` field for formatting."""
+
+    def __init__(self, default_node_id: str) -> None:
+        super().__init__()
+        self._default_node_id = default_node_id
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Populate missing ``node_id`` so strict formatters do not fail."""
+        if not hasattr(record, "node_id"):
+            record.node_id = self._default_node_id
+        return True
+
+
 def setup_logging(node_id: str, level: LogLevel, log_file: str) -> None:
     """Configure root logging for one node process.
 
@@ -64,6 +78,7 @@ def setup_logging(node_id: str, level: LogLevel, log_file: str) -> None:
 
     handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
     handler.setFormatter(formatter)
+    handler.addFilter(NodeContextFilter(default_node_id=node_id))
 
     root = logging.getLogger()
     if level is LogLevel.DEMO:
