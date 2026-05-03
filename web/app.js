@@ -640,28 +640,6 @@ function findClosestNode(canvasX, canvasY) {
   return best.nodeId;
 }
 
-function extractSeqVersion(record) {
-  const meta = record && typeof record.meta === "object" ? record.meta : {};
-  const candidates = [
-    meta.seq,
-    meta.version,
-    meta.cursor,
-    meta.last_seq,
-    meta.seq_no,
-    record.seq,
-    record.version,
-  ];
-  for (const candidate of candidates) {
-    if (candidate === null || candidate === undefined) {
-      continue;
-    }
-    if (typeof candidate === "number" || typeof candidate === "string") {
-      return String(candidate);
-    }
-  }
-  return "-";
-}
-
 function renderSensorTable(cluster) {
   const records = Array.isArray(cluster.sensorState.records) ? cluster.sensorState.records : [];
   const selected = state.selectedNodeId;
@@ -688,14 +666,13 @@ function renderSensorTable(cluster) {
       <td>${record.sensor_id || "-"}</td>
       <td>${formatSensorValue(record.value)}</td>
       <td>${formatTimestamp(record.ts_ms)}</td>
-      <td>${extractSeqVersion(record)}</td>
     `;
     els.sensorTable.appendChild(tr);
   }
 
   if (filtered.length > maxRows) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="6">Showing ${maxRows} of ${filtered.length} rows for readability.</td>`;
+    tr.innerHTML = `<td colspan="5">Showing ${maxRows} of ${filtered.length} rows for readability.</td>`;
     els.sensorTable.appendChild(tr);
   }
 }
@@ -937,7 +914,6 @@ function renderGlobalState(cluster, graph) {
           <div class="sensor-name">${record.sensor_id || "-"}</div>
           <div class="sensor-value">${formatSensorValue(record.value)}</div>
           <div class="sensor-ts">${formatTimestamp(record.ts_ms)}</div>
-          <div class="sensor-seq">${extractSeqVersion(record)}</div>
         `;
         list.appendChild(row);
       }

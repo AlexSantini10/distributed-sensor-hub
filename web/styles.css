@@ -354,7 +354,7 @@ code {
 
 .global-sensor-row {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1.4fr 0.8fr;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.9fr) minmax(0, 1.9fr);
   gap: 8px;
   align-items: center;
   border: 1px solid rgba(46, 69, 96, 0.55);
@@ -363,6 +363,10 @@ code {
   background: rgba(25, 46, 66, 0.9);
   font-family: var(--mono);
   font-size: 12px;
+}
+
+.global-sensor-row > div {
+  min-width: 0;
 }
 
 .global-sensor-row .sensor-name {
@@ -379,11 +383,9 @@ code {
 .global-sensor-row .sensor-ts {
   color: var(--muted);
   text-align: right;
-}
-
-.global-sensor-row .sensor-seq {
-  color: #e4d4ff;
-  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .global-sensor-empty,
@@ -563,5 +565,9 @@ tbody tr:hover {
   .table-wrap.tall,
   .timeline {
     max-height: 360px;
+  }
+
+  .global-sensor-row {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.85fr) minmax(0, 1.6fr);
   }
 }
