@@ -16,18 +16,21 @@ class ProtocolValidationError(ValueError):
 
 
 def _require_non_empty_string(value: object, field_name: str) -> str:
+    """Validate that a required field is a non-empty string."""
     if not isinstance(value, str) or value == "":
         raise ProtocolValidationError(f"{field_name} must be a non-empty string")
     return value
 
 
 def _require_int(value: object, field_name: str) -> int:
+    """Validate that a required field is an integer."""
     if not isinstance(value, int):
         raise ProtocolValidationError(f"{field_name} must be an int")
     return value
 
 
 def _require_mapping(value: object, field_name: str) -> JsonObject:
+    """Validate that a required field is a JSON object mapping."""
     if not isinstance(value, dict):
         raise ProtocolValidationError(f"{field_name} must be a JSON object")
     return dict(value)

@@ -40,6 +40,7 @@ class NodeContextFilter(logging.Filter):
     """Ensure every log record has a ``node_id`` field for formatting."""
 
     def __init__(self, default_node_id: str) -> None:
+        """Store the fallback node identifier used when records omit ``node_id``."""
         super().__init__()
         self._default_node_id = default_node_id
 
