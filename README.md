@@ -49,7 +49,7 @@ Each node runs sensors, state merge, membership/liveness, TCP protocol handling,
 
 Prerequisites:
 
-- Python `3.14+`
+- Python `3.12+`
 - `pip`
 - Docker + Docker Compose
 
@@ -83,6 +83,8 @@ $env:NODE_ID="node-1"
 $env:HOST="0.0.0.0"
 $env:PORT="9000"
 $env:BOOTSTRAP_PEERS=""
+$env:LOG_LEVEL="INFO"
+$env:LOG_FILE="logs/node-1.log"
 $env:WEB_API_PORT="10000"
 python node.py
 ```
@@ -191,5 +193,5 @@ When you push a version tag such as `v1.0.0`, the workflow also creates the GitH
 ## Notes
 
 - Logs follow `LOG_FILE` and are mounted to `logs/` in Docker setups.
-- Protocol `ERROR`/`ACK` handlers are currently placeholders in runtime setup.
+- Protocol `ERROR`/`ACK` handlers are registered and currently used for logging-only control messages.
 - License: [LICENSE](LICENSE)

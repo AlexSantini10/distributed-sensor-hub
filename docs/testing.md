@@ -56,5 +56,5 @@ docker compose -f docker/docker-compose-6-nodes.yml down
 
 ## CI references
 
-- [pytest workflow](../.github/workflows/pytest.yml)
+- [unit test workflow](../.github/workflows/unit-tests.yml)
 - [integration workflow](../.github/workflows/integration-tests.yml)
