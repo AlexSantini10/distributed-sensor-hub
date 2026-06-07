@@ -25,7 +25,7 @@ In the overall system, this module is the boundary between `networking` (TCP tra
 - `handlers/heartbeat.py`: Handles `PING`/`PONG`; records liveness evidence and status transitions in membership tracking.
 - `handlers/state_sync.py`: Handles `SENSOR_UPDATE`, `GET_DELTA`, `DELTA_UNAVAILABLE`, `FULL_SYNC_REQUEST`, and `FULL_SYNC_RESPONSE`; performs merge/update orchestration and fallback from delta to full sync.
 - `handlers/__init__.py`: Re-exports handler factories and default placeholder handlers.
-- `runtime/protocol_assembly.py`: Composes dispatcher, peer table, and handler wiring for runtime initialization.
+- `src/runtime/protocol_assembly.py`: Composes dispatcher, peer table, and handler wiring for runtime initialization.
 - `__init__.py`: Exposes the module’s stable public API (types, dispatcher, and builders).
 
 ## Main Dependencies
@@ -64,4 +64,4 @@ Interactions with other modules:
 
 Current implementation note:
 
-- `ERROR` and `ACK` message handling is registered in `runtime/protocol_assembly.py` and currently logs inbound control messages without affecting node state.
+- `ERROR` and `ACK` message handling is registered in `src/runtime/protocol_assembly.py` and currently logs inbound control messages without affecting node state.

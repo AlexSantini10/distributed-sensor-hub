@@ -46,7 +46,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=main,enable={{is_default_branch}}
-            type=sha,prefix=sha-
+            type=sha,prefix=sha-,format=long
             type=ref,event=tag
 
       - name: Log in to GitHub Container Registry
@@ -56,6 +56,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build smoke-test image
+        run: docker build -f docker/Dockerfile.base -t distributed-sensor-hub:ci-smoke .
+
+      - name: Smoke test Docker image
+        run: bash docker/smoke-test.sh distributed-sensor-hub:ci-smoke
 
       - name: Build Docker image
         id: build
@@ -90,12 +96,12 @@ jobs:
           docker pull ${{ steps.prep.outputs.image_name }}@${{ steps.build.outputs.digest }}
 
           Run:
-          docker run --rm -p 9000:9000 -p 10000:10000 ^
-            -e NODE_ID=node-1 ^
-            -e HOST=0.0.0.0 ^
-            -e PORT=9000 ^
-            -e WEB_API_PORT=10000 ^
-            -e BOOTSTRAP_PEERS= ^
+          docker run --rm -p 9000:9000 -p 10000:10000 \
+            -e NODE_ID=node-1 \
+            -e HOST=0.0.0.0 \
+            -e PORT=9000 \
+            -e WEB_API_PORT=10000 \
+            -e BOOTSTRAP_PEERS= \
             ${{ steps.prep.outputs.image_name }}@${{ steps.build.outputs.digest }}
           EOF
 
@@ -116,6 +122,7 @@ jobs:
           ACCEPT_QUEUE_SIZE=128
           MAX_CONNECTIONS=256
           MAX_WORKERS=64
+          HEARTBEAT_INTERVAL_MS=1000
 
           PHI_THRESHOLD_SUSPECT=3.0
           PHI_THRESHOLD_DEAD=8.0
@@ -127,6 +134,7 @@ jobs:
           GOSSIP_PULL_RATIO=0.15
           GOSSIP_PULL_MIN_PEERS=1
           GOSSIP_PULL_EVERY_ROUNDS=3
+          REPLICATION_DELTA_MAXLEN=4096
 
           NETWORK_DELAY_MS=0
           NETWORK_DELAY_JITTER_MS=0
@@ -221,7 +229,8 @@ jobs:
             - `docker-node.env.example`
             - `docker-compose.release.yml`
             - `RELEASE-README.md`
-          files: docker-node-release.txt
+          files: |
+            docker-node-release.txt
             docker-node.env.example
             docker-compose.release.yml
             RELEASE-README.md

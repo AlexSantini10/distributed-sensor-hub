@@ -80,7 +80,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node2:
     build:
@@ -150,7 +150,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node3:
     build:
@@ -219,7 +219,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node4:
     build:
@@ -290,7 +290,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node5:
     build:
@@ -361,7 +361,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node6:
     build:
@@ -431,7 +431,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node7:
     build:
@@ -500,7 +500,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node8:
     build:
@@ -571,7 +571,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node9:
     build:
@@ -641,7 +641,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node10:
     build:
@@ -710,7 +710,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node11:
     build:
@@ -780,7 +780,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node12:
     build:
@@ -851,5 +851,5 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 

@@ -24,5 +24,5 @@
 ## Remaining Limitations
 
 - Delta history is still bounded and in-memory; old cursors still require fallback to full sync (`DELTA_UNAVAILABLE`).
-- Sequence values are local to each node’s replication stream and are not globally comparable across nodes.
+- Sequence values are local to each node's replication stream and are not globally comparable across nodes.
 - No durable replication log is introduced, so restart behavior remains bounded by current in-memory retention guarantees.

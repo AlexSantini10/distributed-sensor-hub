@@ -31,15 +31,29 @@ Scope limits:
 - validates state convergence, not full membership stability semantics
 - timing is deadline/polling-based, so duration depends on host load
 
+## Docker-backed integration checks
+
+The Docker-backed suite builds real node containers and verifies deterministic convergence, crash/restart recovery, and temporary partition reconciliation.
+
+```bash
+python -m pytest \
+  tests/integration/test_docker_crash_restart_recovery.py \
+  tests/integration/test_docker_deterministic_state_convergence.py \
+  tests/integration/test_docker_partition_reconciliation.py \
+  -vv
+```
+
+The integration workflow also builds the release image and runs `docker/smoke-test.sh` against its state API and dashboard.
+
 ## Chaos/recovery scenario
 
-Use `manual_tests/compose_chaos.py` to stop/restart one service in a running topology.
+Use `scripts/compose_chaos.py` to stop/restart one service in a running topology.
 
 Example (`node3`, 6-node topology):
 
 ```bash
 docker compose -f docker/docker-compose-6-nodes.yml up --build -d
-python manual_tests/compose_chaos.py \
+python scripts/compose_chaos.py \
   --compose-file docker/docker-compose-6-nodes.yml \
   --service node3 \
   --down-seconds 20 \
@@ -56,5 +70,7 @@ docker compose -f docker/docker-compose-6-nodes.yml down
 
 ## CI references
 
-- [unit test workflow](../.github/workflows/unit-tests.yml)
+- [unit test and Pyright workflow](../.github/workflows/unit-tests.yml)
 - [integration workflow](../.github/workflows/integration-tests.yml)
+- [documentation workflow](../.github/workflows/docs.yml)
+- [Docker CD workflow](../.github/workflows/docker-cd.yml)

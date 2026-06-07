@@ -1,5 +1,10 @@
 /__pycache__
 *.pyc
+.codex-tmp/
+.pytest-temp/
+.pytest-tmp/
+.tmp/
+tmp-pytest/
 .env
 /logs
 logs/node.log

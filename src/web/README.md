@@ -1,4 +1,4 @@
-# Observability UI (`web/`)
+# Observability UI (`src/web/`)
 
 Single-page cluster observability dashboard that consumes the existing introspection contract:
 
@@ -9,7 +9,7 @@ No UI-specific backend logic is required.
 
 ## Start and access
 
-1. Start one node or a Docker cluster (see project [README](../README.md)).
+1. Start one node or a Docker cluster (see project [README](../../README.md)).
 2. Open one node dashboard URL in browser (for example `http://localhost:10000/ui`).
 3. Optional: change `API Base URL` in UI if you want to point to a different node endpoint.
 

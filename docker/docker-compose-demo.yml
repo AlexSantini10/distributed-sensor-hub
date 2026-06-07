@@ -73,7 +73,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
     networks:
       - sensor-net
 
@@ -138,7 +138,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
     networks:
       - sensor-net
 
@@ -203,7 +203,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
     networks:
       - sensor-net
 
@@ -268,7 +268,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
     networks:
       - sensor-net
 

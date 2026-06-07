@@ -22,16 +22,19 @@ No coordinator is required for normal operation.
 
 | Module | Responsibility | Reference |
 |---|---|---|
-| `runtime` | Composition root, startup/shutdown ordering, background loops | [runtime/README.md](../runtime/README.md) |
-| `protocol` | Message types/contracts, codec, dispatcher, protocol handlers | [protocol/README.md](../protocol/README.md) |
-| `networking` | Length-prefixed TCP transport, reconnect/send queues | [networking/README.md](../networking/README.md) |
-| `membership` | Peer table, liveness metadata, merge of membership views | [membership/README.md](../membership/README.md) |
-| `fd` | Phi-accrual computation and detector-local status | [fd/README.md](../fd/README.md) |
-| `gossip` | Best-effort dissemination of membership snapshots | [gossip/README.md](../gossip/README.md) |
-| `state` | Authoritative local winners and replication deltas | [state/README.md](../state/README.md) |
-| `sensors` | Provider lifecycle and conversion to canonical events | [sensors/README.md](../sensors/README.md) |
-| `topology` | Policy-driven connection target selection | [topology/README.md](../topology/README.md) |
-| `webapi` | Read-only HTTP observation endpoints | [webapi/README.md](../webapi/README.md) |
+| `runtime` | Composition root, startup/shutdown ordering, background loops | [runtime/README.md](../src/runtime/README.md) |
+| `protocol` | Message types/contracts, codec, dispatcher, protocol handlers | [protocol/README.md](../src/protocol/README.md) |
+| `networking` | Length-prefixed TCP transport, reconnect/send queues | [networking/README.md](../src/networking/README.md) |
+| `membership` | Peer table, liveness metadata, merge of membership views | [membership/README.md](../src/membership/README.md) |
+| `fd` | Phi-accrual computation and detector-local status | [fd/README.md](../src/fd/README.md) |
+| `gossip` | Best-effort dissemination of membership snapshots | [gossip/README.md](../src/gossip/README.md) |
+| `state` | Authoritative local winners and replication deltas | [state/README.md](../src/state/README.md) |
+| `sensors` | Provider lifecycle and conversion to canonical events | [sensors/README.md](../src/sensors/README.md) |
+| `topology` | Policy-driven connection target selection | [topology/README.md](../src/topology/README.md) |
+| `introspection` | Aggregate read-only observability snapshots | [introspection/README.md](../src/introspection/README.md) |
+| `webapi` | Read-only HTTP observation endpoints | [webapi/README.md](../src/webapi/README.md) |
+| `web` | Static browser observability dashboard | [web/README.md](../src/web/README.md) |
+| `utils` | Shared configuration, logging, and typing helpers | [utils/README.md](../src/utils/README.md) |
 
 ## Runtime sequence
 

@@ -37,3 +37,17 @@ jobs:
       - name: Deterministic state convergence check
         run: python -m pytest tests/integration/test_deterministic_state_convergence.py -q -s
 
+      - name: Build Docker image
+        run: docker build -f docker/Dockerfile.base -t distributed-sensor-hub:ci-smoke .
+
+      - name: Smoke test Docker image
+        run: bash docker/smoke-test.sh distributed-sensor-hub:ci-smoke
+
+      - name: Docker-backed cluster checks
+        run: |
+          python -m pytest \
+            tests/integration/test_docker_crash_restart_recovery.py \
+            tests/integration/test_docker_deterministic_state_convergence.py \
+            tests/integration/test_docker_partition_reconciliation.py \
+            -vv
+

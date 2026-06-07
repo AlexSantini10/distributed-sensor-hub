@@ -1,9 +1,15 @@
 """Send a manual PING message to a locally running node for smoke testing."""
 
-# Requires node.py to be running
+import sys
+import time
+from pathlib import Path
+
+
+SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+sys.path.insert(0, str(SRC_DIR))
+
 from networking.tcp_client import TcpClient, Peer
 from protocol.factory import build_ping
-import time
 
 client = TcpClient()
 

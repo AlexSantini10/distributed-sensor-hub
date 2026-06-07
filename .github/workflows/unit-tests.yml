@@ -42,3 +42,6 @@ jobs:
       - name: Run pytest
         run: |
           python -m pytest -v -m "not integration"
+
+      - name: Run Pyright
+        run: pyright

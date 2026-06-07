@@ -42,3 +42,6 @@ jobs:
       - name: Run pydocstyle
         run: |
           pydocstyle .
+
+      - name: Validate Markdown documentation
+        run: python scripts/check_docs.py

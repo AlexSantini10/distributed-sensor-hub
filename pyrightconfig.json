@@ -1,21 +1,8 @@
 {
   "include": [
-    "__init__.py",
-    "node.py",
-    "fd",
-    "gossip",
-    "introspection",
-    "manual_tests",
-    "membership",
-    "networking",
-    "protocol",
-    "runtime",
-    "sensors",
-    "state",
-    "tests",
-    "topology",
-    "utils",
-    "webapi"
+    "src",
+    "scripts",
+    "tests"
   ],
   "exclude": [
     "**/__pycache__",
@@ -27,10 +14,18 @@
     "docs",
     "docker",
     "tmp-pytest",
-    "web"
+    "src/web"
+  ],
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": [
+        "src"
+      ]
+    }
   ],
   "typeCheckingMode": "standard",
-  "pythonVersion": "3.13",
+  "pythonVersion": "3.12",
   "reportMissingTypeStubs": false,
   "reportMissingImports": false
 }

@@ -7,6 +7,7 @@ The repository includes a GitHub Actions continuous delivery workflow in [.githu
 On pushes to `main`, the workflow:
 
 - builds the node image from `docker/Dockerfile.base`;
+- starts the built image and verifies its state API and dashboard before publishing;
 - pushes the image to GitHub Container Registry;
 - updates the rolling tags for the latest build.
 
@@ -16,7 +17,7 @@ When you push a version tag such as `v1.0.0`, the workflow:
 - creates the corresponding GitHub Release;
 - attaches a small usage bundle with commands and ready-to-edit config files.
 
-Pull requests targeting `main` still validate that the Docker image builds, but they do not publish packages or releases.
+Pull requests targeting `main` validate that the Docker image builds and passes its runtime smoke test, but they do not publish packages or releases.
 
 ## Published image
 

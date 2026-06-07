@@ -5,7 +5,7 @@ service is responsible for, and how services interact.
 
 ## Why This Exists
 
-When working on one subsystem (for example `fd/heartbeat.py`), it is easy to
+When working on one subsystem (for example `src/fd/heartbeat.py`), it is easy to
 forget where that subsystem is used in the full node lifecycle. This page is a
 single reference for that mapping.
 
@@ -13,22 +13,22 @@ single reference for that mapping.
 
 | Service | Main module(s) | What it does | Primary inputs | Primary outputs |
 |---|---|---|---|---|
-| Lifecycle orchestration | `runtime/application.py`, `runtime/startup.py` | Starts/stops all node subsystems in dependency-safe order | Config + logger | Running node services |
-| Config loading | `utils/config.py` | Parses and validates env configuration (`NODE_ID`, ports, sensors, gossip/fd params, topology policy) | Environment variables | Immutable `Config` |
-| Transport (TCP) | `networking/tcp_client.py`, `networking/tcp_server.py` | Handles outbound/inbound TCP message delivery | Encoded protocol messages | Message send/receive |
-| Protocol dispatch + handlers | `runtime/protocol_assembly.py`, `protocol/handlers/*` | Routes inbound messages by type and applies membership/state actions | Decoded protocol messages | Mutations on membership/state + protocol responses |
-| Membership table | `membership/peer_table.py` | Maintains authoritative local view of peers and liveness metadata | Join/discovery events, gossip merges, direct evidence | Membership snapshots and status transitions |
-| Failure detection (phi-accrual) | `fd/heartbeat.py`, `fd/phi_estimator.py` (used by `PeerTable`) | Computes `phi` from heartbeat timing and classifies peers (`alive`/`suspected`/`dead`) | Heartbeat observations + periodic evaluation clock | Detector-local liveness signal consumed by membership |
-| Heartbeat runtime | `runtime/heartbeat.py` | Periodic loop: evaluate FD, publish membership gossip, send `PING` probes | `PeerTable` snapshot, connected peers | `PING` traffic + membership updates + gossip publication |
-| Membership gossip | `gossip/publisher.py`, `gossip/handlers.py` | Disseminates and merges membership state using `GOSSIP_STATE` | Membership snapshots and inbound gossip | Eventual membership convergence |
-| Sensor providers | `sensors/sensor_manager.py`, `sensors/providers/*`, `sensors/handler.py` | Generates local sensor readings and pushes them into the local event queue | Sensor config + periodic timers | Local sensor events |
-| Local state worker/store | `state/node_state_worker.py`, `state/node_state_store.py` | Applies LWW merge `(ts_ms, origin)`, keeps winners, builds UI and replication snapshots | Local sensor events + inbound state updates | State snapshots + replication delta stream |
-| Sensor replication runtime | `runtime/sensor_update_publisher.py`, `protocol/handlers/state_sync.py` | Periodic push/pull (`SENSOR_UPDATE`, `GET_DELTA`) + full-sync fallback | Local replication deltas + peer availability | Cross-node sensor-state dissemination |
-| Pull window classification | `runtime/pull_response_tracker.py` | Classifies inbound updates as pull responses vs unsolicited push traffic | Outbound `GET_DELTA` requests + inbound seq observations | Classification hints + pull cursor tracking |
-| Topology policy + state | `topology/policy.py`, `topology/full_mesh.py`, `topology/state.py` | Chooses outbound connect targets and tracks disseminated adjacency | Known peers + bootstrap peers + connectivity events | Connection decisions + topology snapshots |
-| Introspection aggregation | `introspection/service.py` | Aggregates cluster snapshot (topology, membership, sensor state, events, metrics) | Providers from state/membership/topology + event stores | Unified introspection payload |
-| Web API (read-only) | `webapi/http_api.py` | Exposes HTTP endpoints (`/api/state`, `/api/membership`, `/api/introspection`, ...) | Snapshot providers | JSON for UI/tests/tools |
-| Browser dashboard | `web/app.js` | Polls Web API and renders topology/state/timeline cards | Introspection HTTP responses | Human-readable observability UI |
+| Lifecycle orchestration | `src/runtime/application.py`, `src/runtime/startup.py` | Starts/stops all node subsystems in dependency-safe order | Config + logger | Running node services |
+| Config loading | `src/utils/config.py` | Parses and validates env configuration (`NODE_ID`, ports, sensors, gossip/fd params, topology policy) | Environment variables | Immutable `Config` |
+| Transport (TCP) | `src/networking/tcp_client.py`, `src/networking/tcp_server.py` | Handles outbound/inbound TCP message delivery | Encoded protocol messages | Message send/receive |
+| Protocol dispatch + handlers | `src/runtime/protocol_assembly.py`, `src/protocol/handlers/*` | Routes inbound messages by type and applies membership/state actions | Decoded protocol messages | Mutations on membership/state + protocol responses |
+| Membership table | `src/membership/peer_table.py` | Maintains authoritative local view of peers and liveness metadata | Join/discovery events, gossip merges, direct evidence | Membership snapshots and status transitions |
+| Failure detection (phi-accrual) | `src/fd/heartbeat.py`, `src/fd/phi_estimator.py` (used by `PeerTable`) | Computes `phi` from heartbeat timing and classifies peers (`alive`/`suspected`/`dead`) | Heartbeat observations + periodic evaluation clock | Detector-local liveness signal consumed by membership |
+| Heartbeat runtime | `src/runtime/heartbeat.py` | Periodic loop: evaluate FD, publish membership gossip, send `PING` probes | `PeerTable` snapshot, connected peers | `PING` traffic + membership updates + gossip publication |
+| Membership gossip | `src/gossip/publisher.py`, `src/gossip/handlers.py` | Disseminates and merges membership state using `GOSSIP_STATE` | Membership snapshots and inbound gossip | Eventual membership convergence |
+| Sensor providers | `src/sensors/sensor_manager.py`, `src/sensors/providers/*`, `src/sensors/handler.py` | Generates local sensor readings and pushes them into the local event queue | Sensor config + periodic timers | Local sensor events |
+| Local state worker/store | `src/state/node_state_worker.py`, `src/state/node_state_store.py` | Applies LWW merge `(ts_ms, origin)`, keeps winners, builds UI and replication snapshots | Local sensor events + inbound state updates | State snapshots + replication delta stream |
+| Sensor replication runtime | `src/runtime/sensor_update_publisher.py`, `src/protocol/handlers/state_sync.py` | Periodic push/pull (`SENSOR_UPDATE`, `GET_DELTA`) + full-sync fallback | Local replication deltas + peer availability | Cross-node sensor-state dissemination |
+| Pull window classification | `src/runtime/pull_response_tracker.py` | Classifies inbound updates as pull responses vs unsolicited push traffic | Outbound `GET_DELTA` requests + inbound seq observations | Classification hints + pull cursor tracking |
+| Topology policy + state | `src/topology/policy.py`, `src/topology/full_mesh.py`, `src/topology/state.py` | Chooses outbound connect targets and tracks disseminated adjacency | Known peers + bootstrap peers + connectivity events | Connection decisions + topology snapshots |
+| Introspection aggregation | `src/introspection/service.py` | Aggregates cluster snapshot (topology, membership, sensor state, events, metrics) | Providers from state/membership/topology + event stores | Unified introspection payload |
+| Web API (read-only) | `src/webapi/http_api.py` | Exposes HTTP endpoints (`/api/state`, `/api/membership`, `/api/introspection`, ...) | Snapshot providers | JSON for UI/tests/tools |
+| Browser dashboard | `src/web/app.js` | Polls Web API and renders topology/state/timeline cards | Introspection HTTP responses | Human-readable observability UI |
 
 ## Three Planes In One Node
 
@@ -95,6 +95,6 @@ starts, and observability only starts when node internals are ready.
 
 ## Where HeartbeatMonitor Actually Lives
 
-`HeartbeatMonitor` is implemented in `fd/heartbeat.py` but instantiated and
+`HeartbeatMonitor` is implemented in `src/fd/heartbeat.py` but instantiated and
 owned by `membership.PeerTable`. The runtime heartbeat loop does not implement
 the phi math itself; it triggers periodic evaluation through `PeerTable`.

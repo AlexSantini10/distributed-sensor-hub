@@ -19,22 +19,25 @@ Each node runs sensors, state merge, membership/liveness, TCP protocol handling,
 - [Node services inventory](docs/node-services.md)
 - [Testing](docs/testing.md)
 - [Introspection API](docs/introspection-api.md)
-- [Observability UI](web/README.md)
+- [Observability UI](src/web/README.md)
 
 ## Module map
 
 | Module | Responsibility | README |
 |---|---|---|
-| `runtime/` | Startup, wiring, lifecycle | [runtime/README.md](runtime/README.md) |
-| `protocol/` | Message contracts, codec, dispatcher, handlers | [protocol/README.md](protocol/README.md) |
-| `networking/` | TCP client/server and framing | [networking/README.md](networking/README.md) |
-| `membership/` | Peer table, liveness metadata, membership merge | [membership/README.md](membership/README.md) |
-| `fd/` | Phi-accrual failure detection | [fd/README.md](fd/README.md) |
-| `gossip/` | Membership dissemination (`GOSSIP_STATE`) | [gossip/README.md](gossip/README.md) |
-| `state/` | Local authoritative state and LWW merge | [state/README.md](state/README.md) |
-| `sensors/` | Sensor providers and ingestion boundary | [sensors/README.md](sensors/README.md) |
-| `topology/` | Topology policy and peer selection | [topology/README.md](topology/README.md) |
-| `webapi/` | Read-only HTTP observation API | [webapi/README.md](webapi/README.md) |
+| `src/runtime/` | Startup, wiring, lifecycle | [runtime/README.md](src/runtime/README.md) |
+| `src/protocol/` | Message contracts, codec, dispatcher, handlers | [protocol/README.md](src/protocol/README.md) |
+| `src/networking/` | TCP client/server and framing | [networking/README.md](src/networking/README.md) |
+| `src/membership/` | Peer table, liveness metadata, membership merge | [membership/README.md](src/membership/README.md) |
+| `src/fd/` | Phi-accrual failure detection | [fd/README.md](src/fd/README.md) |
+| `src/gossip/` | Membership dissemination (`GOSSIP_STATE`) | [gossip/README.md](src/gossip/README.md) |
+| `src/state/` | Local authoritative state and LWW merge | [state/README.md](src/state/README.md) |
+| `src/sensors/` | Sensor providers and ingestion boundary | [sensors/README.md](src/sensors/README.md) |
+| `src/topology/` | Topology policy and peer selection | [topology/README.md](src/topology/README.md) |
+| `src/introspection/` | Aggregate observability snapshots | [introspection/README.md](src/introspection/README.md) |
+| `src/webapi/` | Read-only HTTP observation API | [webapi/README.md](src/webapi/README.md) |
+| `src/web/` | Static observability dashboard | [web/README.md](src/web/README.md) |
+| `src/utils/` | Shared configuration, logging, and typing helpers | [utils/README.md](src/utils/README.md) |
 
 ## System behavior
 
@@ -58,8 +61,10 @@ Install:
 ```bash
 git clone https://github.com/AlexSantini10/distributed-sensor-hub.git
 cd distributed-sensor-hub
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
+
+For runtime-only environments, install `requirements.txt` instead.
 
 Base configuration:
 
@@ -86,7 +91,7 @@ $env:BOOTSTRAP_PEERS=""
 $env:LOG_LEVEL="INFO"
 $env:LOG_FILE="logs/node-1.log"
 $env:WEB_API_PORT="10000"
-python node.py
+python src/node.py
 ```
 
 Docker topologies:
@@ -135,7 +140,7 @@ Observability UI:
 
 When many nodes and sensors are active, stale data in UI is usually caused by pull storms and/or a too-small delta history.
 
-Recommended baseline for `docker-compose-6-nodes.yml`, `docker-compose-12-nodes.yml`, and `docker-compose-base.yml`:
+Recommended baseline for `docker/docker-compose-6-nodes.yml`, `docker/docker-compose-12-nodes.yml`, and `docker/docker-compose-base.yml`:
 
 - `GOSSIP_SYNC_INTERVAL_MS: 1000`
 - `GOSSIP_PUSH_RATIO: 0.35`
@@ -188,7 +193,7 @@ Validation checklist after tuning:
 
 GitHub Actions builds the node container image from `docker/Dockerfile.base` on every push to `main` and publishes the rolling tags on `ghcr.io/<owner>/<repo>`.
 
-When you push a version tag such as `v1.0.0`, the workflow also creates the GitHub Release for that commit and attaches a small usage bundle with instructions, a `.env` example, and a minimal Compose file pinned to the released image digest. Pull requests to `main` still validate that the image builds, but they do not publish artifacts. Full usage details are documented in [docs/docker-cd.md](docs/docker-cd.md).
+When you push a version tag such as `v1.0.0`, the workflow also creates the GitHub Release for that commit and attaches a small usage bundle with instructions, a `.env` example, and a minimal Compose file pinned to the released image digest. Pull requests to `main` validate the image build and runtime smoke test, but they do not publish artifacts. Full usage details are documented in [docs/docker-cd.md](docs/docker-cd.md).
 
 ## Notes
 

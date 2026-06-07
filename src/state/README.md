@@ -11,12 +11,12 @@ Its system role is to maintain **authoritative local winners** for each logical 
 
 ## File Overview
 
-- `state/events.py`: Defines canonical sensor-event normalization (`SensorEvent`) and a validated queue wrapper (`SensorEventQueue`) for local ingress.
-- `state/policy.py`: Defines merge-policy abstractions and the default `LwwMergePolicy` based on `(ts_ms, origin)` ordering.
-- `state/contracts.py`: Defines protocol-style interfaces (`RecordMergeStore`, `StateStoreLike`) used to decouple worker logic from concrete storage.
-- `state/node_state_store.py`: Implements thread-safe storage of current winners, UI incremental updates, and bounded ordered replication deltas.
-- `state/node_state_worker.py`: Runs the background ingestion/merge loop, applies local and remote updates, and exposes full/incremental read APIs.
-- `state/__init__.py`: Exposes the module boundary and public contracts/policies.
+- `src/state/events.py`: Defines canonical sensor-event normalization (`SensorEvent`) and a validated queue wrapper (`SensorEventQueue`) for local ingress.
+- `src/state/policy.py`: Defines merge-policy abstractions and the default `LwwMergePolicy` based on `(ts_ms, origin)` ordering.
+- `src/state/contracts.py`: Defines protocol-style interfaces (`RecordMergeStore`, `StateStoreLike`) used to decouple worker logic from concrete storage.
+- `src/state/node_state_store.py`: Implements thread-safe storage of current winners, UI incremental updates, and bounded ordered replication deltas.
+- `src/state/node_state_worker.py`: Runs the background ingestion/merge loop, applies local and remote updates, and exposes full/incremental read APIs.
+- `src/state/__init__.py`: Exposes the module boundary and public contracts/policies.
 
 ## Main Dependencies
 

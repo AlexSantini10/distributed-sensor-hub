@@ -1,7 +1,7 @@
 """Periodically stop and restart one Docker Compose service.
 
 Usage example:
-    python manual_tests/compose_chaos.py \
+    python scripts/compose_chaos.py \
         --compose-file docker/docker-compose-6-nodes.yml \
         --service node3 \
         --down-seconds 20 \

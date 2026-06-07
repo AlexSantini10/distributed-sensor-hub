@@ -7,7 +7,7 @@ Its system role is to bridge internal state/membership workers and external poll
 
 ## File Overview
 
-- `webapi/http_api.py`: Implements request routing, JSON serialization of provided snapshots, permissive CORS handling for polling clients, and lifecycle management of a threaded HTTP server.
+- `src/webapi/http_api.py`: Implements request routing, JSON serialization of provided snapshots, permissive CORS handling for polling clients, and lifecycle management of a threaded HTTP server.
 
 ## Main Dependencies
 
@@ -26,7 +26,7 @@ Its system role is to bridge internal state/membership workers and external poll
   - Optionally serve membership snapshots when a membership provider is configured.
   - Optionally serve merged topology snapshots when a topology provider is configured.
   - Optionally serve aggregate and per-surface introspection snapshots when an introspection provider is configured.
-  - Serve static observability UI assets (`/`, `/index.html`, `/app.js`, `/styles.css`) from the repository `web/` directory.
+  - Serve static observability UI assets (`/`, `/index.html`, `/app.js`, `/styles.css`) from the repository `src/web/` directory.
   - Enforce a constrained HTTP surface (`GET`, `OPTIONS`) with CORS headers for browser-based polling.
   - Isolate HTTP failures from domain workers through exception handling and logger-based reporting.
 

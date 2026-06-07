@@ -65,7 +65,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node2:
     build:
@@ -121,7 +121,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node3:
     build:
@@ -177,7 +177,7 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py
 
   node4:
     build:
@@ -233,4 +233,4 @@ services:
       - |
         touch "$${LOG_FILE}";
         tail -n +1 -F "$${LOG_FILE}" &
-        exec python node.py
+        exec python src/node.py

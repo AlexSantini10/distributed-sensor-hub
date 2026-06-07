@@ -1,23 +1,23 @@
-# Diagrams (Graphviz DOT)
+# Diagrams
 
-Architecture/topology diagrams in this repository use **Graphviz DOT** (not PlantUML).
+Architecture and interaction diagrams use **Graphviz DOT** and **PlantUML**.
 
-## Why Graphviz
+## Formats
 
-- deterministic layout with explicit constraints (`rank=same`, invisible edges, clusters)
-- strict control of layering and cross-node placement
-- text-only source files, diff-friendly in Git
-- CI-friendly batch rendering with `dot` engine
+- Graphviz DOT (`.dot`) is used where deterministic layout and explicit graph constraints matter.
+- PlantUML (`.puml`) is used for sequence, activity, deployment, and domain-model diagrams.
+- Both formats are text-based and diff-friendly.
 
 ## Directory Structure
 
-- `docs/diagrams/src/` -> source `.dot` files
+- `docs/diagrams/src/` -> source `.dot` and `.puml` files
 - `docs/diagrams/out/svg/` -> rendered SVG (primary output)
 - `docs/diagrams/out/pdf/` -> rendered PDF (secondary output)
+- `docs/diagrams/tools/plantuml.jar` -> pinned PlantUML `v1.2026.3` renderer
 
 ## Naming Conventions
 
-- source files: `kebab-case.dot`
+- source files: `kebab-case.dot` or `kebab-case.puml`
 - output files keep the same basename:
   - `src/example.dot` -> `out/svg/example.svg`
   - `src/example.dot` -> `out/pdf/example.pdf`
@@ -29,24 +29,27 @@ Render a single diagram:
 ```bash
 dot -Kdot -Tsvg docs/diagrams/src/<name>.dot -o docs/diagrams/out/svg/<name>.svg
 dot -Kdot -Tpdf docs/diagrams/src/<name>.dot -o docs/diagrams/out/pdf/<name>.pdf
+java -jar docs/diagrams/tools/plantuml.jar -tsvg -o ../out/svg docs/diagrams/src/<name>.puml
+java -jar docs/diagrams/tools/plantuml.jar -tpdf -o ../out/pdf docs/diagrams/src/<name>.puml
 ```
 
-## Graphviz Installation
+## Renderer Installation
 
 Linux (Ubuntu/Debian):
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y graphviz
+sudo apt-get install -y graphviz default-jre
 ```
 
 Windows:
 
 ```powershell
 winget install --id Graphviz.Graphviz
+winget install --id EclipseAdoptium.Temurin.21.JRE
 ```
 
-## Shared Style Convention
+## Graphviz Style Convention
 
 Each DOT diagram should include:
 
